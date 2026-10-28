@@ -22,7 +22,7 @@ import { controlOnly, RIG_TOKEN, signIn } from "../helpers/control-stack.ts";
 async function stack() {
   const secrets = SecretBox.ephemeral();
   const { store, control: api } = controlOnly({ options: { staleAfterMs: 600_000, secrets } });
-  store.ingest({
+  store.rigEvents.ingest({
     rig: "rig-a",
     ledger_id: "ledger-rig-a",
     cursor: 0,
@@ -31,13 +31,13 @@ async function stack() {
     events: [],
     summary: {},
   });
-  store.putProvider({
+  store.modelProviders.put({
     name: "lab",
     type: "openai",
     base_url: "https://models.example.com/v1",
     key: { sealed: secrets.seal("lab-key-for-tests"), hint: "…ests" },
   });
-  store.setProviderModels("lab", [
+  store.modelProviders.setModels("lab", [
     { id: "wide-model", context_window: 204_800 },
     { id: "strong-model", context_window: 400_000 },
     { id: "open-model" },
@@ -50,22 +50,26 @@ async function stack() {
     client_id: "client-for-tests",
     host_id: "host-for-tests",
   };
-  store.putProvider({
+  store.modelProviders.put({
     name: "sub",
     type: "chatgpt",
     base_url: "",
     key: { sealed: secrets.seal(JSON.stringify(login)), hint: "ChatGPT" },
   });
-  store.setProviderModels("sub", [{ id: "gpt-sol", context_window: 272_000 }]);
-  store.putProvider({
+  store.modelProviders.setModels("sub", [{ id: "gpt-sol", context_window: 272_000 }]);
+  store.modelProviders.put({
     name: "claude-sub",
     type: "claude",
     base_url: "",
     key: { sealed: secrets.seal("claude-subscription-for-tests"), hint: "…ests" },
   });
-  store.setProviderModels("claude-sub", [{ id: "opus-5.5", context_window: 200_000 }]);
-  store.putProvider({ name: "zen", type: "opencode", base_url: "https://opencode.ai/zen/v1" });
-  store.setProviderModels("zen", [{ id: "big-pickle" }]);
+  store.modelProviders.setModels("claude-sub", [{ id: "opus-5.5", context_window: 200_000 }]);
+  store.modelProviders.put({
+    name: "zen",
+    type: "opencode",
+    base_url: "https://opencode.ai/zen/v1",
+  });
+  store.modelProviders.setModels("zen", [{ id: "big-pickle" }]);
   const session = await signIn(api);
   const page = async (path = "/ui/rigs/rig-a/edit") => await session.page(path);
   const post = async (form: Record<string, string>) => {
@@ -250,12 +254,12 @@ describe("Edit rig's agents (goals 070, 073 and 074)", () => {
       said,
       /ok=Control sent a new model and a model for the planner and a model for the auditor and a model for the review panel to rig-a\./,
     );
-    const w = s.store.rigModels()["rig-a"];
+    const w = s.store.agentModels.byRig()["rig-a"];
     assert.deepEqual(
       [w?.model, w?.harness, w?.effort, w?.contextCap, w?.compactAt],
       ["wide-model", "pi", "medium", 131_072, 70],
     );
-    const roles = s.store.roleModels("rig-a");
+    const roles = s.store.agentModels.byRole("rig-a");
     assert.equal(roles.planner?.harness, "codex");
     assert.deepEqual(
       [
@@ -300,25 +304,28 @@ describe("Edit rig's agents (goals 070, 073 and 074)", () => {
     html = await s.page();
     await s.post({ ...formOf(html), context_workers: "204800", compact_workers: "80" });
     assert.deepEqual(
-      [s.store.rigModels()["rig-a"]?.contextCap, s.store.rigModels()["rig-a"]?.compactAt],
+      [
+        s.store.agentModels.byRig()["rig-a"]?.contextCap,
+        s.store.agentModels.byRig()["rig-a"]?.compactAt,
+      ],
       [undefined, undefined],
     );
     // An empty field removes the auditor's own; a form without the fields keeps them.
     html = await s.page();
     const { context_planner: _c, compact_planner: _p, ...older } = formOf(html);
     await s.post({ ...older, effort_planner: "high" });
-    assert.equal(s.store.roleModels("rig-a").planner?.effort, "high");
+    assert.equal(s.store.agentModels.byRole("rig-a").planner?.effort, "high");
     await s.post({ ...formOf(await s.page()), context_auditor: "", compact_auditor: "" });
     assert.deepEqual(
       [
-        s.store.roleModels("rig-a").auditor?.contextCap,
-        s.store.roleModels("rig-a").auditor?.compactAt,
+        s.store.agentModels.byRole("rig-a").auditor?.contextCap,
+        s.store.agentModels.byRole("rig-a").auditor?.compactAt,
       ],
       [undefined, undefined],
     );
     // A line with no model again: its model goes, and its context with it.
     await s.post({ ...formOf(await s.page()), role_auditor: "", harness_auditor: "" });
-    assert.equal(s.store.roleModels("rig-a").auditor, undefined);
+    assert.equal(s.store.agentModels.byRole("rig-a").auditor, undefined);
   });
 
   test("a harness that cannot run the model, a window or a point out of range: refused in words, and nothing is saved", async () => {
@@ -375,8 +382,8 @@ describe("Edit rig's agents (goals 070, 073 and 074)", () => {
     for (const [change, refused] of cases) {
       assert.match(await s.post({ ...form, ...change }), refused);
       // Nothing of the form was saved: not the workers' model, nor another line's.
-      assert.equal(s.store.rigModels()["rig-a"], undefined);
-      assert.deepEqual(s.store.roleModels("rig-a"), {});
+      assert.equal(s.store.agentModels.byRig()["rig-a"], undefined);
+      assert.deepEqual(s.store.agentModels.byRole("rig-a"), {});
     }
     // A model with no window takes any window in range.
     await s.post({
@@ -385,7 +392,7 @@ describe("Edit rig's agents (goals 070, 073 and 074)", () => {
       harness_auditor: "pi",
       context_auditor: "64000",
     });
-    assert.equal(s.store.roleModels("rig-a").auditor?.contextCap, 64_000);
+    assert.equal(s.store.agentModels.byRole("rig-a").auditor?.contextCap, 64_000);
   });
 
   test("the teachers: one, or two with a merged by model, each with its own effort, Runs in and context; × removes the second", async () => {
@@ -415,7 +422,7 @@ describe("Edit rig's agents (goals 070, 073 and 074)", () => {
       }),
       /error=Teacher 2: a second teacher needs a first\./,
     );
-    assert.deepEqual(s.store.roleModels("rig-a"), {});
+    assert.deepEqual(s.store.agentModels.byRole("rig-a"), {});
     const said = await s.post({
       ...formOf(html),
       role_teachers: "claude-sub|opus-5.5",
@@ -433,7 +440,7 @@ describe("Edit rig's agents (goals 070, 073 and 074)", () => {
       said,
       /ok=Control sent a model for the teachers and a model for a second teacher and a merged by model for the teachers to rig-a\./,
     );
-    const r = s.store.roleModels("rig-a");
+    const r = s.store.agentModels.byRole("rig-a");
     assert.deepEqual(
       [r.teachers?.model, r.teachers?.harness, r.teachers?.effort],
       ["opus-5.5", "claude-code", "high"],
@@ -487,7 +494,7 @@ describe("Edit rig's agents (goals 070, 073 and 074)", () => {
       await s.post(formOf(html)),
       /ok=Control sent the teachers back to one teacher and the teachers' merged by model back to the rig's advisors file to rig-a\./,
     );
-    assert.deepEqual(Object.keys(s.store.roleModels("rig-a")), ["teachers"]);
+    assert.deepEqual(Object.keys(s.store.agentModels.byRole("rig-a")), ["teachers"]);
     // Two teachers again, then the first with no model: all three go, said once.
     html = await s.page("/ui/rigs/rig-a/edit?teachers=2");
     await s.post({
@@ -509,7 +516,7 @@ describe("Edit rig's agents (goals 070, 073 and 074)", () => {
       }),
       /ok=Control sent the teachers back to the rig's advisors file to rig-a\./,
     );
-    assert.deepEqual(s.store.roleModels("rig-a"), {});
+    assert.deepEqual(s.store.agentModels.byRole("rig-a"), {});
   });
 });
 
@@ -644,7 +651,7 @@ describe("Edit rig's empty model names the real fallback (goal 074)", () => {
       off: true,
     });
     // A model given here still shows as given; its empty choice keeps the file's words.
-    s.store.assignRoleModel("rig-a", "auditor", { provider: "lab", model: "wide-model" });
+    s.store.agentModels.assignRole("rig-a", "auditor", { provider: "lab", model: "wide-model" });
     const given = lineOf(await s.page(), "auditor");
     assert.match(given, /<option value="lab\|wide-model"[^>]* selected>wide-model<\/option>/);
     assert.match(given, /<option value="" data-kind="">rig's file: model-a<\/option>/);
@@ -684,7 +691,7 @@ describe("Edit rig's empty model names the real fallback (goal 074)", () => {
   test("the workers: the rig's own model, or none: can't run", async () => {
     const s = await stack();
     const ingest = (model: unknown) =>
-      s.store.ingest({
+      s.store.rigEvents.ingest({
         rig: "rig-a",
         ledger_id: "ledger-rig-a",
         cursor: 0,

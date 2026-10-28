@@ -16,11 +16,11 @@ export function rigSetupView(
   steps: number,
   details: boolean,
 ) {
-  const cluster = store.clusterRig(rig);
-  const machine = store.machineRig(rig);
+  const cluster = store.clusters.rig(rig);
+  const machine = store.machines.rig(rig);
   const runpod = runpodRigs?.view(rig);
   if (!cluster && !machine && !runpod) throw new Error(`control did not set ${rig} up`);
-  const all = store.rigSetupEvents(rig);
+  const all = store.rigHistory.list(rig);
   return {
     rig,
     ...(runpod

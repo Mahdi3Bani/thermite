@@ -20,13 +20,13 @@ export function actionRoutes(app: Hono, dash: Dashboard): void {
   // The page's script sends an action's form with fetch, asking for JSON, then follows it on these
   // routes until its outcome: a Progress (command-progress.ts) each time.
   app.get("/ui/commands/:file{.+\\.json}", (c) => {
-    const cmd = store.commandRow(c.req.param("file").replace(/\.json$/, ""));
+    const cmd = store.commands.row(c.req.param("file").replace(/\.json$/, ""));
     return cmd ? c.json(commandProgress(cmd, Date.now())) : c.json({ error: "not found" }, 404);
   });
   app.get("/ui/rigs/:rig/checks/:file{.+\\.json}", (c) => {
     const rig = c.req.param("rig");
     const check = c.req.param("file").replace(/\.json$/, "");
-    const known = store.rigs().find((x) => x.id === rig);
+    const known = store.reportedRigs.list().find((x) => x.id === rig);
     if (!known) return c.json({ error: "not found" }, 404);
     const row = checkRows(store, rig, Date.now())[check];
     return row
@@ -35,7 +35,7 @@ export function actionRoutes(app: Hono, dash: Dashboard): void {
   });
   app.get("/ui/rigs/:rig/model.json", (c) => {
     const rig = c.req.param("rig");
-    return store.rigs().some((x) => x.id === rig)
+    return store.reportedRigs.list().some((x) => x.id === rig)
       ? c.json(modelProgress(store, rig, Date.now()))
       : c.json({ error: "not found" }, 404);
   });
@@ -79,14 +79,20 @@ export function actionRoutes(app: Hono, dash: Dashboard): void {
         : (kind === "quiet" || kind === "repeating") && !Number.isNaN(Date.parse(since ?? "")))
     )
       return c.text("refused: that is not a stuck trial's card", 400);
-    store.leaveTrial({
+    store.liveLines.leaveTrial({
       rig: String(rig),
       trial: String(trial),
       kind: String(kind),
       since: String(since),
       by: "owner:ui",
     });
-    store.audit("owner:ui", "trial_left", { rig, run: String(f.run ?? ""), trial, kind, since });
+    store.auditLog.add("owner:ui", "trial_left", {
+      rig,
+      run: String(f.run ?? ""),
+      trial,
+      kind,
+      since,
+    });
     return c.redirect(backTo(f, "/ui"), 303);
   });
 
@@ -118,7 +124,7 @@ export function actionRoutes(app: Hono, dash: Dashboard): void {
     const rig = c.req.param("rig");
     // A rig on RunPod: RunPod's own driver, whatever THERMITE_LIFECYCLE says.
     if (opts.runpodDriver?.serves(rig)) {
-      store.audit("owner:ui", "restart", { rig });
+      store.auditLog.add("owner:ui", "restart", { rig });
       const to = (k: "ok" | "error", m: string) =>
         c.redirect(`/ui/rigs/${encodeURIComponent(rig)}?${k}=${encodeURIComponent(m)}#pod`, 303);
       try {
@@ -129,7 +135,7 @@ export function actionRoutes(app: Hono, dash: Dashboard): void {
       return to("ok", "Restarting: the pod stops, then starts again.");
     }
     if (!opts.driver) return c.text("no deployment driver is configured", 409);
-    store.audit("owner:ui", "restart", { rig });
+    store.auditLog.add("owner:ui", "restart", { rig });
     try {
       await opts.driver.restart(rig, ["harness", "supervisor"]);
     } catch (err) {
@@ -151,7 +157,7 @@ export function actionRoutes(app: Hono, dash: Dashboard): void {
         303,
       );
     try {
-      store.createReset(rig, "owner:ui");
+      store.fullResets.create(rig, "owner:ui");
       await advanceResets({
         store,
         privateKeyPem: opts.privateKeyPem,

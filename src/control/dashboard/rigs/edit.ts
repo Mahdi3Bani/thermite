@@ -64,7 +64,7 @@ export function editRigRoutes(app: Hono, dash: Dashboard): void {
   // (rig_settings) with only what changed; the rig reports the settings it runs with.
   /** What the place of a rig control set up on a cluster allows it, as control last read it. */
   const clusterLimits = (r: ClusterRig): string => {
-    const f = store.cluster(r.cluster)?.facts as ClusterFacts | null | undefined;
+    const f = store.clusters.get(r.cluster)?.facts as ClusterFacts | null | undefined;
     const s = r.spec;
     const n = (x: number) => String(Math.round(x * 1000) / 1000);
     if (r.placement === "slot") {
@@ -183,8 +183,8 @@ export function editRigRoutes(app: Hono, dash: Dashboard): void {
     const s = u.settings;
     const t = csrf(c);
     const rName = encodeURIComponent(u.id);
-    const providers = store.providers().filter((p) => p.models.length);
-    const want = store.rigModels()[u.id];
+    const providers = store.modelProviders.list().filter((p) => p.models.length);
+    const want = store.agentModels.byRig()[u.id];
     const sw = (p: (typeof PARTS)[number]) => `<div class="pt">
 <label class="sw"><input type="checkbox" name="${p.id}" value="1" data-part data-name="${esc(p.name)}"${s?.[p.id] ? " checked" : ""}${s ? "" : " disabled"}><span class="knob"></span></label>
 <div><div><b>${esc(p.name)}</b> <span class="pt-state ${s?.[p.id] ? "on" : "off"}">${s ? (s[p.id] ? "on" : "off") : "?"}</span></div><div class="muted small">${esc(p.does)}</div><div class="small pt-off"><b>When it is off:</b> ${esc(p.off)}</div>${p.id === "workers" ? `<label class="fd" style="max-width:220px;margin-top:8px">${infoLabel("Workers at a time", `How many agents work at the same time: 1 to ${MAX_LANES}. Each one uses its own CPUs, memory and disk, and the same model.`)}<input name="lanes" type="number" min="1" max="${MAX_LANES}" value="${s?.lanes ?? 1}"${s ? "" : " disabled"}></label>` : ""}</div></div>`;
@@ -209,12 +209,12 @@ export function editRigRoutes(app: Hono, dash: Dashboard): void {
         window: m.context_window ?? 0,
       })),
     }));
-    const roles = store.roleModels(u.id);
+    const roles = store.agentModels.byRole(u.id);
     const none: AgentLineNow = { picked: "", effort: null, harness: null, cap: null, at: null };
     const roleNow = (role: AgentRole): AgentLineNow => {
       const r = roles[role];
       if (!r) return none;
-      const p = store.provider(r.provider);
+      const p = store.modelProviders.get(r.provider);
       return {
         picked: modelValue(r.provider, r.model),
         effort: r.effort,
@@ -260,7 +260,7 @@ export function editRigRoutes(app: Hono, dash: Dashboard): void {
         advisors: advisorsFileOf(u.supervisor),
       },
     });
-    const placed = store.machineRig(u.id) ?? store.clusterRig(u.id);
+    const placed = store.machines.rig(u.id) ?? store.clusters.rig(u.id);
     const where = placed
       ? "machine" in placed
         ? `The machine ${esc(placed.machine)}, set up by control. Stop, start or remove it from the rig's page.`
@@ -333,8 +333,9 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       try {
         const model = decodeURIComponent(mRaw ?? "");
         return (
-          store.provider(decodeURIComponent(pRaw ?? ""))?.models.find((m) => m.id === model)
-            ?.context_window ?? 0
+          store.modelProviders
+            .get(decodeURIComponent(pRaw ?? ""))
+            ?.models.find((m) => m.id === model)?.context_window ?? 0
         );
       } catch {
         return 0;
@@ -377,7 +378,7 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
     // and point. Only the lines the form has: a line it lacks keeps its model. The first teacher
     // with no model (the advisors file's) takes the second teacher and the merged by model with
     // it, as set_rig_model's clear does; a second teacher needs a first.
-    const roles = store.roleModels(rig);
+    const roles = store.agentModels.byRole(rig);
     const noTeachers = "role_teachers" in f && !String(f.role_teachers ?? "");
     if (noTeachers && twoTeachers)
       return refuse(
@@ -399,7 +400,7 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       const ctx = contextOf(role, raw);
       if ("error" in ctx) return refuse(role, ctx.error);
       if (cur && raw === modelValue(cur.provider, cur.model)) {
-        const p = store.provider(cur.provider);
+        const p = store.modelProviders.get(cur.provider);
         const curHarness = cur.harness ?? (p ? neededHarness(p, cur.model) : "pi");
         if (
           (roleEffort ?? null) === cur.effort &&
@@ -416,7 +417,7 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
 
     // The workers' line: as in Providers, with its own window and point.
     const choice = String(f.choice ?? "");
-    const want = store.rigModels()[rig];
+    const want = store.agentModels.byRig()[rig];
     // A form without the harness (the line had no model) keeps the one control has.
     const harness = "harness" in f ? harnessOf(f.harness) : (want?.harness ?? "pi");
     const effort = effortOf("effort");
@@ -442,7 +443,7 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
     // A rig control set up on a cluster: its GPUs, CPUs and memory (goal 118), checked here with
     // the rest, against the slot's quota read again, and changed last. With a new number of GPUs,
     // GPUs for the judge is the judge's share of them, not a split of the old ones.
-    const onCluster = store.clusterRig(rig);
+    const onCluster = store.clusters.rig(rig);
     let resize: Awaited<ReturnType<typeof prepareResize>> | undefined;
     let gpusMoved = false;
     if (onCluster && ("k_gpus" in f || "k_cpus" in f || "k_mem" in f)) {

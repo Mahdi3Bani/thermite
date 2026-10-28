@@ -262,7 +262,7 @@ export class RunpodTests {
   }
 
   private key(cloud: string): string | undefined {
-    const g = this.store.gpuCloud(cloud);
+    const g = this.store.gpuClouds.get(cloud);
     return g ? this.secrets.open(g.key_sealed) : undefined;
   }
 
@@ -270,7 +270,7 @@ export class RunpodTests {
   async start(cloud: string, req: TestRequest, by: string): Promise<TestView> {
     const key = this.key(cloud);
     if (!key) throw new Error(`no GPU cloud "${cloud}"`);
-    const running = this.store.runpodTests({ cloud, active: true })[0];
+    const running = this.store.runpod.tests({ cloud, active: true })[0];
     if (running)
       throw new Error(
         `test ${running.id} is still running on "${cloud}": end it first, or wait for it`,
@@ -289,7 +289,7 @@ export class RunpodTests {
       throw new Error("a limit is 5 minutes or more");
     // A fresh read: prices and stock change.
     const facts = await readRunpod(key, this.fetchImpl);
-    this.store.setGpuCloudFacts(cloud, { facts });
+    this.store.gpuClouds.setFacts(cloud, { facts });
     const gpu = req.gpu
       ? facts.gpus.find((g) => g.id === req.gpu || g.name === req.gpu)
       : cheapestGpu(facts, cloudType);
@@ -337,8 +337,8 @@ export class RunpodTests {
       billed_since: now,
       notes: [],
     };
-    this.store.addRunpodTest({ id, cloud, state, by });
-    this.store.audit(by, "runpod_test_started", {
+    this.store.runpod.addTest({ id, cloud, state, by });
+    this.store.auditLog.add(by, "runpod_test_started", {
       id,
       cloud,
       pod: pod.id,
@@ -353,16 +353,16 @@ export class RunpodTests {
 
   /** Ends a test now: its pod is removed. */
   async end(id: string, by: string): Promise<TestView> {
-    const t = this.store.runpodTest(id);
+    const t = this.store.runpod.test(id);
     if (!t) throw new Error(`no test ${id}`);
     if (t.active) {
       const s = t.state as TestState;
       if (s.phase !== "ending" && s.phase !== "done") {
         s.notes.push(`Ended by ${by} while ${PHASE_WORDS[s.phase]}.`);
         s.phase = "ending";
-        this.store.saveRunpodTest(id, s, true);
+        this.store.runpod.saveTest(id, s, true);
       }
-      this.store.audit(by, "runpod_test_ended", { id, cloud: t.cloud });
+      this.store.auditLog.add(by, "runpod_test_ended", { id, cloud: t.cloud });
       await this.stepOnce(id);
     }
     return this.view(id) as TestView;
@@ -370,7 +370,8 @@ export class RunpodTests {
 
   /** One step for every running test. Control calls it every few seconds. */
   async advance(): Promise<void> {
-    for (const t of this.store.runpodTests({ active: true, limit: 100 })) await this.stepOnce(t.id);
+    for (const t of this.store.runpod.tests({ active: true, limit: 100 }))
+      await this.stepOnce(t.id);
   }
 
   private async stepOnce(id: string): Promise<void> {
@@ -382,14 +383,14 @@ export class RunpodTests {
   }
 
   private async step(id: string): Promise<void> {
-    const t = this.store.runpodTest(id);
+    const t = this.store.runpod.test(id);
     if (!t?.active) return;
     const s = t.state as TestState;
     const key = this.key(t.cloud);
     if (!key) {
       s.error = `the GPU cloud "${t.cloud}" was deleted, so control can't reach pod ${s.pod_id}: remove it in RunPod's console`;
       s.phase = "done";
-      this.store.saveRunpodTest(id, s, false);
+      this.store.runpod.saveTest(id, s, false);
       return;
     }
     const now = this.iso();
@@ -469,7 +470,7 @@ export class RunpodTests {
           billStop();
           s.ended_at = now;
           s.phase = "done";
-          this.store.audit("control", "runpod_test_done", {
+          this.store.auditLog.add("control", "runpod_test_done", {
             id,
             cloud: t.cloud,
             cost_usd: costOf(s),
@@ -491,7 +492,7 @@ export class RunpodTests {
         s.phase = "ending";
       }
     }
-    this.store.saveRunpodTest(id, s, s.phase !== "done");
+    this.store.runpod.saveTest(id, s, s.phase !== "done");
   }
 
   private async readReport(s: TestState): Promise<unknown> {
@@ -510,12 +511,12 @@ export class RunpodTests {
 
   /** A test as shown: its state (never the report's secret path), cost and findings. */
   view(id: string): TestView | undefined {
-    const t = this.store.runpodTest(id);
+    const t = this.store.runpod.test(id);
     return t ? viewOf(t, this.now()) : undefined;
   }
 
   list(cloud?: string, limit = 20): TestView[] {
-    return this.store.runpodTests({ cloud, limit }).map((t) => viewOf(t, this.now()));
+    return this.store.runpod.tests({ cloud, limit }).map((t) => viewOf(t, this.now()));
   }
 }
 

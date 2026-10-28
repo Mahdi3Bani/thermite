@@ -33,7 +33,7 @@ async function control(kits?: KitRepos) {
   };
   let id = 0;
   const ingest = (events: { kind: string; subject: string; body: Record<string, unknown> }[]) =>
-    store.ingest({
+    store.rigEvents.ingest({
       rig: "rig-a",
       ledger_id: "ledger-a",
       cursor: id,
@@ -255,7 +255,7 @@ describe("each goal's real check on control (goal 082)", () => {
       );
       const c = await control(kits);
       const { contract, sha } = goalContract(commit);
-      c.store.putCampaign({
+      c.store.campaigns.put({
         campaign: "sum-goals",
         version: 1,
         contract,
@@ -281,7 +281,7 @@ describe("each goal's real check on control (goal 082)", () => {
       // A kit only in its repository: what the contract says, and why no more.
       const other = await control();
       const plain = goalContract("c".repeat(40));
-      other.store.putCampaign({
+      other.store.campaigns.put({
         campaign: "sum-goals",
         version: 1,
         contract: plain.contract,

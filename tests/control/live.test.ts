@@ -54,7 +54,7 @@ describe("the live view", () => {
     await assert.rejects(relayLiveOnce(s.cfg, st), /403/);
     s.setTamper(undefined);
     await relayLiveOnce(s.cfg, st);
-    assert.equal(s.store.liveTail("rig-a", 10).at(-1)?.text, "lane-1: tiling");
+    assert.equal(s.store.liveLines.tail("rig-a", 10).at(-1)?.text, "lane-1: tiling");
   });
 
   test("a line of a kind control does not know is left out, the rest kept, and said once (goal 171)", async (t) => {
@@ -74,8 +74,8 @@ describe("the live view", () => {
     t.mock.restoreAll();
     assert.equal(st.cursor, 4);
     assert.deepEqual(
-      s.store
-        .liveTail("rig-a", 10)
+      s.store.liveLines
+        .tail("rig-a", 10)
         .filter((e) => e.source === "planner")
         .map((e) => e.text),
       ["before", "after"],
@@ -145,7 +145,8 @@ describe("the owner's messages to agents", () => {
     assert.equal(nowhere.status, 404);
     // Each refusal is in the audit log, as the dashboard's and MCP's are.
     assert.equal(
-      s.store.listAudit(50).filter((a) => a.action === "refused" && a.actor === "owner:api").length,
+      s.store.auditLog.list(50).filter((a) => a.action === "refused" && a.actor === "owner:api")
+        .length,
       3,
     );
     await relayOnce(s.cfg, { cursor: 0 });
@@ -194,7 +195,7 @@ describe("the owner's messages to agents", () => {
     let st = { cursor: 0, ownCursor: 0 };
     for (let round = 0; round < 10 && st.cursor < 600; round++) st = await relayLiveOnce(s.cfg, st);
     assert.equal(st.cursor, 600);
-    const kept = s.store.liveTail("rig-a", 1000).filter((e) => e.source === "planner");
+    const kept = s.store.liveLines.tail("rig-a", 1000).filter((e) => e.source === "planner");
     assert.equal(kept.length, 600);
     assert.equal(kept.at(-1)?.text.split(":")[0], "599");
   });

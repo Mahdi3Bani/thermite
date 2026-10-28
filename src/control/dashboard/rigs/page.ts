@@ -66,21 +66,21 @@ export function rigPageRoutes(app: Hono, dash: Dashboard): void {
     const now = Date.now();
     const vs = views();
     const u = vs.find((x) => x.id === c.req.param("rig"));
-    const placed = store.machineRig(c.req.param("rig"));
-    const onCluster = store.clusterRig(c.req.param("rig"));
-    const joined = store.joinedRig(c.req.param("rig"));
-    const pulled = store.tunnelRig(c.req.param("rig"));
+    const placed = store.machines.rig(c.req.param("rig"));
+    const onCluster = store.clusters.rig(c.req.param("rig"));
+    const joined = store.joinedRigs.get(c.req.param("rig"));
+    const pulled = store.tunnels.get(c.req.param("rig"));
     const flashOk = c.req.query("ok");
     const flashError = c.req.query("error");
     // A command the green line is about (Edit rig's settings): the page says how it stands.
-    const flashCmd = flashOk ? store.commandRow(c.req.query("cmd") ?? "") : undefined;
+    const flashCmd = flashOk ? store.commands.row(c.req.query("cmd") ?? "") : undefined;
     const flashing = flashCmd ? commandProgress(flashCmd, Date.now()) : undefined;
     const flash = flashError
       ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not done.</b> ${esc(flashError)}</div>`
       : flashOk
         ? `<div class="card" style="margin-bottom:16px"${flashCmd && flashing && !flashing.final ? ` data-follow="${esc(commandFollowUrl(flashCmd.id))}" data-follow-state="${flashing.state}" data-say` : ""}><b class="ok">${esc(flashOk)}</b>${flashing ? ` <span class="${flashing.tone}" data-say>${esc(flashing.said)}</span>` : ""}</div>`
         : "";
-    const retired = store.rigRetired(c.req.param("rig"));
+    const retired = store.retired.get(c.req.param("rig"));
     const launched = opts.runpodRigs?.view(c.req.param("rig"));
     if (!u && retired)
       return page(
@@ -154,17 +154,17 @@ export function rigPageRoutes(app: Hono, dash: Dashboard): void {
         vs,
       );
     const t = csrf(c);
-    const key = store.rigKey(u.id);
+    const key = store.reportedRigs.key(u.id);
     const back = `/ui/rigs/${encodeURIComponent(u.id)}`;
     const place = placeOf(u.id);
     const rp = u.runpod;
     const podStopped = Boolean(rp?.active && rp.status === "EXITED");
-    const steps = store.rigSetupEvents(u.id);
+    const steps = store.rigHistory.list(u.id);
     const stateIn = {
       u,
       place,
       control,
-      controlSince: store.controlBuildSince(),
+      controlSince: store.builds.controlSince(),
       staleAfterMs: opts.staleAfterMs,
       offlineAfterMs,
       steps,
@@ -439,7 +439,7 @@ ${flash}<div data-part="banners"${stateIn.updating ? ` data-follow="${esc(update
 ${rp ? podSection(c, u.id, now) : ""}
 <div data-part="at-work">${runsNow ? `<div class="block"><div class="head"><h2>At work</h2><span class="n">${live.length}</span></div>${runsNow}</div>` : ""}</div>
 <div class="cols run-cols"><div>
-<div class="block" data-part="checks"${takingModel(u.model, store.rigModels()[u.id]) ? ` data-follow="${esc(modelFollowUrl(u.id))}" data-follow-state="taking"` : ""}><div class="head"><h2>Checks</h2><span class="right">run by the rig itself; each result also goes to its history</span></div><div class="card flat cks">${checkRows}</div></div>
+<div class="block" data-part="checks"${takingModel(u.model, store.agentModels.byRig()[u.id]) ? ` data-follow="${esc(modelFollowUrl(u.id))}" data-follow-state="taking"` : ""}><div class="head"><h2>Checks</h2><span class="right">run by the rig itself; each result also goes to its history</span></div><div class="card flat cks">${checkRows}</div></div>
 <div class="block" data-part="runs"><div class="head"><h2>Runs on this rig</h2><span class="n">${u.runs.length}</span>${u.state !== "reporting" || refusedNow ? `<span class="right">as of its last report${neverReported(u) ? "" : `, ${esc(ago(u.last_seen, now))} ago`}</span>` : ""}</div>${runRows ? `<div class="card flat">${runRows}</div>` : `<div class="card"><div class="empty">No campaign assigned.</div></div>`}</div>
 ${rp ? events : ""}
 <div class="block" data-part="jobs"><div class="head"><h2>The judge's last jobs</h2></div>${jobs ? `<div class="card flat tl">${jobs}</div>` : `<div class="card"><div class="empty">No job yet.</div></div>`}</div>
@@ -552,7 +552,7 @@ ${rp ? "" : events}
       now,
       results: resultsLeft(store, rig),
       lastExport: name ? { name, left: exportLeft(store, rig, name) } : null,
-      resetOpen: Boolean(store.openReset(rig)),
+      resetOpen: Boolean(store.fullResets.open(rig)),
       minIdle: MIN_IDLE_STOP_MINUTES,
     });
   };
@@ -574,7 +574,7 @@ ${rp ? "" : events}
       {
         limit: 40,
         kinds: true,
-        extra: [...podRows(store.rigSetupEvents(rig)), ...extra],
+        extra: [...podRows(store.rigHistory.list(rig)), ...extra],
         id: "hist",
       },
     )}</div>`;

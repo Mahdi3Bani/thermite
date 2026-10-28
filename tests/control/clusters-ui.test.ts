@@ -39,7 +39,7 @@ describe("clusters in Providers and Add a rig", () => {
       }),
       /"k8s-a" is added and checked/,
     );
-    const k = s.store.cluster("k8s-a");
+    const k = s.store.clusters.get("k8s-a");
     assert.equal(k?.context, "kind-thermite");
     assert.equal(s.secrets.open(k?.kubeconfig_sealed ?? ""), KUBECONFIG.trim());
     let page = await s.page("/ui/settings");
@@ -74,7 +74,7 @@ describe("clusters in Providers and Add a rig", () => {
     assert.equal(list.items[0]?.metadata.name, "thermite-k8s-a-1");
     assert.match(apply?.stdin ?? "", /"nvidia.com\/gpu":1/);
     assert.match(apply?.stdin ?? "", /registry\.example\.com\/harness-cuda:1/);
-    assert.ok(s.store.enrolledRig("k8s-a-1"));
+    assert.ok(s.store.enrollments.rig("k8s-a-1"));
     page = await s.page("/ui/rigs/k8s-a-1");
     assert.match(page, /Control is setting k8s-a-1 up on k8s-a/);
     assert.match(page, /Its objects applied in the cluster/);
@@ -102,7 +102,7 @@ describe("clusters in Providers and Add a rig", () => {
       await s.post("/ui/rigs/k8s-a-1/cluster/remove", { confirm: "discard k8s-a-1" }),
       /ok=Removed from the cluster/,
     );
-    assert.deepEqual(s.store.listAudit(1, { action: "cluster_rig_remove" })[0]?.body, {
+    assert.deepEqual(s.store.auditLog.list(1, { action: "cluster_rig_remove" })[0]?.body, {
       rig: "k8s-a-1",
       cluster: "k8s-a",
       discarded: "the rig's supervisor has not reported yet",
@@ -113,8 +113,8 @@ describe("clusters in Providers and Add a rig", () => {
           c.args.join(" ") === "delete namespace thermite-k8s-a-1 --wait=false --ignore-not-found",
       ),
     );
-    assert.equal(s.store.clusterRig("k8s-a-1")?.status, "removed");
-    assert.equal(s.store.enrolledRig("k8s-a-1"), undefined);
+    assert.equal(s.store.clusters.rig("k8s-a-1")?.status, "removed");
+    assert.equal(s.store.enrollments.rig("k8s-a-1"), undefined);
     assert.match(await s.post("/ui/settings/clusters/k8s-a/delete", {}), /"k8s-a" is deleted/);
   });
 
@@ -172,7 +172,9 @@ describe("clusters in Providers and Add a rig", () => {
     };
     assert.ok(!list.items.some((o) => o.kind === "Namespace" || o.kind === "NetworkPolicy"));
     assert.ok(list.items.every((o) => o.metadata.namespace === "thermite-slot-1"));
-    s.store.setSupervisor("k8s-b-1", { export: { remote: true, to: "repository", waiting: 0 } });
+    s.store.reportedRigs.setSupervisor("k8s-b-1", {
+      export: { remote: true, to: "repository", waiting: 0 },
+    });
     assert.match(
       await s.post("/ui/rigs/k8s-b-1/cluster/remove", { confirm: "remove k8s-b-1" }),
       /ok=Removed/,
@@ -207,7 +209,7 @@ describe("clusters in Providers and Add a rig", () => {
     );
     await new Promise((r) => setTimeout(r, 20));
     // Its first report (the fake cluster has no rig to send one) makes it running.
-    before.store.setClusterRigStatus("cpu-1", "running");
+    before.store.clusters.setRigStatus("cpu-1", "running");
     assert.doesNotMatch(await before.page("/ui/rigs/cpu-1"), /Update to these images/);
     assert.match(
       await before.post("/ui/rigs/cpu-1/cluster/images", {}),
@@ -243,7 +245,7 @@ describe("clusters in Providers and Add a rig", () => {
       list.items.flatMap((d) => d.spec?.template?.spec?.containers.map((c) => c.image)),
       ["registry.example.com/harness:2", "registry.example.com/supervisor:2"],
     );
-    assert.deepEqual(s.store.clusterRig("cpu-1")?.spec.images, {
+    assert.deepEqual(s.store.clusters.rig("cpu-1")?.spec.images, {
       harness: "registry.example.com/harness:2",
       supervisor: "registry.example.com/supervisor:2",
     });
@@ -257,7 +259,7 @@ describe("clusters in Providers and Add a rig", () => {
     assert.doesNotMatch(page, /Update to these images/);
     // While it waits for a report from the new images, another change is refused; a report after
     // a failed wait shows it running again.
-    assert.equal(s.store.clusterRig("cpu-1")?.status, "updating");
+    assert.equal(s.store.clusters.rig("cpu-1")?.status, "updating");
     const busy = await control(f.k, { store: s.store, secrets: s.secrets, tag: "9" });
     assert.match(
       await busy.post("/ui/rigs/cpu-1/cluster/images", {}),
@@ -277,7 +279,7 @@ describe("clusters in Providers and Add a rig", () => {
       list.items.map((d) => d.spec?.replicas),
       [0, 0],
     );
-    assert.equal(later.store.clusterRig("cpu-1")?.status, "stopped");
+    assert.equal(later.store.clusters.rig("cpu-1")?.status, "stopped");
     // Without control's address for rigs, the update is refused: the rig would lose its way back.
     const lost = await control(f.k, {
       store: s.store,
@@ -305,12 +307,15 @@ describe("clusters in Providers and Add a rig", () => {
       await moved.post("/ui/rigs/cpu-1/cluster/images", {}),
       /ok=cpu-1 gets control's new address when it starts again/,
     );
-    assert.equal(moved.store.clusterRig("cpu-1")?.spec.controlUrl, "https://control2.example.com");
+    assert.equal(
+      moved.store.clusters.rig("cpu-1")?.spec.controlUrl,
+      "https://control2.example.com",
+    );
     assert.doesNotMatch(await moved.page("/ui/rigs/cpu-1"), /Give it control/);
     // After a failed change, the same images are offered again as a retry.
-    moved.store.setClusterRigStatus("cpu-1", "failed");
+    moved.store.clusters.setRigStatus("cpu-1", "failed");
     assert.match(await moved.page("/ui/rigs/cpu-1"), /Try the update again/);
-    moved.store.setClusterRigStatus("cpu-1", "stopped");
+    moved.store.clusters.setRigStatus("cpu-1", "stopped");
     assert.match(
       String(f.calls.find((c) => c.args[0] === "apply")?.stdin),
       /control2\.example\.com/,
@@ -340,10 +345,10 @@ describe("clusters in Providers and Add a rig", () => {
       "k_slot__k8s-c": "thermite-slot-1",
     });
     await new Promise((r) => setTimeout(r, 20));
-    before.store.setClusterRigStatus("cpu-1", "running");
+    before.store.clusters.setRigStatus("cpu-1", "running");
     // The rig reports what still runs: two trials and the judge's job.
     const report = (work: Record<string, unknown>) =>
-      before.store.ingest({
+      before.store.rigEvents.ingest({
         rig: "cpu-1",
         ledger_id: "l-1",
         cursor: 0,
@@ -359,9 +364,9 @@ describe("clusters in Providers and Add a rig", () => {
       await s.post("/ui/rigs/cpu-1/cluster/images", {}),
       /ok=cpu-1 drains first: it starts nothing new, and its pods restart on the new images once 2 trials and the judge's job finish/,
     );
-    assert.equal(s.store.clusterRig("cpu-1")?.status, "draining");
+    assert.equal(s.store.clusters.rig("cpu-1")?.status, "draining");
     assert.ok(!f.calls.some((c) => c.args[0] === "apply"), "no restart yet");
-    const sent = s.store.pendingCommands("cpu-1").map((c) => c.envelope);
+    const sent = s.store.commands.pending("cpu-1").map((c) => c.envelope);
     assert.deepEqual(
       sent.filter((e) => e.kind === "drain_rig").map((e) => e.payload),
       [{ drain: true, reason: "its images are about to change" }],
@@ -378,10 +383,10 @@ describe("clusters in Providers and Add a rig", () => {
       await s.post("/ui/rigs/cpu-1/cluster/drain-cancel", {}),
       /ok=cpu-1 goes back to work on its images/,
     );
-    assert.equal(s.store.clusterRig("cpu-1")?.status, "running");
+    assert.equal(s.store.clusters.rig("cpu-1")?.status, "running");
     assert.deepEqual(
-      s.store
-        .pendingCommands("cpu-1")
+      s.store.commands
+        .pending("cpu-1")
         .map((c) => c.envelope)
         .filter((e) => e.kind === "drain_rig")
         .map((e) => (e.payload as { drain: boolean }).drain),
@@ -395,7 +400,7 @@ describe("clusters in Providers and Add a rig", () => {
     );
     assert.ok(f.calls.some((c) => c.args[0] === "apply"));
     // An idle rig is updated at once, with no drain.
-    s.store.setClusterRigStatus("cpu-1", "running");
+    s.store.clusters.setRigStatus("cpu-1", "running");
     report({ trials: 0, judge_jobs: 0, draining: null });
     const idle = await control(f.k, { store: s.store, secrets: s.secrets, tag: "3" });
     assert.match(
@@ -421,9 +426,9 @@ describe("clusters in Providers and Add a rig", () => {
       "k_slot__k8s-c": "thermite-slot-1",
     });
     await new Promise((r) => setTimeout(r, 20));
-    before.store.setClusterRigStatus("cpu-1", "running");
+    before.store.clusters.setRigStatus("cpu-1", "running");
     const report = (work: Record<string, unknown>) =>
-      before.store.ingest({
+      before.store.rigEvents.ingest({
         rig: "cpu-1",
         ledger_id: "l-1",
         cursor: 0,
@@ -453,7 +458,7 @@ describe("clusters in Providers and Add a rig", () => {
       f.calls.some((c) => c.args[0] === "apply"),
       "restarted once nothing ran",
     );
-    assert.equal(s.store.clusterRig("cpu-1")?.status, "updating");
+    assert.equal(s.store.clusters.rig("cpu-1")?.status, "updating");
   });
 
   test("a harness that started again while draining is asked to drain again, once (goal 079)", async () => {
@@ -473,9 +478,9 @@ describe("clusters in Providers and Add a rig", () => {
       "k_slot__k8s-c": "thermite-slot-1",
     });
     await new Promise((r) => setTimeout(r, 20));
-    before.store.setClusterRigStatus("cpu-1", "running");
+    before.store.clusters.setRigStatus("cpu-1", "running");
     const report = (work: Record<string, unknown>) =>
-      before.store.ingest({
+      before.store.rigEvents.ingest({
         rig: "cpu-1",
         ledger_id: "l-1",
         cursor: 0,
@@ -493,14 +498,14 @@ describe("clusters in Providers and Add a rig", () => {
     });
     await s.post("/ui/rigs/cpu-1/cluster/images", {});
     const drains = () =>
-      s.store.latestCommands("cpu-1", "drain_rig").filter((c) => c.payload.drain === true);
+      s.store.commands.latest("cpu-1", "drain_rig").filter((c) => c.payload.drain === true);
     // Not yet taken: the report without a drain is not a reason to ask again.
     await new Promise((r) => setTimeout(r, 100));
     assert.equal(drains().length, 1);
     // Taken; one report after it without the drain may have been read before it took effect.
     const first = drains()[0];
     assert.ok(first);
-    s.store.ackCommand("cpu-1", first.id, "delivered", {});
+    s.store.commands.ack("cpu-1", first.id, "delivered", {});
     await new Promise((r) => setTimeout(r, 5));
     report({ trials: 1, judge_jobs: 0, draining: null });
     await new Promise((r) => setTimeout(r, 100));
@@ -510,8 +515,8 @@ describe("clusters in Providers and Add a rig", () => {
     for (let i = 0; i < 50 && drains().length < 2; i++) await new Promise((r) => setTimeout(r, 20));
     assert.equal(drains().length, 2);
     assert.match(
-      s.store
-        .rigSetupEvents("cpu-1")
+      s.store.rigHistory
+        .list("cpu-1")
         .map((e) => e.detail ?? "")
         .join("\n"),
       /its harness started again and was not draining: asked again/,
@@ -519,7 +524,7 @@ describe("clusters in Providers and Add a rig", () => {
     // The new ask is on its way: not asked a third time, and no restart while the trial runs.
     await new Promise((r) => setTimeout(r, 100));
     assert.equal(drains().length, 2);
-    assert.equal(s.store.clusterRig("cpu-1")?.status, "draining");
+    assert.equal(s.store.clusters.rig("cpu-1")?.status, "draining");
     // Its history names the step in words.
     assert.match(
       await s.page("/ui/rigs/cpu-1"),
@@ -544,8 +549,8 @@ describe("clusters in Providers and Add a rig", () => {
       "k_slot__k8s-c": "thermite-slot-1",
     });
     await new Promise((r) => setTimeout(r, 20));
-    before.store.setClusterRigStatus("cpu-1", "running");
-    before.store.ingest({
+    before.store.clusters.setRigStatus("cpu-1", "running");
+    before.store.rigEvents.ingest({
       rig: "cpu-1",
       ledger_id: "l-1",
       cursor: 0,
@@ -563,8 +568,8 @@ describe("clusters in Providers and Add a rig", () => {
       f.calls.some((c) => c.args[0] === "apply"),
       "its pods move now",
     );
-    assert.equal(s.store.latestCommands("cpu-1", "drain_rig").length, 0);
-    assert.notEqual(s.store.clusterRig("cpu-1")?.status, "draining");
+    assert.equal(s.store.commands.latest("cpu-1", "drain_rig").length, 0);
+    assert.notEqual(s.store.clusters.rig("cpu-1")?.status, "draining");
   });
 
   test("CPU slots: the quota sets the rig's CPUs and memory; slots added later; a rig added over MCP", async () => {
@@ -654,7 +659,7 @@ describe("clusters in Providers and Add a rig", () => {
       String((await call("update_rig_images", { rig: "cpu-2" })).body.error),
       /cpu-2 is starting: wait until its page shows it running, or failed/,
     );
-    store.setClusterRigStatus("cpu-2", "running"); // its first report (the fake has no rig)
+    store.clusters.setRigStatus("cpu-2", "running"); // its first report (the fake has no rig)
     assert.deepEqual(await call("update_rig_images", { rig: "cpu-2" }), {
       error: false,
       body: { rig: "cpu-2", said: "cpu-2 already runs control's images." },

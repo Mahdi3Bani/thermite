@@ -75,9 +75,9 @@ describe("RunPod rigs: a run assigned or resumed on a stopped pod starts it firs
     assert.ok(pending.some((c) => c.id === out.id && c.kind === "assign_campaign"));
     // The start's own resume of the run its stop paused waits with it.
     assert.ok(pending.some((c) => c.kind === "resume_run"));
-    const starting = s.store.rigSetupEvents(rig).find((e) => e.step === "runpod_starting");
+    const starting = s.store.rigHistory.list(rig).find((e) => e.step === "runpod_starting");
     assert.match(String(starting?.detail), /asked by owner:api to assign run camp-2/);
-    const audit = s.store.listAudit(30).find((a) => a.action === "runpod_rig_start");
+    const audit = s.store.auditLog.list(30).find((a) => a.action === "runpod_rig_start");
     assert.deepEqual(audit?.body, { rig, pod: "pod1", note: "to assign run camp-2" });
   });
 
@@ -132,9 +132,9 @@ describe("RunPod rigs: a run assigned or resumed on a stopped pod starts it firs
 
     const t = setup();
     const limited = await stoppedRig(t, { spend_limit_usd: 1 });
-    const stored = t.store.runpodRig(limited);
+    const stored = t.store.runpod.rig(limited);
     assert.ok(stored);
-    t.store.saveRunpodRig(limited, { ...(stored.state as object), spent_usd: 1.5 }, true);
+    t.store.runpod.saveRig(limited, { ...(stored.state as object), spent_usd: 1.5 }, true);
     const capped = await t.call("/v1/commands", {
       rig: limited,
       kind: "assign_campaign",
@@ -198,7 +198,7 @@ describe("RunPod rigs: a run assigned or resumed on a stopped pod starts it firs
     assert.match(String(r.woke), /pod was stopped: control started it/);
     assert.ok(pendingOf(s.store, rig).some((c) => c.id === r.id));
     assert.match(
-      String(s.store.rigSetupEvents(rig).find((e) => e.step === "runpod_starting")?.detail),
+      String(s.store.rigHistory.list(rig).find((e) => e.step === "runpod_starting")?.detail),
       /asked by owner:mcp to assign run camp-2/,
     );
   });
@@ -233,7 +233,7 @@ describe("RunPod rigs: a run assigned or resumed on a stopped pod starts it firs
     assert.deepEqual(starts(s), [{ action: "start" }]);
     assert.ok(pendingOf(s.store, rig).some((c) => c.id === out.command));
     assert.match(
-      String(s.store.rigSetupEvents(rig).find((e) => e.step === "runpod_starting")?.detail),
+      String(s.store.rigHistory.list(rig).find((e) => e.step === "runpod_starting")?.detail),
       new RegExp(`asked by owner:api to assign run ${out.run}`),
     );
 
@@ -257,7 +257,7 @@ describe("RunPod rigs: a run assigned or resumed on a stopped pod starts it firs
     ) as { run: string; woke?: string };
     assert.match(String(o.woke), /pod was stopped: control started it/);
     assert.match(
-      String(t.store.rigSetupEvents(other).find((e) => e.step === "runpod_starting")?.detail),
+      String(t.store.rigHistory.list(other).find((e) => e.step === "runpod_starting")?.detail),
       new RegExp(`asked by owner:mcp to assign run ${o.run}`),
     );
   });

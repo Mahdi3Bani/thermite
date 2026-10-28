@@ -17,15 +17,15 @@ export function rigStateRoutes(app: Hono, dash: Dashboard): void {
   // ---------------------------------------------------------------- a rig's state (goal 012)
   /** Moves a rig control set up on a machine onto control's images, over SSH; what changed. */
   const updateMachineRig = async (rig: string): Promise<string> => {
-    const r = store.machineRig(rig);
+    const r = store.machines.rig(rig);
     if (!r || r.status === "removed") throw new Error(`Control didn't set ${rig} up on a machine.`);
-    const m = store.machine(r.machine);
+    const m = store.machines.get(r.machine);
     if (!m) throw new Error(`The machine ${r.machine} is no longer in Settings › Providers.`);
     const images = controlImages(parts, r.gpus.length);
     if (typeof images === "string") throw new Error(images);
     if (!parts.publicUrl)
       throw new Error("Control's address for rigs is not set (THERMITE_CONTROL_PUBLIC_URL).");
-    store.setMachineRigStatus(rig, "updating");
+    store.machines.setRigStatus(rig, "updating");
     const out = await ssh.sshScript(
       {
         address: m.address,
@@ -46,12 +46,12 @@ export function rigStateRoutes(app: Hono, dash: Dashboard): void {
       30 * 60_000,
     );
     if (out.code !== 0) {
-      store.setMachineRigStatus(rig, "failed");
+      store.machines.setRigStatus(rig, "failed");
       throw new Error(tail(out.stderr) || `the update exited ${out.code}`);
     }
-    store.setMachineRigImages(rig, images);
-    store.setMachineRigStatus(rig, "running");
-    store.audit("owner:ui", "machine_rig_images", { rig, from: r.images, to: images });
+    store.machines.setRigImages(rig, images);
+    store.machines.setRigStatus(rig, "running");
+    store.auditLog.add("owner:ui", "machine_rig_images", { rig, from: r.images, to: images });
     const changed = [
       r.images.harness !== images.harness ? `harness ${r.images.harness} → ${images.harness}` : "",
       r.images.supervisor !== images.supervisor
@@ -64,7 +64,7 @@ export function rigStateRoutes(app: Hono, dash: Dashboard): void {
   };
   /** Moves a rig control set up on a cluster onto control's images; what changed. */
   const updateClusterRig = async (rig: string): Promise<string> => {
-    const k = store.clusterRig(rig);
+    const k = store.clusters.rig(rig);
     const want = k ? controlImages(parts, k.spec.gpus) : undefined;
     if (
       k &&
@@ -85,7 +85,7 @@ export function rigStateRoutes(app: Hono, dash: Dashboard): void {
   };
   app.get("/ui/rigs/:rig/update.json", (c) => {
     const rig = c.req.param("rig");
-    return store.rigs().some((x) => x.id === rig)
+    return store.reportedRigs.list().some((x) => x.id === rig)
       ? c.json(updateProgress(rig))
       : c.json({ error: "not found" }, 404);
   });
@@ -118,7 +118,7 @@ export function rigStateRoutes(app: Hono, dash: Dashboard): void {
     } catch (err) {
       return back("error", errorText(err));
     }
-    store.audit("owner:ui", "rig_update", { rig, to: control.version });
+    store.auditLog.add("owner:ui", "rig_update", { rig, to: control.version });
     return back(
       "ok",
       `The update of ${rig} to ${control.version} began. Its steps show below as they happen.`,

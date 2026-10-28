@@ -157,7 +157,7 @@ export class ExportFiles {
         };
       }
       renameSync(part, target);
-      const { complete } = store.rigExportFileDone(e.rig, e.name, path);
+      const { complete } = store.exports.fileDone(e.rig, e.name, path);
       return { ok: true, received: want.size, done: true, complete };
     } finally {
       this.busy.delete(key);
@@ -179,13 +179,13 @@ export function archiveResponse(
   rig: string,
   name: string,
 ): Response {
-  const e = EXPORT_NAME.test(name) ? o.store.rigExport(rig, name) : undefined;
+  const e = EXPORT_NAME.test(name) ? o.store.exports.get(rig, name) : undefined;
   if (!e) return c.json({ error: "no such export" }, 404);
   if (!o.files)
     return c.json({ error: "control keeps no exports: it has no folder for them" }, 404);
   const entries = o.files.archiveEntries(e);
   if (typeof entries === "string") return c.json({ error: entries }, 404);
-  o.store.audit(o.by, "export_downloaded", { rig, export: name, files: entries.length - 1 });
+  o.store.auditLog.add(o.by, "export_downloaded", { rig, export: name, files: entries.length - 1 });
   return c.body(Readable.toWeb(tarGz(entries)) as ReadableStream, 200, {
     "content-type": "application/gzip",
     "content-disposition": `attachment; filename="${archiveName(e)}"`,
@@ -254,7 +254,7 @@ export function mountExports(
       const promised = Object.fromEntries(
         Object.entries(body.files).map(([p, size]) => [p, { size, sha256: m.files[p] as string }]),
       );
-      const r = store.beginRigExport(rig, name, {
+      const r = store.exports.begin(rig, name, {
         manifest: m,
         files: promised,
         full: m.full === true,
@@ -264,7 +264,7 @@ export function mountExports(
       if (r === "different")
         return c.json({ error: `control has another export named ${name} from this rig` }, 409);
       if (r === "created") files.writeManifest(rig, name, m);
-      const e = store.rigExport(rig, name) as RigExport;
+      const e = store.exports.get(rig, name) as RigExport;
       return c.json({
         received: Object.fromEntries(Object.keys(e.files).map((p) => [p, files.received(e, p)])),
         done: e.done,
@@ -277,7 +277,7 @@ export function mountExports(
     const rig = c.req.param("rig");
     const name = c.req.param("name");
     if (!files) return c.json({ error: noFolder }, 503);
-    const e = EXPORT_NAME.test(name) ? store.rigExport(rig, name) : undefined;
+    const e = EXPORT_NAME.test(name) ? store.exports.get(rig, name) : undefined;
     if (!e) return c.json({ error: `no export ${name}: start it first` }, 404);
     const path = c.req.query("path") ?? "";
     if (!(path in e.files))
@@ -293,12 +293,12 @@ export function mountExports(
 
   app.get("/v1/rigs/:rig/exports", o.admin, (c) =>
     c.json({
-      exports: store.rigExports(c.req.param("rig"), 1000).map((e) => exportSummary(files, e)),
+      exports: store.exports.ofRig(c.req.param("rig"), 1000).map((e) => exportSummary(files, e)),
     }),
   );
 
   app.get("/v1/rigs/:rig/exports/:name", o.admin, (c) => {
-    const e = store.rigExport(c.req.param("rig"), c.req.param("name"));
+    const e = store.exports.get(c.req.param("rig"), c.req.param("name"));
     if (!e) return c.json({ error: "no such export" }, 404);
     return c.json({
       ...exportSummary(files, e),
@@ -318,7 +318,7 @@ export function mountExports(
   );
 
   app.get("/v1/rigs/:rig/exports/:name/file", o.admin, (c) => {
-    const e = store.rigExport(c.req.param("rig"), c.req.param("name"));
+    const e = store.exports.get(c.req.param("rig"), c.req.param("name"));
     const path = c.req.query("path") ?? "";
     if (!e || !files || !e.done.includes(path) || !e.files[path])
       return c.json({ error: "no such file in that export" }, 404);

@@ -245,11 +245,15 @@ describe("staging sources by reference", () => {
     };
     const cfg = { ...s.cfg, stage: (cmd: SignedCommand) => stageCommand(stagingCfg, cmd) };
     let state = { cursor: 0 };
-    for (let i = 0; i < 200 && store.command(id)?.status === "pending"; i++) {
+    for (let i = 0; i < 200 && store.commands.get(id)?.status === "pending"; i++) {
       state = await relayOnce(cfg, state);
       await new Promise((res) => setTimeout(res, 25));
     }
-    assert.equal(store.command(id)?.status, "delivered", JSON.stringify(store.command(id)));
+    assert.equal(
+      store.commands.get(id)?.status,
+      "delivered",
+      JSON.stringify(store.commands.get(id)),
+    );
     // The supervisor fetched the whole repository's commit, which the harness checked.
     const bundle = join(env.paths.inboxDir, "repos", "folder-project.bundle");
     assert.match(git(env.root, "bundle", "list-heads", bundle), new RegExp(`^${env.seed} `));
@@ -265,7 +269,7 @@ describe("staging sources by reference", () => {
       "src",
     ]);
     // The rig's answer names where the run starts.
-    const outcome = store.command(id)?.outcome as { result?: { start?: unknown } };
+    const outcome = store.commands.get(id)?.outcome as { result?: { start?: unknown } };
     assert.deepEqual(outcome.result?.start, { folder: "examples/sum", commit: start });
   });
 
@@ -313,11 +317,15 @@ describe("staging sources by reference", () => {
     };
     const cfg = { ...s.cfg, stage: (cmd: SignedCommand) => stageCommand(stagingCfg, cmd) };
     let state = { cursor: 0 };
-    for (let i = 0; i < 200 && store.command(id)?.status === "pending"; i++) {
+    for (let i = 0; i < 200 && store.commands.get(id)?.status === "pending"; i++) {
       state = await relayOnce(cfg, state);
       await new Promise((r) => setTimeout(r, 25));
     }
-    assert.equal(store.command(id)?.status, "delivered", JSON.stringify(store.command(id)));
+    assert.equal(
+      store.commands.get(id)?.status,
+      "delivered",
+      JSON.stringify(store.commands.get(id)),
+    );
     assert.equal(env.ledger.runs.get("js-1")?.status, "running");
     assert.ok(existsSync(join(env.paths.inboxDir, "repos", "fetched-project.bundle")));
     assert.ok(existsSync(join(env.paths.inboxDir, "repos", "fetched-kit.bundle")));

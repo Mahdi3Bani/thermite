@@ -1,4 +1,3 @@
-import { rigOfRunName, usedRunNames } from "./store/runs.ts";
 import type { ControlStore } from "./store.ts";
 
 /**
@@ -8,17 +7,14 @@ import type { ControlStore } from "./store.ts";
  * was used, on every path that starts a run.
  */
 
-/** The run names used so far that start with `prefix`, from control's run registry. */
-const usedNames = (store: ControlStore, prefix = ""): Set<string> => usedRunNames(store.db, prefix);
-
-/** The rig a run name was used on, or undefined while it is free. */
+/** The rig a run name was used on, or undefined while it is free, from control's run registry. */
 export const runNameUsed = (store: ControlStore, run: string): string | undefined =>
-  rigOfRunName(store.db, run);
+  store.runRegistry.rigOfName(run);
 
 /** A name for a campaign's next run: the campaign's name and the next number used nowhere. */
 export function nextRunName(store: ControlStore, campaign: string): string {
   const base = campaign.slice(0, 58);
-  const taken = usedNames(store, `${base}-`);
+  const taken = store.runRegistry.usedNames(`${base}-`);
   for (let n = 1; ; n++) if (!taken.has(`${base}-${n}`)) return `${base}-${n}`;
 }
 

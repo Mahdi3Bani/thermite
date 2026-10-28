@@ -69,7 +69,7 @@ describe("control dashboard", () => {
       harness: "pi",
       choice: "claude-max|opus-5.5%5B1m%5D",
     });
-    assert.equal(s.store.rigModels()["rig-a"]?.harness, "claude-code");
+    assert.equal(s.store.agentModels.byRig()["rig-a"]?.harness, "claude-code");
     const route = (await (
       await s.control.request("/v1/rigs/rig-a/model-route", {
         headers: { authorization: "Bearer rig-token-abcdef" },
@@ -207,7 +207,7 @@ describe("control dashboard", () => {
       /did not start this sign-in/,
     );
     assert.deepEqual(
-      s.store.provider("chatgpt-pro")?.models.map((m) => m.id),
+      s.store.modelProviders.get("chatgpt-pro")?.models.map((m) => m.id),
       ["gpt-test"],
       "only the models OpenAI lists for display",
     );
@@ -270,7 +270,7 @@ describe("control dashboard", () => {
     });
     const toCodex = await s.post("/ui/rigs/rig-a/edit", editForm("codex"));
     assert.match(decodeURIComponent(String(toCodex.headers.get("location"))), /a new model/);
-    assert.equal(s.store.rigModels()["rig-a"]?.harness, "codex");
+    assert.equal(s.store.agentModels.byRig()["rig-a"]?.harness, "codex");
     const codexRoute = await asRig();
     assert.equal(codexRoute.route?.harness, "codex");
     assert.equal(codexRoute.route?.type, "chatgpt");
@@ -287,7 +287,7 @@ describe("control dashboard", () => {
     assert.match(page, /<option value="codex" selected>Codex<\/option>/);
     // Left to control, a ChatGPT sign-in keeps Pi.
     await s.post("/ui/settings/rigs", { csrf, rig: "rig-a", choice: "chatgpt-pro|gpt-test" });
-    assert.equal(s.store.rigModels()["rig-a"]?.harness, "pi");
+    assert.equal(s.store.agentModels.byRig()["rig-a"]?.harness, "pi");
     await s.post("/ui/settings/rigs", {
       csrf,
       rig: "rig-a",

@@ -18,7 +18,7 @@ async function control() {
   let id = 0;
   const t0 = Date.now() - 3600_000;
   const ingest = (...events: { kind: string; subject: string; body: Record<string, unknown> }[]) =>
-    store.ingest({
+    store.rigEvents.ingest({
       rig: "rig-a",
       ledger_id: "ledger-a",
       cursor: id,

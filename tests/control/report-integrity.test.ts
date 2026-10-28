@@ -33,7 +33,7 @@ describe("signed reports at control", () => {
     appendOther(env.service.ledger, "t", "two", null, {});
     const fresh = env.service.snapshot(0, 100) as Record<string, unknown>;
     // A cluster rig control marked failed (its wait ended) that reports again is running again.
-    store.addClusterRig({
+    store.clusters.addRig({
       rig: "rig-a",
       cluster: "k",
       namespace: "ns",
@@ -46,10 +46,10 @@ describe("signed reports at control", () => {
       },
       created_by: "owner:ui",
     });
-    store.setClusterRigStatus("rig-a", "failed");
+    store.clusters.setRigStatus("rig-a", "failed");
     assert.equal((await post(fresh)).status, 200);
-    assert.equal(store.clusterRig("rig-a")?.status, "running");
-    assert.ok(store.rigSetupEvents("rig-a").some((x) => x.step === "report_after_images" && x.ok));
+    assert.equal(store.clusters.rig("rig-a")?.status, "running");
+    assert.ok(store.rigHistory.list("rig-a").some((x) => x.step === "report_after_images" && x.ok));
     // An older report (a replay) is refused: the rig cannot be frozen in an old state.
     const replay = await post(old);
     assert.equal(replay.status, 409);
@@ -60,12 +60,16 @@ describe("signed reports at control", () => {
     const gap = await post(ahead);
     assert.equal(gap.status, 409);
     assert.equal(((await gap.json()) as { expected_cursor: number }).expected_cursor, fresh.next);
-    const kinds = (store.events("rig-a", 0, 100) as { kind: string }[]).map((e) => e.kind);
+    const kinds = (store.rigEvents.after("rig-a", 0, 100) as { kind: string }[]).map((e) => e.kind);
     assert.deepEqual(kinds, ["one", "two"]);
     // A rig that moved to a new ledger never goes back to the one it left.
     const base = { rig: "rig-a", cursor: 0, next: 0, events: [], summary: {} };
-    store.ingest({ ...base, ledger_id: "ledger-new", generated_at: new Date().toISOString() });
-    const back = store.reportCheck("rig-a", {
+    store.rigEvents.ingest({
+      ...base,
+      ledger_id: "ledger-new",
+      generated_at: new Date().toISOString(),
+    });
+    const back = store.reportedRigs.reportCheck("rig-a", {
       ledgerId: String(fresh.ledger_id),
       cursor: 0,
       generatedAt: new Date(Date.now() + 1000).toISOString(),
@@ -87,13 +91,13 @@ describe("signed reports at control", () => {
         body: JSON.stringify(snap),
       });
     assert.equal((await post()).status, 409);
-    assert.equal(store.rigKey("rig-a").pubkey, null);
+    assert.equal(store.reportedRigs.key("rig-a").pubkey, null);
     const wrong = await control.request("/v1/rigs/rig-a/key/accept?fingerprint=0000", {
       method: "POST",
       headers: { authorization: `Bearer ${ADMIN}` },
     });
     assert.equal(wrong.status, 404);
-    const fp = fingerprint(String(store.rigKey("rig-a").pending));
+    const fp = fingerprint(String(store.reportedRigs.key("rig-a").pending));
     const ok = await control.request(`/v1/rigs/rig-a/key/accept?fingerprint=${fp}`, {
       method: "POST",
       headers: { authorization: `Bearer ${ADMIN}` },
@@ -136,22 +140,22 @@ describe("the command queue", () => {
       issuedBy: "owner:test",
     });
     assert.deepEqual(
-      store.pendingCommands("rig-a").map((c) => c.envelope.id),
+      store.commands.pending("rig-a").map((c) => c.envelope.id),
       [keep.id],
     );
-    assert.equal(store.command(expired.id)?.status, "expired");
+    assert.equal(store.commands.get(expired.id)?.status, "expired");
     // Reporting fails (control refuses every report), yet the command is relayed and applied.
     const fetchImpl: typeof fetch = async (input, init) =>
       new URL(String(input)).pathname.endsWith("/ingest")
         ? new Response("{}", { status: 500 })
         : await cfg.fetchImpl(input, init);
     await assert.rejects(relayOnce({ ...cfg, fetchImpl }, { cursor: 0 }));
-    assert.equal(store.command(keep.id)?.status, "delivered");
+    assert.equal(store.commands.get(keep.id)?.status, "delivered");
   });
 
   test("a command too large to deliver is refused when it is issued", () => {
     const store = new ControlStore(":memory:");
-    store.setConfiguredRigs(["rig-a"]);
+    store.enrollments.setConfiguredRigs(["rig-a"]);
     assert.throws(
       () =>
         issueCommand(store, generateSigningKeys().privateKeyPem, {

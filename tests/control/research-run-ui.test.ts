@@ -342,7 +342,7 @@ describe("a research run's page (goals 116 and 117)", () => {
     });
     assert.equal(sent.status, 200, JSON.stringify(sent.answer));
     assert.match(String(sent.answer.follow), /^\/ui\/commands\//);
-    const cmd = c.store.latestCommands("rig-a", "hypothesis_status")[0];
+    const cmd = c.store.commands.latest("rig-a", "hypothesis_status")[0];
     assert.deepEqual(cmd?.payload, {
       run: "s-1",
       id: "h-p1",

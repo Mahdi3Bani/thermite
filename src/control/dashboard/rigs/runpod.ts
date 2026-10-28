@@ -119,7 +119,7 @@ export function runpodRigRoutes(app: Hono, dash: Dashboard): void {
   );
   /** The launch form, for one RunPod account in Providers, maybe with what was typed and why not. */
   const launchPage = (c: Ctx, form: LaunchForm, error?: string) => {
-    const clouds = store.gpuClouds().map((g) => ({
+    const clouds = store.gpuClouds.list().map((g) => ({
       name: g.name,
       key_hint: g.key_hint,
       facts: g.facts as RunpodFacts | null,
@@ -182,7 +182,7 @@ export function runpodRigRoutes(app: Hono, dash: Dashboard): void {
       );
     }
     const rigs = opts.runpodRigs;
-    if (!rigs || !store.gpuCloud(form.cloud ?? ""))
+    if (!rigs || !store.gpuClouds.get(form.cloud ?? ""))
       return launchPage(c, form, "Choose a RunPod account from Settings › Providers.");
     const count = Number(form.gpu_count || "1");
     if (!(Number.isInteger(count) && count >= 1 && count <= 8))

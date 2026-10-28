@@ -222,6 +222,7 @@ jobs:
             ^src/control/runpod
             ^tests/control/runpod
             ^src/control/(tunnel|exports)\.ts$
+            ^src/control/store/(runpod|tunnels|exports)\.ts$
             ^src/core/tunnel\.ts$
             ^src/supervisor/export-upload\.ts$
             ^src/supervisor/relay(\.ts|/)

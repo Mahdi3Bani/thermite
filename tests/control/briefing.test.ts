@@ -7,7 +7,7 @@ import { ControlStore } from "../../src/control/store.ts";
 /** One run of `campaign` on `rig`, named `run`, with one finding. */
 function ran(store: ControlStore, rig: string, run: string, words: string) {
   const at = (m: number) => new Date(Date.parse("2026-10-27T01:00:00Z") + m * 60_000).toISOString();
-  store.ingest({
+  store.rigEvents.ingest({
     rig,
     ledger_id: `ledger-${rig}`,
     cursor: 0,

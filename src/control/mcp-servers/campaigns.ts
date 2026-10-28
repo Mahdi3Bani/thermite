@@ -1,20 +1,19 @@
-import type { DatabaseSync } from "node:sqlite";
 import { AGENT_KINDS, type AgentKind, type McpUse, McpUses } from "../../core/mcp.ts";
 import type { ControlStore } from "../store.ts";
-import { ensureMcpTables, type McpTool, mcpServerNames, type Row, str } from "./table.ts";
 
 /**
- * Which servers campaigns and runs name: why an assignment or a research campaign can't name
- * them, the servers a campaign names, what names a server, and what each run of a rig names.
+ * Which servers campaigns name: why an assignment or a research campaign can't name them, the
+ * servers a campaign names, and what names a server. What each run of a rig names is read from
+ * control's own commands (IssuedCommands.assignedMcpServers).
  */
 
 /**
  * Why an assignment naming these servers can't start, in words, or "" when every server it names
  * is in Settings. A server that fails later never stops a run: only a missing one stops the start.
  */
-export function mcpRefusal(db: DatabaseSync, uses: readonly McpUse[] | undefined): string {
+export function mcpRefusal(store: ControlStore, uses: readonly McpUse[] | undefined): string {
   if (!uses?.length) return "";
-  const have = mcpServerNames(db);
+  const have = store.mcpServers.names();
   const missing = uses.map((u) => u.name).filter((n) => !have.has(n));
   if (!missing.length) return "";
   const list = missing.join(", ");
@@ -35,19 +34,8 @@ export const RESEARCH_AGENT_KINDS: readonly AgentKind[] = ["workers", "advisors"
  * lacks, a tool its server does not list (or a server whose tools control has not read yet), or a
  * kind of agent a research run doesn't have. Copy a campaign (goal 069) checks a new list with it.
  */
-export function researchMcpRefusal(db: DatabaseSync, uses: readonly McpUse[]): string {
-  ensureMcpTables(db);
-  const servers = new Map(
-    (db.prepare("select name, tools from mcp_server").all() as Row[]).map((r) => {
-      let tools: string[] | null = null;
-      try {
-        tools = r.tools ? (JSON.parse(str(r.tools)) as McpTool[]).map((t) => t.name) : null;
-      } catch {
-        tools = null;
-      }
-      return [str(r.name), tools] as const;
-    }),
-  );
+export function researchMcpRefusal(store: ControlStore, uses: readonly McpUse[]): string {
+  const servers = store.mcpServers.toolNames();
   for (const u of uses) {
     if (!servers.has(u.name))
       return `Settings has no MCP server named ${u.name}. Add it in Settings › MCP servers, or take it out of mcp_servers.`;
@@ -73,7 +61,7 @@ export function researchMcpRefusal(db: DatabaseSync, uses: readonly McpUse[]): s
  * research contract's), else its newest assignment. Undefined: control does not know the campaign.
  */
 export function campaignMcpServers(store: ControlStore, campaign: string): McpUse[] | undefined {
-  const v = store.campaignVersions(campaign)[0];
+  const v = store.campaigns.versions(campaign)[0];
   if (v) {
     const contract = v.contract as { mode?: string; mcp_servers?: unknown };
     // A copy of a campaign known only by an assignment keeps that assignment's (goal 069).
@@ -83,7 +71,7 @@ export function campaignMcpServers(store: ControlStore, campaign: string): McpUs
         : (v.sources.mcp_servers ?? v.sources.assignment?.mcp_servers);
     return McpUses.safeParse(raw ?? []).data ?? [];
   }
-  const past = store.latestAssignments().get(campaign);
+  const past = store.commands.latestAssignments().get(campaign);
   if (!past) return undefined;
   return McpUses.safeParse(past.payload.mcp_servers ?? []).data ?? [];
 }
@@ -91,40 +79,17 @@ export function campaignMcpServers(store: ControlStore, campaign: string): McpUs
 /** What names a server: each campaign whose newest version or assignment names it, with its kit. */
 export function namedBy(store: ControlStore, name: string): { campaign: string; kit: string }[] {
   const campaigns = new Set([
-    ...store.campaignVersions().map((v) => v.campaign),
-    ...store.latestAssignments().keys(),
+    ...store.campaigns.versions().map((v) => v.campaign),
+    ...store.commands.latestAssignments().keys(),
   ]);
   const out: { campaign: string; kit: string }[] = [];
   for (const c of [...campaigns].sort()) {
     if (!campaignMcpServers(store, c)?.some((u) => u.name === name)) continue;
-    const v = store.campaignVersions(c)[0];
-    const contract = (v?.contract ?? store.latestAssignments().get(c)?.payload.contract) as
+    const v = store.campaigns.versions(c)[0];
+    const contract = (v?.contract ?? store.commands.latestAssignments().get(c)?.payload.contract) as
       | { project?: { kit?: { repo?: string } } }
       | undefined;
     out.push({ campaign: c, kit: contract?.project?.kit?.repo ?? c });
-  }
-  return out;
-}
-
-/** The servers each run control assigned a rig names (its own signed commands, never the rig's reports). */
-export function assignedMcpServers(db: DatabaseSync, rig: string): Map<string, McpUse[]> {
-  const out = new Map<string, McpUse[]>();
-  for (const r of db
-    .prepare(
-      "select signed from command where rig = ? and kind = 'assign_campaign' and status not in ('failed', 'rejected', 'expired') order by issued_at",
-    )
-    .all(rig) as { signed: string }[]) {
-    try {
-      const p = (
-        JSON.parse(r.signed) as {
-          envelope?: { payload?: { run?: unknown; mcp_servers?: unknown } };
-        }
-      ).envelope?.payload;
-      const uses = McpUses.safeParse(p?.mcp_servers ?? []).data ?? [];
-      if (typeof p?.run === "string" && uses.length) out.set(p.run, uses);
-    } catch {
-      // not a command this store wrote
-    }
   }
   return out;
 }

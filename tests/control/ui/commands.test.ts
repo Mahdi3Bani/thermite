@@ -18,9 +18,9 @@ describe("a command's status on the Commands page (goal 161)", () => {
         issued_at: "2026-10-27T05:59:00Z",
       },
     } as unknown as SignedCommand;
-    store.enqueueCommand(signed);
-    assert.equal(store.cancelCommand("c-1", "owner:ui"), true);
-    const [listed] = store.listCommands(10);
+    store.commands.enqueue(signed);
+    assert.equal(store.commands.cancel("c-1", "owner:ui"), true);
+    const [listed] = store.commands.list(10);
     assert.ok(listed);
     assert.deepEqual(commandStatus(listed), { word: "cancelled", tone: "" });
     const row = commandRow(listed, NOW);

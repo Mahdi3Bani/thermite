@@ -354,7 +354,7 @@ describe("a run's export holds its journal, its research notes and its briefing"
     // The same items control files from the same events, field by field.
     const store = new ControlStore(":memory:");
     const events = s.ledger.eventsAfter(0, 100_000).events;
-    store.ingest({
+    store.rigEvents.ingest({
       rig: s.rig,
       ledger_id: "l-1",
       cursor: 0,

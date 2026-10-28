@@ -60,7 +60,7 @@ describe("Git access for private repositories", () => {
     const made = await s.post("/ui/settings/git", { name: "github-deploy", kind: "ssh" });
     assert.equal(made.status, 303);
     const settings = await s.page("/ui/settings");
-    const g = s.store.gitAccess("github-deploy");
+    const g = s.store.gitAccess.get("github-deploy");
     assert.ok(g?.public_key && settings.includes(g.public_key));
     assert.ok(!settings.includes("PRIVATE KEY"));
     assert.match(s.secrets.open(g.secret_sealed), /^-----BEGIN OPENSSH [A-Z]+ KEY-----\n/);
@@ -86,7 +86,7 @@ describe("Git access for private repositories", () => {
       /<option value="github-deploy">github-deploy · SSH deploy key<\/option>/,
     );
     await s.post("/ui/settings/git/gitlab-token/delete", {});
-    assert.equal(s.store.gitAccess("gitlab-token"), undefined);
+    assert.equal(s.store.gitAccess.get("gitlab-token"), undefined);
   });
 
   test("Providers lists models and Git access together, one form adds either, and access can be tried", async () => {
@@ -116,9 +116,9 @@ describe("Git access for private repositories", () => {
       base_url: "https://models.example.com/v1",
       api_key: "sk-model-key-9876",
     });
-    assert.equal(s.store.gitAccess("gitlab-token")?.kind, "token");
+    assert.equal(s.store.gitAccess.get("gitlab-token")?.kind, "token");
     assert.deepEqual(
-      s.store.provider("lab-models")?.models.map((m) => m.id),
+      s.store.modelProviders.get("lab-models")?.models.map((m) => m.id),
       ["model-a"],
     );
     const page = await s.page("/ui/settings");
@@ -156,7 +156,7 @@ describe("Git access for private repositories", () => {
     ]);
     // A token is replaced under the same name.
     await s.post("/ui/settings/git/gitlab-token/token", { token: "glpat-new-value-5678" });
-    const g = s.store.gitAccess("gitlab-token");
+    const g = s.store.gitAccess.get("gitlab-token");
     assert.equal(g && s.secrets.open(g.secret_sealed), "glpat-new-value-5678");
     assert.match(await s.page("/ui/settings"), /token …5678 · user oauth2/);
     // Access a campaign fetches with can't be deleted.
@@ -171,12 +171,12 @@ describe("Git access for private repositories", () => {
       },
     );
     assert.ok(saved.ok, JSON.stringify(!saved.ok && saved.errors));
-    assert.deepEqual(s.store.campaignsUsingGitAccess("gitlab-token"), ["private-speed"]);
+    assert.deepEqual(s.store.campaigns.usingGitAccess("gitlab-token"), ["private-speed"]);
     assert.match(
       where(await s.post("/ui/settings/git/gitlab-token/delete", {})),
       /"gitlab-token" is used by private-speed/,
     );
-    assert.ok(s.store.gitAccess("gitlab-token"));
+    assert.ok(s.store.gitAccess.get("gitlab-token"));
     assert.match(await s.page("/ui/settings"), /In use by private-speed/);
   });
 
@@ -193,7 +193,7 @@ describe("Git access for private repositories", () => {
         headers: { authorization: `Bearer ${token}` },
       });
     assert.equal((await ask("rig-a", "rig-token-aaaaaa")).status, 404);
-    s.store.setConfiguredRigs(["rig-a", "rig-b"]);
+    s.store.enrollments.setConfiguredRigs(["rig-a", "rig-b"]);
     const r = await startCampaign(
       { store: s.store, kits: s.kits, privateKeyPem: s.keys.privateKeyPem },
       {
@@ -292,7 +292,7 @@ describe("Git access for private repositories", () => {
         token: "glpat-secret-value-1234",
         username: "oauth2",
       });
-      s.store.setConfiguredRigs(["rig-a"]);
+      s.store.enrollments.setConfiguredRigs(["rig-a"]);
       const r = await startCampaign(
         { store: s.store, kits: s.kits, privateKeyPem: s.keys.privateKeyPem },
         {

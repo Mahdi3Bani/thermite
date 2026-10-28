@@ -28,7 +28,7 @@ const { values } = parseArgs({ options: { port: { type: "string", default: "8810
 
 const store = new ControlStore(join(mkdtempSync(join(tmpdir(), "thermite-demo-")), "control.db"));
 const rigs = ["gpu-1", "gpu-2", "gpu-3", "cpu-1", "gpu-4"];
-store.setConfiguredRigs(rigs);
+store.enrollments.setConfiguredRigs(rigs);
 
 const { g1, g2 } = hillClimbRigs();
 const g3 = goalRig();
@@ -65,20 +65,20 @@ for (const [rig, kind, payload] of [
 ] as const) {
   issueCommand(store, keys.privateKeyPem, { rig, kind, payload, issuedBy: "owner:ui" });
 }
-store.addReport(
+store.rigReports.add(
   "gpu-1",
   "daily",
   "Daily report for gpu-1\n\nCampaign decode-speed (decode-a): champion seq 6, +24.1% over its baseline.\n48 attempts today: 6 wins confirmed, 1 held by audit.\nAgents: 16 epochs, 48 trials, planner valid 94%.",
 );
 
 // A model provider whose list prices one model and not the other (goal 075's price field).
-store.putProvider({
+store.modelProviders.put({
   name: "demo-models",
   type: "openai",
   base_url: "https://models.example.com/v1",
   key: { sealed: "demo", hint: "…demo" },
 });
-store.setProviderModels("demo-models", [
+store.modelProviders.setModels("demo-models", [
   {
     id: "glm-5.1",
     context_window: 131_072,

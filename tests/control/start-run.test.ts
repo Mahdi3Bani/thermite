@@ -12,7 +12,7 @@ import { ADMIN, controlOnly, mcpClient, signIn } from "../helpers/control-stack.
 type Ev = [string, string, string, Record<string, unknown>];
 
 function ingest(store: ControlStore, rig: string, events: Ev[], summary: object = {}) {
-  store.ingest({
+  store.rigEvents.ingest({
     rig,
     ledger_id: `ledger-${rig}`,
     cursor: 0,
@@ -68,7 +68,7 @@ async function stack() {
     options: { staleAfterMs: 600_000 },
   });
   // The assignment that started gs-3, before the rig reported it.
-  store.setConfiguredRigs(["rig-a"]);
+  store.enrollments.setConfiguredRigs(["rig-a"]);
   issueCommand(store, keys.privateKeyPem, {
     rig: "rig-a",
     kind: "assign_campaign",
@@ -342,7 +342,7 @@ describe("Start a run over REST (goal 029)", () => {
     for (const token of [TOKENS.operator, TOKENS.agent, TOKENS.read])
       assert.equal((await s.rest("gemv-speed", { rig: "rig-a" }, token)).status, 401);
     assert.equal(s.assigned().length, before, "nothing was signed");
-    const audit = s.store.listAudit(100).filter((a) => a.action === "refused");
+    const audit = s.store.auditLog.list(100).filter((a) => a.action === "refused");
     assert.ok(
       audit.some(
         (a) =>
@@ -355,8 +355,12 @@ describe("Start a run over REST (goal 029)", () => {
 
   test("a model given first, as the panel does: not started, then started once the rig has it", async () => {
     const s = await stack();
-    s.store.putProvider({ name: "zen", type: "opencode", base_url: "https://opencode.ai/zen/v1" });
-    s.store.setProviderModels("zen", [{ id: "glm-5.3-flash-free" }]);
+    s.store.modelProviders.put({
+      name: "zen",
+      type: "opencode",
+      base_url: "https://opencode.ai/zen/v1",
+    });
+    s.store.modelProviders.setModels("zen", [{ id: "glm-5.3-flash-free" }]);
     const given = await s.rest("gemv-speed", {
       rig: "rig-b",
       agents_model: { provider: "zen", model: "glm-5.3-flash-free" },
@@ -366,13 +370,15 @@ describe("Start a run over REST (goal 029)", () => {
       started: false,
       said: "rig-b takes glm-5.3-flash-free within a minute; Settings › Providers shows it taking the model until then. Then start the run again.",
     });
-    assert.deepEqual(s.store.rigModels()["rig-b"], {
+    assert.deepEqual(s.store.agentModels.byRig()["rig-b"], {
       provider: "zen",
       model: "glm-5.3-flash-free",
       harness: "opencode",
     });
     assert.ok(
-      s.store.listAudit(50).some((a) => a.action === "rig_model_given" && a.actor === "owner:api"),
+      s.store.auditLog
+        .list(50)
+        .some((a) => a.action === "rig_model_given" && a.actor === "owner:api"),
     );
     assert.equal(s.assigned().length, 1, "no run yet");
     // Too early: the rig has not taken it.
@@ -393,13 +399,13 @@ describe("Start a run over REST (goal 029)", () => {
 
   test("a Claude subscription's model counts as taken under Claude Code's own name for it", async () => {
     const s = await stack();
-    s.store.putProvider({
+    s.store.modelProviders.put({
       name: "claude-sub",
       type: "claude",
       base_url: "https://api.anthropic.com",
       key: { sealed: "sealed-for-the-tests", hint: "…test" },
     });
-    s.store.assignRigModel("rig-b", {
+    s.store.agentModels.assignRig("rig-b", {
       provider: "claude-sub",
       model: "sonnet-5.5",
       harness: "claude-code",
@@ -421,15 +427,15 @@ describe("Start a run over REST (goal 029)", () => {
 
   test("the model the rig has already keeps its harness; another model gets what it needs", async () => {
     const s = await stack();
-    s.store.putProvider({
+    s.store.modelProviders.put({
       name: "oai",
       type: "openai",
       base_url: "https://models.example.com/v1",
       key: { sealed: "sealed-for-the-tests", hint: "…test" },
     });
-    s.store.setProviderModels("oai", [{ id: "gpt-x" }, { id: "gpt-y" }]);
+    s.store.modelProviders.setModels("oai", [{ id: "gpt-x" }, { id: "gpt-y" }]);
     // rig-a runs its agents in Codex with gpt-x, and reports so.
-    s.store.assignRigModel("rig-a", { provider: "oai", model: "gpt-x", harness: "codex" });
+    s.store.agentModels.assignRig("rig-a", { provider: "oai", model: "gpt-x", harness: "codex" });
     s.store.db
       .prepare("update rig set summary = json_set(summary, '$.model', json(?)) where id = 'rig-a'")
       .run(JSON.stringify({ source: "control", model: "gpt-x", harness: "codex" }));
@@ -439,21 +445,21 @@ describe("Start a run over REST (goal 029)", () => {
       agents_model: { provider: "oai", model: "gpt-x" },
     });
     assert.equal(rest.status, 201);
-    assert.equal(s.store.rigModels()["rig-a"]?.harness, "codex");
+    assert.equal(s.store.agentModels.byRig()["rig-a"]?.harness, "codex");
     const panel = await s.form("gemv-speed", [
       ["rig", "rig-a"],
       ["agents", "on"],
       ["agents_model", "oai|gpt-x"],
     ]);
     assert.equal(panel.status, 303);
-    assert.equal(s.store.rigModels()["rig-a"]?.harness, "codex");
+    assert.equal(s.store.agentModels.byRig()["rig-a"]?.harness, "codex");
     // Another model: the harness it needs (Pi for an OpenAI-compatible key).
     const other = await s.rest("gemv-speed", {
       rig: "rig-a",
       agents_model: { provider: "oai", model: "gpt-y" },
     });
     assert.equal(other.status, 202);
-    assert.deepEqual(s.store.rigModels()["rig-a"], {
+    assert.deepEqual(s.store.agentModels.byRig()["rig-a"], {
       provider: "oai",
       model: "gpt-y",
       harness: "pi",
@@ -475,13 +481,13 @@ describe("Start a run over REST (goal 029)", () => {
       await refused("oai|gpt-x"),
       /error=Claude Code runs only with a Claude subscription here: choose Pi, OpenCode v2 or Codex for this provider\./,
     );
-    s.store.putProvider({
+    s.store.modelProviders.put({
       name: "keyed",
       type: "anthropic",
       base_url: "https://api.anthropic.com",
       key: { sealed: "sealed-for-the-tests", hint: "…test" },
     });
-    s.store.setProviderModels("keyed", [{ id: "claude-test" }]);
+    s.store.modelProviders.setModels("keyed", [{ id: "claude-test" }]);
     assert.match(
       await refused("keyed|claude-test"),
       /error=Claude Code runs only with a Claude subscription here: choose Pi or OpenCode v2 for this provider\./,
@@ -538,7 +544,7 @@ describe("Start a run over MCP (goal 029)", () => {
     assert.equal(refused.isError, true);
     assert.match(text(refused), /rig-b has no model for its agents, so they could not work/);
     assert.equal(s.assigned().length, 2, "only the operator's run was signed");
-    const audit = s.store.listAudit(100);
+    const audit = s.store.auditLog.list(100);
     assert.ok(audit.some((a) => a.action === "mcp:start_run" && a.actor === "owner:operator"));
     assert.ok(
       audit.some(

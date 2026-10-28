@@ -135,7 +135,7 @@ describe("a campaign's brief on the command line (goal 078)", () => {
     });
     assert.ok(contract.ok, contract.ok ? "" : contract.errors.join("; "));
     // The assignment that started sort-speed-1, before the rig reported it.
-    store.setConfiguredRigs(["rig-a"]);
+    store.enrollments.setConfiguredRigs(["rig-a"]);
     issueCommand(store, keys.privateKeyPem, {
       rig: "rig-a",
       kind: "assign_campaign",
@@ -147,7 +147,7 @@ describe("a campaign's brief on the command line (goal 078)", () => {
       },
       issuedBy: "owner:api",
     });
-    store.ingest({
+    store.rigEvents.ingest({
       rig: "rig-a",
       ledger_id: "ledger-rig-a",
       cursor: 0,
@@ -177,7 +177,7 @@ describe("a campaign's brief on the command line (goal 078)", () => {
       const at = ["--control", control, "--token-file", owner];
       const kept = await cli("campaign", "copy", "sort-speed", "sort-speed-b", ...at);
       assert.equal(kept.code, 0, kept.stderr);
-      const b = store.campaignVersions("sort-speed-b")[0]?.contract as Record<string, unknown>;
+      const b = store.campaigns.versions("sort-speed-b")[0]?.contract as Record<string, unknown>;
       assert.deepEqual(
         [b.notes, b.ideas, b.hypotheses],
         ["The old brief.", ["An old idea."], ["An old hypothesis."]],
@@ -196,7 +196,7 @@ describe("a campaign's brief on the command line (goal 078)", () => {
         ...at,
       );
       assert.equal(own.code, 0, own.stderr);
-      const c = store.campaignVersions("sort-speed-c")[0]?.contract as Record<string, unknown>;
+      const c = store.campaigns.versions("sort-speed-c")[0]?.contract as Record<string, unknown>;
       assert.deepEqual(
         [c.notes, c.ideas, c.hypotheses],
         [INFO, ["An old idea."], ["A new hypothesis.", "Another."]],

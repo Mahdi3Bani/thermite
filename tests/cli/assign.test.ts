@@ -41,7 +41,7 @@ async function cli(...args: string[]): Promise<{ code: number; stdout: string; s
 
 /** A rig whose runs reported these events, in order (subject: the run). */
 function report(store: ControlStore, events: [string, string, string, Record<string, unknown>][]) {
-  store.ingest({
+  store.rigEvents.ingest({
     rig: "rig-a",
     ledger_id: "ledger-a",
     cursor: 0,
@@ -335,7 +335,7 @@ describe("thermite command on a RunPod rig whose pod is stopped (goal 022)", () 
     const keys = generateSigningKeys();
     const store = new ControlStore(":memory:");
     const secrets = SecretBox.ephemeral();
-    store.addGpuCloud({
+    store.gpuClouds.add({
       name: "runpod",
       kind: "runpod",
       key_sealed: secrets.seal(FAKE_RUNPOD_KEY),
@@ -350,7 +350,7 @@ describe("thermite command on a RunPod rig whose pod is stopped (goal 022)", () 
       privateKeyPem: keys.privateKeyPem,
     });
     const v = await rigs.launch("runpod", { gpu: "RTX A4000" }, "owner:api");
-    assert.ok(store.pinTunnelRig(v.rig, "sign", "box"));
+    assert.ok(store.tunnels.pin(v.rig, "sign", "box"));
     // Its harness never reported, so it holds no result: the stop is at once.
     assert.equal((await rigs.stop(v.rig, "owner:api")).status, "EXITED");
     const { control: api } = controlOnly({

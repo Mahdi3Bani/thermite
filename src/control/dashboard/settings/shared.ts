@@ -35,7 +35,7 @@ export function settingsHelpers(dash: Dashboard) {
   /** Git access for control's own lookups: the secret unsealed, host keys pinned per access. */
   const accessFor = (name: string | undefined) => {
     if (!name) return undefined;
-    const g = store.gitAccess(name);
+    const g = store.gitAccess.get(name);
     if (!g) throw new Error(`no Git access named ${name}`);
     const secret = opts.secrets.open(g.secret_sealed);
     return {
@@ -49,21 +49,21 @@ export function settingsHelpers(dash: Dashboard) {
 
   /** Reads a GPU cloud's account now with its key, and keeps what it found or why it could not. */
   const checkCloudNow = async (name: string): Promise<string | null> => {
-    const g = store.gpuCloud(name);
+    const g = store.gpuClouds.get(name);
     if (!g) return "no such GPU cloud";
     let key: string;
     try {
       key = opts.secrets.open(g.key_sealed);
     } catch {
-      store.setGpuCloudFacts(name, { error: "its key cannot be opened: enter it again" });
+      store.gpuClouds.setFacts(name, { error: "its key cannot be opened: enter it again" });
       return "its key cannot be opened: enter it again";
     }
     try {
-      store.setGpuCloudFacts(name, { facts: await readRunpod(key, opts.cloudFetch) });
+      store.gpuClouds.setFacts(name, { facts: await readRunpod(key, opts.cloudFetch) });
       return null;
     } catch (err) {
       const why = errorText(err);
-      store.setGpuCloudFacts(name, { error: why });
+      store.gpuClouds.setFacts(name, { error: why });
       return why;
     }
   };

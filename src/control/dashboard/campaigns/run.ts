@@ -59,8 +59,8 @@ export function runHelpers(dash: Dashboard) {
     const d = usageData(store, { run: i.id, rig: u.id });
     if (!i.has_agents && !d.report.total.records && d.report.total.cost.pod_usd === null)
       return undefined;
-    const roles = store.roleModels(u.id);
-    const launched = store.runpodRig(u.id);
+    const roles = store.agentModels.byRole(u.id);
+    const launched = store.runpod.rig(u.id);
     const perHour = (launched?.state as { price_per_hr?: unknown } | null)?.price_per_hr;
     // The run's time: from its start to now, or to its last event once it is finished.
     const start = Date.parse(i.created_at ?? "");
@@ -68,7 +68,7 @@ export function runHelpers(dash: Dashboard) {
     return {
       report: d.report,
       rows: d.rows,
-      roundStarts: store.roundStarts(u.id, i.id),
+      roundStarts: store.rigEvents.roundStarts(u.id, i.id),
       trials: i.agents.trials,
       rounds: i.agents.epochs,
       wallMs: Number.isFinite(start) && Number.isFinite(end) && end >= start ? end - start : null,
@@ -93,9 +93,9 @@ export function runHelpers(dash: Dashboard) {
    * and the supervisor's lines for it in the run's Live view.
    */
   const reviewSources = (u: RigView, i: RunView): ReviewSources => {
-    const rows = store.reviewUsageRows(u.id, i.id);
+    const rows = store.usage.reviewRows(u.id, i.id);
     const price = pricingOf(store);
-    const lines = store.reviewLines(u.id, i.id);
+    const lines = store.liveLines.reviewLines(u.id, i.id);
     return {
       usage: (n) => {
         const rs = rows.get(n);
@@ -318,7 +318,7 @@ export function runHelpers(dash: Dashboard) {
       ? `applies to the folder ${esc(i.seed_folder.folder)} at ${esc(i.seed_folder.commit.slice(0, 8))}: git apply --directory=${esc(i.seed_folder.folder)}`
       : `applies to ${esc(i.published?.base_commit.slice(0, 8) ?? "")}`;
     const patch =
-      i.published && store.championPatch(u.id, i.id, i.published.seq)
+      i.published && store.championPatches.get(u.id, i.id, i.published.seq)
         ? `<a href="/ui/rigs/${encodeURIComponent(u.id)}/runs/${encodeURIComponent(i.id)}/champions/${i.published.seq}.patch">download champion #${i.published.seq} as a patch</a> <span class="muted small">(${appliesTo})</span>`
         : "";
     // The champions, newest first: what each one changed and what it gained.
@@ -400,7 +400,7 @@ export function runHelpers(dash: Dashboard) {
                 back,
                 cmd: (f) => cmdForm(c, f),
                 model: (() => {
-                  const own = store.roleModels(u.id).planner;
+                  const own = store.agentModels.byRole(u.id).planner;
                   if (own) return `${own.model}, its own model (from ${own.provider})`;
                   return u.model
                     ? u.model.source === "none"
@@ -411,12 +411,12 @@ export function runHelpers(dash: Dashboard) {
                 figures: diagnostics,
                 propagate,
                 // No model for the planner: an old rule in words waits to be converted (goal 066).
-                noModel: !store.roleModels(u.id).planner && u.model?.source === "none",
+                noModel: !store.agentModels.byRole(u.id).planner && u.model?.source === "none",
                 // A message to the planner that control or the rig refused.
                 refused:
                   c.req.query("msgerror") ||
                   (() => {
-                    const why = store.lastMessageToRun(u.id, i.id, "planner")?.refused;
+                    const why = store.commands.lastMessageToRun(u.id, i.id, "planner")?.refused;
                     return why ? `The rig refused your last message to the planner: ${why}` : "";
                   })(),
               })

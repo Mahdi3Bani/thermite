@@ -96,7 +96,7 @@ export class ChatGPTLogins {
   start(name?: string): string {
     const now = Date.now();
     for (const [k, v] of this.pending) if (now - v.at > PENDING_MS) this.pending.delete(k);
-    const old = name ? this.store.provider(name) : undefined;
+    const old = name ? this.store.modelProviders.get(name) : undefined;
     const was = old ? this.login(old) : undefined;
     const verifier = b64url(randomBytes(32));
     const state = b64url(randomBytes(32));
@@ -231,13 +231,13 @@ export class ChatGPTLogins {
         resource: CHATGPT_API,
       });
       const next = this.loginOf(t, login.client_id, login.host_id);
-      this.store.setProviderKey(name, this.seal(next));
+      this.store.modelProviders.setKey(name, this.seal(next));
       return next.access;
     } catch (err) {
       const why = errorText(err);
       if (err instanceof LoginEnded) {
         const error = `its ChatGPT sign-in ended (${why}): sign in again`;
-        this.store.setProviderModels(name, { error });
+        this.store.modelProviders.setModels(name, { error });
         return { error };
       }
       // OpenAI unreachable for now: the token keeps working until it ends.

@@ -51,7 +51,7 @@ export function registerControl(tools: ToolContext): void {
       }) => {
         if (a.before !== undefined && a.after !== undefined)
           throw new Error("give before or after, not both");
-        return store.auditPage(
+        return store.auditLog.page(
           a.limit,
           { action: a.action, mcp: a.include_mcp },
           { before: a.before, after: a.after },
@@ -72,13 +72,13 @@ export function registerControl(tools: ToolContext): void {
       model_providers: await providersWithUsage(store, (p) => opts.parts.planUsage.of(p)),
       // The prices model usage costs calls at: the providers' listed ones and the owner's.
       model_prices: modelPrices(store),
-      git_access: store.gitAccessList().map((g) => ({
+      git_access: store.gitAccess.list().map((g) => ({
         name: g.name,
         kind: g.kind,
         fingerprint: g.fingerprint,
         username: g.username,
       })),
-      machines: store.machines().map((m) => ({
+      machines: store.machines.list().map((m) => ({
         name: m.name,
         address: m.address,
         port: m.port,
@@ -88,7 +88,7 @@ export function registerControl(tools: ToolContext): void {
         checked_at: m.checked_at,
         check_error: m.check_error,
       })),
-      clusters: store.clusters().map((k) => ({
+      clusters: store.clusters.list().map((k) => ({
         name: k.name,
         context: k.context,
         placement: k.placement,
@@ -98,7 +98,7 @@ export function registerControl(tools: ToolContext): void {
         checked_at: k.checked_at,
         check_error: k.check_error,
       })),
-      gpu_clouds: store.gpuClouds().map((g) => ({
+      gpu_clouds: store.gpuClouds.list().map((g) => ({
         name: g.name,
         kind: g.kind,
         facts: g.facts,

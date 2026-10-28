@@ -11,9 +11,9 @@ test("rig_setup gives a rig's newest steps, oldest first, and how many there are
     detail: `step ${i}`,
   }));
   const store = {
-    clusterRig: () => undefined,
-    machineRig: () => ({ machine: "m-1", status: "running" }),
-    rigSetupEvents: () => events,
+    clusters: { rig: () => undefined },
+    machines: { rig: () => ({ machine: "m-1", status: "running" }) },
+    rigHistory: { list: () => events },
   } as unknown as ControlStore;
   const v = rigSetupView(store, undefined, "rig-1", SETUP_STEPS, true);
   assert.equal(v.steps_total, 90);
@@ -24,7 +24,7 @@ test("rig_setup gives a rig's newest steps, oldest first, and how many there are
   assert.equal(rigSetupView(store, undefined, "rig-1", 500, true).steps.length, 90);
   // A failed step's detail is the owner's and the operator's alone.
   assert.equal(rigSetupView(store, undefined, "rig-1", 1, false).steps[0]?.detail, null);
-  const none = { ...store, machineRig: () => undefined } as unknown as ControlStore;
+  const none = { ...store, machines: { rig: () => undefined } } as unknown as ControlStore;
   assert.throws(
     () => rigSetupView(none, undefined, "rig-2", 20, true),
     /control did not set rig-2 up/,

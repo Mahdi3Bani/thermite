@@ -96,7 +96,7 @@ function checkedMessage(store: ControlStore, rig: string, payload: unknown): unk
   // The run's campaign: as the rig reported it, or as control assigned it (before its report).
   const campaign =
     r?.campaign ||
-    (typeof p.run === "string" ? store.assignedCampaigns(rig).get(p.run) : undefined);
+    (typeof p.run === "string" ? store.runRegistry.assignedCampaigns(rig).get(p.run) : undefined);
   if (to === "review_panel" && campaign && !panelReviews(store, campaign))
     throw new Error("This run has no goal the review panel reviews, so nothing would read it.");
   return { ...p, to, text };
@@ -108,8 +108,8 @@ function checkedMessage(store: ControlStore, rig: string, payload: unknown): unk
  * control, or else the newest assignment.
  */
 export function panelReviews(store: ControlStore, campaign: string): boolean {
-  const contract = (store.campaignVersions(campaign)[0]?.contract ??
-    store.latestAssignments().get(campaign)?.payload.contract) as
+  const contract = (store.campaigns.versions(campaign)[0]?.contract ??
+    store.commands.latestAssignments().get(campaign)?.payload.contract) as
     | { mode?: string; goals?: { verify?: { type?: string } }[] }
     | undefined;
   return (
@@ -148,9 +148,10 @@ export function archivedRefusal(
     kind === "assign_campaign"
       ? p?.contract?.campaign
       : typeof p?.run === "string"
-        ? (store.assignedCampaigns(rig).get(p.run) ?? store.campaignOfRun(rig, p.run))
+        ? (store.runRegistry.assignedCampaigns(rig).get(p.run) ??
+          store.rigEvents.campaignOfRun(rig, p.run))
         : undefined;
-  if (typeof campaign !== "string" || !store.campaignArchived(campaign)) return "";
+  if (typeof campaign !== "string" || !store.archive.get(campaign)) return "";
   return `${campaign} is archived. Unarchive it first.`;
 }
 
@@ -216,7 +217,7 @@ function withMcpServers(store: ControlStore, payload: unknown): unknown {
     }
   }
   const uses = McpUses.safeParse(out.mcp_servers ?? []);
-  const why = uses.success ? mcpRefusal(store.db, uses.data) : "";
+  const why = uses.success ? mcpRefusal(store, uses.data) : "";
   if (why) throw new Error(why);
   return out;
 }
@@ -247,7 +248,7 @@ export function pendingFor(
   const have = ids(query.have);
   const staging = ids(query.staging);
   const now = Date.now();
-  const pending = store.pendingCommands(rig).map((c) => {
+  const pending = store.commands.pending(rig).map((c) => {
     const e = c.envelope;
     const until = Math.min(
       now + RENEW_FOR_MS,
@@ -259,10 +260,8 @@ export function pendingFor(
       { ...e, expires_at: new Date(until).toISOString() },
       privateKeyPem,
     );
-    store.db
-      .prepare("update command set signed = ? where id = ? and status = 'pending'")
-      .run(canonicalJson(renewed), e.id);
-    store.audit("control", "command_renewed", {
+    store.commands.renew(e.id, canonicalJson(renewed));
+    store.auditLog.add("control", "command_renewed", {
       id: e.id,
       rig,
       expires_at: renewed.envelope.expires_at,
@@ -303,7 +302,7 @@ export function issueCommand(
   input: IssueInput,
 ): { id: string } {
   const signed = prepareCommand(store, privateKeyPem, input);
-  store.enqueueCommand(signed);
+  store.commands.enqueue(signed);
   publishCommand(store, signed);
   return { id: signed.envelope.id };
 }
@@ -314,8 +313,8 @@ export function issueCommand(
  * it. False when it was not pending.
  */
 export function cancelCommand(store: ControlStore, id: string, actor: string): boolean {
-  const rig = store.commandRow(id)?.rig;
-  if (!store.cancelCommand(id, actor)) return false;
+  const rig = store.commands.row(id)?.rig;
+  if (!store.commands.cancel(id, actor)) return false;
   if (rig) unpublishCommand(store, rig, id);
   return true;
 }
@@ -370,7 +369,7 @@ export async function issueWaking(
       );
     }
   }
-  store.enqueueCommand(signed);
+  store.commands.enqueue(signed);
   publishCommand(store, signed);
   return { id: signed.envelope.id, woke };
 }
@@ -385,11 +384,14 @@ export function prepareCommand(
   privateKeyPem: string,
   input: IssueInput,
 ): SignedCommand {
-  if (!store.rigs().some((u) => u.id === input.rig) && !store.knownRig(input.rig)) {
+  if (
+    !store.reportedRigs.list().some((u) => u.id === input.rig) &&
+    !store.enrollments.knownRig(input.rig)
+  ) {
     throw new Error(`unknown rig ${input.rig}`);
   }
   // A rig control refuses would never fetch it: say why now, not when it expires.
-  const refused = store.rigRefusal(input.rig);
+  const refused = store.refusals.get(input.rig);
   if (refused) throw new Error(`Control sends no commands to ${input.rig}. ${refused.reason}`);
   const unrunnable = input.kind === "assign_campaign" ? assignRefusal(input.payload) : "";
   if (unrunnable) throw new Error(unrunnable);

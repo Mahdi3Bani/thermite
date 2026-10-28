@@ -56,12 +56,12 @@ describe("RunPod rigs: terminate", () => {
     assert.deepEqual(s.cloud.terminated(), ["pod1"]);
     const v = s.view(rig);
     assert.deepEqual([v.active, v.status, v.op], [false, "TERMINATED", null]);
-    assert.ok(s.store.rigRetired(rig), "control stops connecting to it; its records stay");
+    assert.ok(s.store.retired.get(rig), "control stops connecting to it; its records stay");
     assert.deepEqual(s.steps(rig).slice(-2), [
       ["runpod_terminating", true],
       ["runpod_terminated", true],
     ]);
-    assert.ok(s.store.listAudit(80).some((a) => a.action === "runpod_rig_terminated"));
+    assert.ok(s.store.auditLog.list(80).some((a) => a.action === "runpod_rig_terminated"));
     // Gone: nothing more to do.
     await assert.rejects(s.rigs.stop(rig, "owner:api"), /pod is gone/);
   });

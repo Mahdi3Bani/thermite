@@ -86,8 +86,8 @@ export function campaignHelpers(dash: Dashboard) {
     run?: RunView,
   ): { checks: GoalChecks; source: ChecksSource } | undefined => {
     if (rig && run?.goal_checks) return { checks: run.goal_checks, source: { from: "rig", rig } };
-    const v = store.campaignVersions(name)[0];
-    const raw = v?.contract ?? store.latestAssignments().get(name)?.payload.contract;
+    const v = store.campaigns.versions(name)[0];
+    const raw = v?.contract ?? store.commands.latestAssignments().get(name)?.payload.contract;
     const parsed = raw ? parseContract(raw) : undefined;
     const contract = parsed?.ok && parsed.contract.mode === "goal" ? parsed.contract : undefined;
     const ref = contract?.project.kit;
@@ -122,8 +122,8 @@ export function campaignHelpers(dash: Dashboard) {
 
   /** What a campaign is for, from its contract on control: its title, topic or objective. */
   const aboutOf = (name: string): string => {
-    const contract = (store.campaignVersions(name)[0]?.contract ??
-      store.latestAssignments().get(name)?.payload.contract) as
+    const contract = (store.campaigns.versions(name)[0]?.contract ??
+      store.commands.latestAssignments().get(name)?.payload.contract) as
       | { title?: string; topic?: string; objective?: { description?: string } }
       | undefined;
     return contract?.title ?? contract?.topic ?? contract?.objective?.description ?? "";

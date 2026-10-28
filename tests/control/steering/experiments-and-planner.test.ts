@@ -276,7 +276,9 @@ describe("the run page's Experiments and Planner tabs", () => {
       /Sent to the rig\. The planner reads it when it next gives out work; Commands shows whether the rig took it\./,
     );
     await s.sync();
-    const sent = [...s.store.runMessages("rig-a", "js-1")].filter(([, m]) => m.to === "planner");
+    const sent = [...s.store.rigEvents.runMessages("rig-a", "js-1")].filter(
+      ([, m]) => m.to === "planner",
+    );
     const message = sent.find(([, m]) => m.text === "Never touch the timer code.")?.[0];
     assert.ok(message);
     // It waits on the tab until the planner's next round reads it.

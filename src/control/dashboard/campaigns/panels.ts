@@ -38,14 +38,17 @@ export function campaignPanels(dash: Dashboard) {
   /** Rigs for the Start a run panel: hardware, whether the campaign's kit fits, busy, the model. */
   const startRigs = (campaign: string, vs: RigView[]): StartRig[] => {
     const want =
-      (store.campaignVersions(campaign)[0]?.contract as { target?: { type?: string } } | undefined)
-        ?.target?.type ??
       (
-        store.latestAssignments().get(campaign)?.payload.contract as
+        store.campaigns.versions(campaign)[0]?.contract as
+          | { target?: { type?: string } }
+          | undefined
+      )?.target?.type ??
+      (
+        store.commands.latestAssignments().get(campaign)?.payload.contract as
           | { target?: { type?: string } }
           | undefined
       )?.target?.type;
-    const given = store.rigModels();
+    const given = store.agentModels.byRig();
     return vs.map((u) => {
       const t = u.hardware?.target?.type;
       const busy = u.runs.find((r) => r.status === "running");
@@ -67,11 +70,11 @@ export function campaignPanels(dash: Dashboard) {
   };
   /** Whether control can start a run of a campaign: a saved version, or an earlier assignment. */
   const startFrom = (campaign: string): string | undefined => {
-    const v = store.campaignVersions(campaign)[0];
+    const v = store.campaigns.versions(campaign)[0];
     // A copy of a campaign known only by an assignment takes that assignment's imports: no kit here.
     if (v && (opts.kits || v.sources.assignment))
       return `Control signs an assignment of version ${v.version} (saved ${esc(ago(v.created_at, Date.now()))} ago) to the rig; the rig fetches the project and the kit, checks both, and starts the run.`;
-    const past = store.latestAssignments().get(campaign);
+    const past = store.commands.latestAssignments().get(campaign);
     if (past)
       return `Control assigns the campaign again as it assigned ${esc(past.run)} on ${esc(past.rig)}: the same contract, starting point and imports, as a new run.`;
     return undefined;
@@ -101,7 +104,7 @@ export function campaignPanels(dash: Dashboard) {
   const startPanel = (c: Ctx, campaign: string, vs: RigView[], open: boolean) => {
     const from = startFrom(campaign);
     // An archived campaign starts no run (goal 077): its page offers Unarchive instead.
-    if (!from || store.campaignArchived(campaign)) return "";
+    if (!from || store.archive.get(campaign)) return "";
     const kb = store.kb();
     const pastQ = (c.req.query("past") ?? "").slice(0, 300);
     return startDrawer({
@@ -116,8 +119,8 @@ export function campaignPanels(dash: Dashboard) {
       csrf: csrf(c),
       open,
       rigs: startContext(campaign, startRigs(campaign, vs)),
-      models: store
-        .providers()
+      models: store.modelProviders
+        .list()
         .filter((p) => p.models.length)
         .map((p) => ({
           group: p.name,
@@ -146,7 +149,7 @@ export function campaignPanels(dash: Dashboard) {
   };
   /** A copy's line on its page: where it came from, who copied it and when. */
   const copiedLine = (name: string): string => {
-    const first = store.campaignVersions(name).at(-1);
+    const first = store.campaigns.versions(name).at(-1);
     const f = first?.copied_from;
     if (!first || !f) return "";
     const now = Date.now();
@@ -162,8 +165,8 @@ export function campaignPanels(dash: Dashboard) {
    */
   const copySource = (name: string) => {
     if (isRigCheck(name)) return undefined;
-    const saved = store.campaignVersions(name)[0];
-    const assigned = saved ? undefined : store.latestAssignments().get(name);
+    const saved = store.campaigns.versions(name)[0];
+    const assigned = saved ? undefined : store.commands.latestAssignments().get(name);
     if (!saved && !assigned) return undefined;
     const contract = (saved?.contract ?? assigned?.payload.contract) as
       | { mode?: unknown }
@@ -186,8 +189,8 @@ export function campaignPanels(dash: Dashboard) {
     ].sort();
     const ran = new Set([
       ...campaignViews(vs).map((k) => k.name),
-      ...store.campaignVersions().map((v) => v.campaign),
-      ...store.latestAssignments().keys(),
+      ...store.campaigns.versions().map((v) => v.campaign),
+      ...store.commands.latestAssignments().keys(),
     ]);
     return { taken, folderOnly: taken.filter((n) => !ran.has(n)) };
   };
@@ -219,10 +222,10 @@ export function campaignPanels(dash: Dashboard) {
    * Unarchive.
    */
   const campaignActions = (c: Ctx, name: string) => {
-    const archived = store.campaignArchived(name);
+    const archived = store.archive.get(name);
     const hidden = `<input type="hidden" name="csrf" value="${esc(csrf(c))}">`;
-    const folders = store.campaignFolders();
-    const here = store.campaignFolderOf(name);
+    const folders = store.folders.list();
+    const here = store.folders.of(name);
     const move = folders.length
       ? `<form class="sfd" method="post" action="${campaignHref(name)}/folder">${hidden}${infoLabel("Move to folder", archived ? "The folder this campaign keeps while it is archived, and comes back into when you unarchive it. Its runs, results and folder in the knowledge base do not change." : "Where this campaign shows in the left navigation. You can also drag it there. Its runs, results and folder in the knowledge base do not change.")}<span class="kmove"><select name="folder" aria-label="Folder"><option value=""${here ? "" : " selected"}>No folder</option>${folders.map((f) => `<option value="${f.id}"${f.id === here?.id ? " selected" : ""}>${esc(f.name)}</option>`).join("")}</select><button class="sm">Move</button></span></form>`
       : `<div class="sfd">${infoLabel("Move to folder", "Where this campaign shows in the left navigation. Make a folder with the folder button beside Campaigns there.")}<span class="muted small">No folder yet: make one with the folder button beside Campaigns in the navigation.</span></div>`;
@@ -235,9 +238,9 @@ export function campaignPanels(dash: Dashboard) {
   };
   /** An archived campaign's line at the top of its page, with Unarchive. */
   const archivedLine = (c: Ctx, name: string) => {
-    const a = store.campaignArchived(name);
+    const a = store.archive.get(name);
     if (!a) return "";
-    const folder = store.campaignFolderOf(name);
+    const folder = store.folders.of(name);
     return `<div class="card" style="margin-bottom:16px"><b>${icon.archive} Archived</b> ${esc(ago(a.at, Date.now()))} ago by ${esc(copiedBy(a.by))}. <span class="muted">It is out of the navigation, Needs you and the Overview. Its runs, results and kits stay${folder ? `, and it keeps its folder, ${esc(folder.name)}` : ""}. Control starts no run of it until you unarchive it.</span> <form class="inline" method="post" action="${campaignHref(name)}/unarchive"><input type="hidden" name="csrf" value="${esc(csrf(c))}"><button class="sm">Unarchive</button></form></div>`;
   };
   return {

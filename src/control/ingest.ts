@@ -46,33 +46,33 @@ export function takeReport(
   if (body.rig !== rig) return [403, { error: "rig mismatch" }];
   // Reports are signed by the harness: the supervisor relays them but cannot forge them.
   if (!body.signature || !body.rig_pubkey) return [400, { error: "unsigned report" }];
-  const key = store.rigKey(rig);
+  const key = store.reportedRigs.key(rig);
   const offered = body.rig_pubkey.trim();
   // A key is pinned or held only if the report it came with verifies under it.
   if (!reportSignedBy(body, offered)) {
-    store.audit(`rig:${rig}`, "report_rejected", { reason: "bad signature" });
+    store.auditLog.add(`rig:${rig}`, "report_rejected", { reason: "bad signature" });
     return [403, { error: "bad report signature" }];
   }
   if (!key.pubkey) {
     // First contact: pinned, unless the owner must accept every rig's first key.
     if (t.requireKeyAcceptance) {
-      if (key.pending?.trim() !== offered) store.holdKey(rig, offered);
+      if (key.pending?.trim() !== offered) store.reportedRigs.holdKey(rig, offered);
       return [409, { error: "the rig's key waits for the owner's acceptance" }];
     }
-    store.pinKey(rig, offered);
+    store.reportedRigs.pinKey(rig, offered);
   } else if (key.pubkey.trim() !== offered) {
-    if (key.pending?.trim() !== offered) store.holdKey(rig, offered);
+    if (key.pending?.trim() !== offered) store.reportedRigs.holdKey(rig, offered);
     return [409, { error: "rig key changed: the owner must accept the new key" }];
   }
   // Freshness and completeness: no report from a ledger this rig has left, no gap in the
   // event stream, and nothing older than the newest report already taken.
-  const fresh = store.reportCheck(rig, {
+  const fresh = store.reportedRigs.reportCheck(rig, {
     ledgerId: body.ledger_id,
     cursor: body.cursor,
     generatedAt: body.generated_at,
   });
   if (!fresh.ok) {
-    store.audit(`rig:${rig}`, "report_refused", { reason: fresh.reason });
+    store.auditLog.add(`rig:${rig}`, "report_refused", { reason: fresh.reason });
     return [409, { error: fresh.reason, expected_cursor: fresh.expectedCursor }];
   }
   if (Date.parse(body.generated_at) > Date.now() + 5 * 60_000)
@@ -80,17 +80,17 @@ export function takeReport(
   // The harness's build, from the signed summary of a fresh report (none from a harness before
   // version checks): recorded, and the report refused while its protocol and control's do not
   // meet. A replayed old report never gets this far, so it cannot change the recorded build.
-  store.setRigBuild(rig, "harness", readBuild((body.summary as { build?: unknown })?.build));
+  store.builds.setRig(rig, "harness", readBuild((body.summary as { build?: unknown })?.build));
   const refused = checkRig(store, rig, control);
   if (refused) {
-    store.countRefusedCall(rig);
+    store.refusals.countCall(rig);
     return [409, { error: refused }];
   }
   if (read.unknown) {
     const leftOut = { rig, left_out: read.unknown };
     log("control", "a report with fields control does not know", leftOut, "debug");
   }
-  const added = store.ingest(body);
+  const added = store.rigEvents.ingest(body);
   // Into the knowledge base now, while this report's ledger is the rig's (it reads only a rig's
   // current ledger). After a failure the next report or read catches up.
   try {
@@ -98,7 +98,7 @@ export function takeReport(
   } catch (err) {
     const error = redact(errorText(err));
     log("control", "knowledge base catch-up failed", { rig, error }, "error");
-    store.audit("control", "kb_failed", { rig, error });
+    store.auditLog.add("control", "kb_failed", { rig, error });
   }
   noteReportAfterWait(store, rig);
   return [200, { added }];
@@ -109,11 +109,11 @@ export function takeReport(
  * so, and show it as running.
  */
 function noteReportAfterWait(store: ControlStore, rig: string): void {
-  if (store.clusterRig(rig)?.status !== "failed") return;
-  store.setClusterRigStatus(rig, "running");
+  if (store.clusters.rig(rig)?.status !== "failed") return;
+  store.clusters.setRigStatus(rig, "running");
   // Named for the wait that ended: its first report, one after new images, or after a start.
-  const failed = store
-    .rigSetupEvents(rig)
+  const failed = store.rigHistory
+    .list(rig)
     .filter((x) => !x.ok)
     .at(-1)?.step;
   const step =
@@ -126,25 +126,18 @@ function noteReportAfterWait(store: ControlStore, rig: string): void {
             failed === "report_after_resources"
           ? "report_after_resources"
           : "report_after_images";
-  store.rigSetupEvent(rig, step, true, "it reported after the wait ended");
+  store.rigHistory.add(rig, step, true, "it reported after the wait ended");
 }
 
 /** What one message from the reports stream came to. */
 export type Folded = { folded: number } | { skipped: string } | { refused: string };
-
-/** The rig's row as reports move it: its current ledger, the cursor after it, its newest report. */
-function reportsOf(store: ControlStore, rig: string) {
-  return store.db
-    .prepare("select ledger_id, last_cursor, report_at from rig where id = ?")
-    .get(rig) as { ledger_id: unknown; last_cursor: unknown; report_at: unknown } | undefined;
-}
 
 /**
  * Control's place in a rig's events (ReportPlace), for its answer to the supervisor's figures: a
  * supervisor on the message bus goes back there after a page control refused.
  */
 export function reportPlace(store: ControlStore, rig: string): ReportPlace {
-  const u = reportsOf(store, rig);
+  const u = store.reportedRigs.reportRow(rig);
   return typeof u?.ledger_id === "string"
     ? { ledger_id: u.ledger_id, cursor: Number(u.last_cursor) }
     : { ledger_id: null, cursor: 0 };
@@ -156,7 +149,7 @@ export function reportPlace(store: ControlStore, rig: string): ReportPlace {
  * hands again after control folded it but before its ack arrived.
  */
 function alreadyTaken(store: ControlStore, rig: string, r: SignedReport): boolean {
-  const u = reportsOf(store, rig);
+  const u = store.reportedRigs.reportRow(rig);
   return (
     u !== undefined &&
     u.ledger_id === r.ledger_id &&
@@ -180,8 +173,8 @@ export function foldReport(t: Intake, m: BusMessage): Folded {
     return { refused: error };
   };
   if (!rig) return refuse("not a rig's report subject", { subject: m.subject.slice(0, 200) });
-  if (!store.knownRig(rig)) return refuse("no such rig: control has no token for it");
-  if (store.rigRetired(rig)) return refuse("this rig is retired in control");
+  if (!store.enrollments.knownRig(rig)) return refuse("no such rig: control has no token for it");
+  if (store.retired.get(rig)) return refuse("this rig is retired in control");
   let read: { report: SignedReport; unknown: number };
   try {
     read = readReport(JSON.parse(new TextDecoder().decode(m.data)));
@@ -197,7 +190,7 @@ export function foldReport(t: Intake, m: BusMessage): Folded {
   // Refused while the rig's recorded builds and control's do not meet, as a call over HTTP is.
   const early = checkRig(store, rig, control, { harness: null, endRefusal: false });
   if (early) {
-    store.countRefusedCall(rig);
+    store.refusals.countCall(rig);
     return refuse(early, at);
   }
   const [status, answer] = takeReport(t, rig, read);
@@ -207,7 +200,7 @@ export function foldReport(t: Intake, m: BusMessage): Folded {
   }
   // The supervisor's build from the message's headers, once its report verified: the bus has no
   // rig's token yet, so nothing else says who sent it.
-  store.setRigBuild(rig, "supervisor", buildFromHeaders(m.header));
+  store.builds.setRig(rig, "supervisor", buildFromHeaders(m.header));
   return { folded: (answer as { added: number }).added };
 }
 

@@ -17,15 +17,19 @@ export function rigRecordRoutes(app: Hono, api: ApiContext): void {
     const source = c.req.query("source") || undefined;
     const limit = clampLimit(c.req.query("limit"), 500);
     return c.json({
-      sources: store.liveSources(c.req.param("rig")),
+      sources: store.liveLines.sources(c.req.param("rig")),
       entries: after
-        ? store.live(c.req.param("rig"), after, limit, source)
-        : store.liveTail(c.req.param("rig"), limit, source),
+        ? store.liveLines.after(c.req.param("rig"), after, limit, source)
+        : store.liveLines.tail(c.req.param("rig"), limit, source),
     });
   });
 
   app.post("/v1/rigs/:rig/key/accept", admin, (c) =>
-    store.acceptPendingKey(c.req.param("rig"), "owner:api", c.req.query("fingerprint") ?? "")
+    store.reportedRigs.acceptPendingKey(
+      c.req.param("rig"),
+      "owner:api",
+      c.req.query("fingerprint") ?? "",
+    )
       ? c.json({ accepted: true })
       : c.json({ error: "no pending key" }, 404),
   );
@@ -33,7 +37,7 @@ export function rigRecordRoutes(app: Hono, api: ApiContext): void {
   app.get("/v1/rigs/:rig/events", admin, (c) => {
     const after = Math.max(0, Math.trunc(Number(c.req.query("after") ?? "0")) || 0);
     const limit = clampLimit(c.req.query("limit"), 500);
-    return c.json({ events: store.events(c.req.param("rig"), after, limit) });
+    return c.json({ events: store.rigEvents.after(c.req.param("rig"), after, limit) });
   });
 }
 
@@ -54,7 +58,7 @@ export function recordRoutes(app: Hono, api: ApiContext): void {
       return c.json({ error: "before and after are whole numbers" }, 400);
     if (before !== undefined && after !== undefined)
       return c.json({ error: "give before or after, not both" }, 400);
-    const p = store.auditPage(clampLimit(c.req.query("limit"), 200), {}, { before, after });
+    const p = store.auditLog.page(clampLimit(c.req.query("limit"), 200), {}, { before, after });
     return c.json({ audit: p.entries, older: p.older, newer: p.newer });
   });
 

@@ -20,11 +20,11 @@ export async function checkRigPlace(
   by: string,
 ): Promise<{ ok: boolean; words: string } | null> {
   const { store } = parts;
-  const r = store.machineRig(rig);
-  const onCluster = store.clusterRig(rig);
+  const r = store.machines.rig(rig);
+  const onCluster = store.clusters.rig(rig);
   let found: { ok: boolean; words: string };
   if (r && r.status !== "removed") {
-    const m = store.machine(r.machine);
+    const m = store.machines.get(r.machine);
     if (!m) return null;
     try {
       const out = await parts.machineSsh.sshScript(
@@ -53,10 +53,10 @@ export async function checkRigPlace(
       };
     }
   } else if (onCluster && onCluster.status !== "removed") {
-    if (!store.cluster(onCluster.cluster)) return null;
+    if (!store.clusters.get(onCluster.cluster)) return null;
     found = await checkClusterRig(parts, rig);
   } else return null;
-  store.rigSetupEvent(rig, "check", found.ok, found.words);
-  store.audit(by, "rig_check_place", { rig, ok: found.ok });
+  store.rigHistory.add(rig, "check", found.ok, found.words);
+  store.auditLog.add(by, "rig_check_place", { rig, ok: found.ok });
   return found;
 }

@@ -39,7 +39,7 @@ describe("rig enrollment through control", () => {
     // The new token works at once: no restart, no file.
     assert.equal((await asRig("gpu-host-1-0", out.token)).status, 200);
     assert.equal((await asRig("gpu-host-1-0", "wrong-token")).status, 401);
-    assert.ok(store.knownRig("gpu-host-1-0"));
+    assert.ok(store.enrollments.knownRig("gpu-host-1-0"));
     // Control's database holds the hash, never the token.
     const dump = JSON.stringify(store.db.prepare("select * from rig_token").all());
     assert.ok(!dump.includes(out.token));
@@ -78,7 +78,7 @@ describe("rig enrollment through control", () => {
     assert.equal((await asRig("cpu-1", second)).status, 200);
     assert.equal((await post("/v1/rigs/cpu-1/retire")).status, 200);
     assert.equal((await asRig("cpu-1", second)).status, 401);
-    assert.equal(store.knownRig("cpu-1"), false);
+    assert.equal(store.enrollments.knownRig("cpu-1"), false);
     assert.equal((await post("/v1/rigs/cpu-1/retire")).status, 404);
     assert.equal((await post("/v1/rigs/cpu-1/token")).status, 404);
     // Enrolled again, it gets a fresh token; the old ones stay dead.

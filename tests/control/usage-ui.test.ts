@@ -57,7 +57,7 @@ function ingest(
   events: [string, string, Record<string, unknown>][],
   first = 1,
 ) {
-  store.ingest({
+  store.rigEvents.ingest({
     rig,
     ledger_id: `ledger-${rig}`,
     cursor: first - 1,
@@ -92,13 +92,13 @@ async function stack() {
     ["zen", "opencode"],
     ["sub", "claude"],
   ] as const)
-    store.putProvider({
+    store.modelProviders.put({
       name,
       type,
       base_url: type === "openai" ? "https://models.example.com/v1" : "",
       key: { sealed: secrets.seal("key-for-tests"), hint: "…ests" },
     });
-  store.setProviderModels("lab", [
+  store.modelProviders.setModels("lab", [
     {
       id: "wide-model",
       context_window: 131_072,
@@ -106,12 +106,12 @@ async function stack() {
     },
     { id: "small-model" },
   ]);
-  store.setProviderModels("zen", [
+  store.modelProviders.setModels("zen", [
     { id: "free-model", price: { input: 0, cached_input: null, output: 0 } },
   ]);
-  store.setProviderModels("sub", [{ id: "opus-5.5" }]);
-  store.assignRoleModel("rig-a", "teachers", { provider: "lab", model: "wide-model" });
-  store.assignRoleModel("rig-a", "second_teacher", { provider: "sub", model: "opus-5.5" });
+  store.modelProviders.setModels("sub", [{ id: "opus-5.5" }]);
+  store.agentModels.assignRole("rig-a", "teachers", { provider: "lab", model: "wide-model" });
+  store.agentModels.assignRole("rig-a", "second_teacher", { provider: "sub", model: "opus-5.5" });
   ingest(store, "rig-a", [
     [
       "run_created",
@@ -360,14 +360,14 @@ describe("model use on the screens (goal 075)", () => {
 
   test("a RunPod rig's run: its pod's spend is a line of its own, with its time at the pod's price", async () => {
     const s = await stack();
-    s.store.addRunpodRig({
+    s.store.runpod.addRig({
       rig: "rig-a",
       cloud: "rp",
       pod: "p-1",
       state: { spent_usd: 0, price_per_hr: 1.65 },
       by: "t",
     });
-    s.store.saveRunpodRig("rig-a", { spent_usd: 1.65, price_per_hr: 1.65 }, true);
+    s.store.runpod.saveRig("rig-a", { spent_usd: 1.65, price_per_hr: 1.65 }, true);
     const html = await s.page("/ui/campaigns/matmul?run=rig-a%2Fr-1&view=stats");
     const gpu = rowWith(html, "<b>GPU time on RunPod</b>");
     assert.match(gpu, /1 h 0 m at \$1\.65\/h/);
@@ -598,11 +598,11 @@ describe("model use on the screens (goal 075)", () => {
     assert.equal(r.status, 303);
     assert.equal(r.to, "/ui/settings?at=prices&ok=saved#model-prices");
     assert.deepEqual(
-      s.store.modelPrices().map((x) => [x.provider, x.model, x.price]),
+      s.store.usage.prices().map((x) => [x.provider, x.model, x.price]),
       [["lab", "small-model", { input: 0.6, cached_input: 0.1, output: 2.5 }]],
     );
     assert.equal(
-      s.store.provider("lab")?.models.find((m) => m.id === "wide-model")?.price?.input,
+      s.store.modelProviders.get("lab")?.models.find((m) => m.id === "wide-model")?.price?.input,
       3,
     );
     html = await s.page("/ui/settings?at=prices&ok=saved");
@@ -629,7 +629,7 @@ describe("model use on the screens (goal 075)", () => {
     );
     r = await s.post("/ui/settings/prices", { ...form, out0: "" });
     assert.match(r.to, /&error=small-model of lab: set In and Out, or leave all three empty\./);
-    assert.equal(s.store.modelPrices()[0]?.price.output, 2.5);
+    assert.equal(s.store.usage.prices()[0]?.price.output, 2.5);
     // A subscription's model, posted anyway, is refused in words.
     r = await s.post("/ui/settings/prices", {
       p0: "sub",
@@ -649,7 +649,7 @@ describe("model use on the screens (goal 075)", () => {
     // All three empty: no price again.
     r = await s.post("/ui/settings/prices", { ...form, in0: "", cached0: "", out0: "" });
     assert.match(r.to, /ok=saved/);
-    assert.deepEqual(s.store.modelPrices(), []);
+    assert.deepEqual(s.store.usage.prices(), []);
     // Each change is in the audit log, as the owner's on the dashboard.
     const audit = s.store.db
       .prepare("select actor, action from audit where action like 'model_price%' order by id")
@@ -702,7 +702,7 @@ describe("model use on the screens (goal 075)", () => {
       ).to,
       /ok=saved/,
     );
-    assert.deepEqual(s.store.modelPrices()[0]?.price, {
+    assert.deepEqual(s.store.usage.prices()[0]?.price, {
       input: 0.000001,
       cached_input: null,
       output: 0,

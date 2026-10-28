@@ -378,7 +378,7 @@ export function campaignPageRoutes(app: Hono, dash: Dashboard): void {
           ? `<div class="card" style="margin-bottom:16px"><b class="ok">${esc(okNote)}</b></div>`
           : ""
     }${archivedLine(c, name)}`;
-    const canStart = Boolean(startFrom(name)) && !store.campaignArchived(name);
+    const canStart = Boolean(startFrom(name)) && !store.archive.get(name);
     const buttons = campaignActions(c, name);
     const drawer = `${startPanel(c, name, vs, c.req.query("start") === "1")}${copyPanel(c, name, vs, tried)}`;
     // A run just started (Start a run sends here with ?run=), until its rig reports it.
@@ -388,8 +388,8 @@ export function campaignPageRoutes(app: Hono, dash: Dashboard): void {
       const slash = key.indexOf("/");
       const run = key.slice(slash + 1);
       return slash > 0
-        ? store
-            .latestCommands(key.slice(0, slash), "assign_campaign")
+        ? store.commands
+            .latest(key.slice(0, slash), "assign_campaign")
             .find(
               (x) =>
                 x.payload.run === run &&
@@ -409,8 +409,8 @@ export function campaignPageRoutes(app: Hono, dash: Dashboard): void {
     };
     if (!k) {
       // Saved on control, with no run reported yet: what was asked for, and a way to start one.
-      const saved = store.campaignVersions(name);
-      if (!saved.length && !startFrom(name) && !store.campaignArchived(name))
+      const saved = store.campaigns.versions(name);
+      if (!saved.length && !startFrom(name) && !store.archive.get(name))
         return page(
           c,
           {
@@ -517,7 +517,7 @@ export function campaignPageRoutes(app: Hono, dash: Dashboard): void {
     // A new run of a campaign that has runs: Starting until its rig reports it (only the newest
     // assignment, so an old link to a run that never came says nothing).
     // An old link to a run that never came says nothing, unless the rig refused its start.
-    const latest = wanted ? store.latestAssignments().get(name) : undefined;
+    const latest = wanted ? store.commands.latestAssignments().get(name) : undefined;
     const startCmd = wanted ? startingCmd(wanted) : undefined;
     const starting =
       wanted &&

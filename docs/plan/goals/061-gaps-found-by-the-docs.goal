@@ -48,7 +48,7 @@ The writers and verifiers of the documentation site (goal [060](_completed/060-d
 - [ ] The machine check reads Podman's version but does not compare it with the 4.4 that rigs need, and the join script checks only that `podman` exists (`src/control/machines/facts.ts`, `src/control/join.ts`).
 - [ ] The machine check can test whether the machine reaches the image registry, but control never gives it the registry's address, so a machine that cannot pull the images is found only when the deploy fails (`src/control/dashboard.ts`, `src/control/machines/facts.ts`).
 - [ ] Machines and clusters cannot be changed in Providers: no way to change a machine's address, port, user or key, or to replace a cluster's kubeconfig when its token expires.
-- [ ] A machine can be deleted while rigs run on it, and control can then no longer stop, start or remove those rigs; clusters refuse this (`src/control/store.ts`).
+- [ ] A machine can be deleted while rigs run on it, and control can then no longer stop, start or remove those rigs; clusters refuse this (`src/control/store/machines.ts`).
 - [ ] A rig whose first report comes after control's 10-minute wait stays marked "failed" under "Set up by control", even after it reports (`src/control/dashboard.ts`). Fixed for rigs on a cluster in `f7424ad` (a report after a failed wait shows the rig running); rigs on machines are unchanged.
 - [ ] A removed rig's name cannot be used again: Add a rig answers "There is a rig named … already."
 - [ ] A joined namespace takes at most 8 GPUs, where machines and clusters take 16 (`src/control/dashboard.ts`).
@@ -69,9 +69,9 @@ The writers and verifiers of the documentation site (goal [060](_completed/060-d
 - [ ] Control cannot stop or start compose rigs, restarts them only with the development overlay, and `compose.yaml` maps only `local-1` and `local-2` in `THERMITE_COMPOSE_SERVICES` (`src/control/lifecycle.ts`).
 - [ ] "Restart the rig's containers" shows for every rig once a lifecycle driver is set, also for machine and cluster rigs that the driver cannot reach, and then fails (`src/control/dashboard.ts`, `src/control/lifecycle.ts`).
 - [ ] A new rig token from `thermite rig token` ends the old one at once, but control does not deliver it: for a rig that control set up, the owner copies it to the machine or the cluster Secret and restarts the supervisor by hand.
-- [ ] A retired rig that is brought back cannot get a token: `thermite rig token` refuses a retired rig and the dashboard offers no way, so only a new enrollment works (`src/control/store.ts`).
+- [ ] A retired rig that is brought back cannot get a token: `thermite rig token` refuses a retired rig and the dashboard offers no way, so only a new enrollment works (`src/control/store/enrollments.ts`).
 - [ ] After a rig is retired, the dashboard always adds "If its token is in control's settings, take it out there too", also for enrolled rigs (`src/control/dashboard.ts`).
-- [ ] Retiring an enrolled rig writes `rig_retired` to the audit log twice (`src/control/store.ts`).
+- [ ] Retiring an enrolled rig writes `rig_retired` to the audit log twice (`src/control/store/retired.ts`).
 - [ ] After a full reset, the rig's earlier runs leave the rig page, the campaign pages and the leaderboard; control still holds their events, but no page shows them (`src/control/views/rig.ts`).
 - [ ] Changing an owner, operator, agent or reader token needs a control restart; no page, API call or MCP tool does it (`src/control/main.ts`).
 
@@ -157,7 +157,7 @@ The writers and verifiers of the documentation site (goal [060](_completed/060-d
 - [ ] Research mode cannot use a Claude subscription or OpenCode's own free models, and nothing warns before the run starts (`src/harness/controller/agents.ts`). Partly fixed: research trials run in OpenCode when the agents' harness is OpenCode, so its free models serve research there (`e8a557b`), and the dashboard refuses to start a research run where such a model would run in Pi (`301853e`, `d1d34e8`). Still open: a Claude subscription fails only at each trial, with nothing before the start.
 - [ ] The model check tests only the workers' model, not a planner or advisor model given on Edit rig (`src/harness/service/checks.ts`).
 - [ ] A Claude model on an image without Claude Code fails the model check with the spawn's error, not a message that the image has no Claude Code (`src/harness/agents/claude-code.ts`).
-- [ ] An OpenAI-compatible provider needs an API key even when its model server needs none (`src/control/store.ts`, `src/harness/agents/model.ts`).
+- [ ] An OpenAI-compatible provider needs an API key even when its model server needs none (`src/control/store/providers.ts`, `src/harness/agents/model.ts`).
 - [ ] A ChatGPT sign-in's access token lasts an hour and only control renews it, so a rig whose control is away for longer, or that has a `chatgpt` route from its own settings, loses its model with no warning (`src/control/chatgpt.ts`, `src/harness/agents/model.ts`).
 - [ ] A ChatGPT sign-in that has started is lost when control restarts, because it is kept in memory only (`src/control/chatgpt.ts`).
 - [ ] Edit rig's model groups do not say which harness they need, as Providers does ("OpenCode harness only", "ChatGPT subscription: Pi or OpenCode"), so the rule shows only as an error on save (`src/control/dashboard.ts`).
@@ -194,17 +194,17 @@ The writers and verifiers of the documentation site (goal [060](_completed/060-d
 - [ ] A refusal on a plain dashboard page (such as `bad form token`) is written to the audit log with only its status, not its reason (`src/control/api.ts`).
 - [ ] Control answers a refused request with 500 and logs it as `failed`, and a body that fails its schema gets only `invalid request`, without the schema's message (`src/control/api.ts`, `src/control/issue.ts`).
 - [ ] A pending command can be cancelled only over REST: there is no dashboard button and no `thermite` command, and the Commands page shows no command ids (`src/control/api/relay.ts`, `src/control/dashboard/commands.ts`).
-- [ ] A cancelled command shows as `failed`, and the Commands page styles a `cancelled` status that never occurs (`src/control/store.ts`, `src/control/dashboard.ts`).
-- [ ] A cancel can lose a race with delivery: the harness may still apply the command, and its record later sets the status to `delivered` (`src/control/store.ts`, `src/supervisor/relay.ts`).
-- [ ] An expired command for a rig that never asks again stays `pending` for ever (`src/control/store.ts`).
+- [ ] A cancelled command shows as `failed`, and the Commands page styles a `cancelled` status that never occurs (`src/control/store/commands.ts`, `src/control/dashboard/commands.ts`).
+- [ ] A cancel can lose a race with delivery: the harness may still apply the command, and its record later sets the status to `delivered` (`src/control/store/commands.ts`, `src/supervisor/relay.ts`).
+- [ ] An expired command for a rig that never asks again stays `pending` for ever (`src/control/store/commands.ts`).
 - [ ] A command's time to live can run out while the supervisor fetches what it names: the dashboard always gives 60 minutes, and a `propagate` sent through `POST /v1/commands` gets 60 minutes, not the 24 hours of control's own propagate paths (`src/control/new-campaign.ts`, `src/control/api/commands.ts`, `src/control/issue.ts`).
-- [ ] A command's outcome changes shape after the rig's next report: the harness's record replaces the supervisor's `{"status": …}` (`src/control/store.ts`, `src/supervisor/relay.ts`).
+- [ ] A command's outcome changes shape after the rig's next report: the harness's record replaces the supervisor's `{"status": …}` (`src/control/store/events.ts`, `src/supervisor/relay.ts`).
 - [ ] The harness records an owner-only refusal as a failed command, not as a `command_rejected` event like every other refusal (`src/harness/service/commands.ts`).
 - [ ] `reset_workers.reseed_commit` is accepted by the schema and always refused (`src/core/commands.ts`, `src/harness/service/commands.ts`).
 - [ ] The same token role reads different things over REST and MCP: the reader token reads rigs, runs and events over MCP, but only `/metrics` and the live log over REST (`src/control/api/context.ts`, `src/control/mcp/context.ts`).
 - [ ] MCP `retire_rig` finds only rigs that have reported, while REST also retires enrolled or tokens-file rigs that never reported (`src/control/mcp/rigs.ts`, `src/control/api/rigs.ts`).
 - [ ] MCP `recent_events` takes a `limit` up to 500 but returns at most 50 events (`src/control/mcp/reads.ts`, `src/control/views/fold/index.ts`).
-- [ ] Two rules for a rig's name: REST enrollment takes 2 to 40 characters that start and end with a letter or digit, and Add a rig and MCP `add_cluster_rig` take up to 63 that may end with a dash (`src/control/store.ts`, `src/control/machines/deploy.ts`).
+- [ ] Two rules for a rig's name: REST enrollment takes 2 to 40 characters that start and end with a letter or digit, and Add a rig and MCP `add_cluster_rig` take up to 63 that may end with a dash (`src/core/ids.ts`, `src/control/machines/deploy.ts`).
 - [ ] `POST /v1/rigs/<rig>/reset` accepts an unknown rig and fails a step later (`src/control/api/lifecycle.ts`, `src/control/lifecycle.ts`).
 - [ ] `GET /v1/gpu-clouds/<name>/tests` answers `[]`, not 404, for a cloud that is not in Providers (`src/control/api/gpu-clouds.ts`).
 - [ ] `GET /v1/commands` cannot filter by rig, and `GET /v1/audit` cannot filter at all, while MCP `control_log` filters by action (`src/control/api/commands.ts`, `src/control/api/records.ts`).

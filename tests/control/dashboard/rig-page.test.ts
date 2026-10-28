@@ -73,7 +73,9 @@ describe("control dashboard", () => {
       }),
     });
     assert.equal(r.status, 200, await r.clone().text());
-    const sup = s.store.supervisor("rig-a") as { advisors?: { roles?: { auditor?: boolean } } };
+    const sup = s.store.reportedRigs.supervisor("rig-a") as {
+      advisors?: { roles?: { auditor?: boolean } };
+    };
     assert.equal(sup.advisors?.roles?.auditor, false);
   });
 

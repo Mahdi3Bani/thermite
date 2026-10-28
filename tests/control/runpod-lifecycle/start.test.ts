@@ -55,7 +55,7 @@ describe("RunPod rigs: start and restart", () => {
       [["resume_run", { run: "run-1" }]],
     );
     assert.match(
-      String(s.store.rigSetupEvents(rig).at(-1)?.detail),
+      String(s.store.rigHistory.list(rig).at(-1)?.detail),
       /with 1 GPU; runs resumed: run-1/,
     );
     await assert.rejects(
@@ -72,7 +72,7 @@ describe("RunPod rigs: start and restart", () => {
     assert.ok(pod);
     pod.count = 1;
     await s.rigs.start(v.rig, "owner:api");
-    const last = s.store.rigSetupEvents(v.rig).at(-1);
+    const last = s.store.rigHistory.list(v.rig).at(-1);
     assert.deepEqual([last?.step, last?.ok], ["runpod_running", false]);
     assert.match(String(last?.detail), /with 1 GPU; not the 2 it was launched with/);
   });

@@ -96,7 +96,7 @@ test("a research run's rounds are counted as research rounds, not as planner fal
     at: "2026-10-22T00:00:00Z",
     body,
   });
-  store.ingest({
+  store.rigEvents.ingest({
     rig: "rig-a",
     ledger_id: "l-1",
     cursor: 0,

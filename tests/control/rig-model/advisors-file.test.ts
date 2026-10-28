@@ -83,7 +83,8 @@ describe("the advisors file, as control reads it from the supervisor", () => {
     assert.equal(bad.status, 200);
     assert.equal((await read()).advisors_file, null);
     assert.equal(
-      (s.store.supervisor("rig-a")?.advisors as { audits?: number } | undefined)?.audits,
+      (s.store.reportedRigs.supervisor("rig-a")?.advisors as { audits?: number } | undefined)
+        ?.audits,
       3,
     );
     // No advisors at all.

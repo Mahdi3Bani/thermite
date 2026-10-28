@@ -29,7 +29,7 @@ async function stack() {
   };
   /** The newest signed command's payload and what the rig answered. */
   const last = () => {
-    const c = store.listCommands(1)[0];
+    const c = store.commands.list(1)[0];
     const row = store.db.prepare("select signed from command where id = ?").get(c?.id ?? "") as {
       signed: string;
     };
@@ -242,7 +242,7 @@ describe("rules name directions over REST, MCP and the command line (goal 066)",
 
   test("control refuses a research run a rule for another direction than its task kinds", async () => {
     const { store, api } = controlStack({ tokens: { rigs: {} } });
-    store.ingest({
+    store.rigEvents.ingest({
       rig: "rig-r",
       ledger_id: "ledger-r",
       cursor: 0,

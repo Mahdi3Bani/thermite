@@ -234,7 +234,10 @@ try {
     tunnels.advance(1000).catch((err) => console.error(`pull: ${String(err)}`));
   }, 500);
   await waitFor("enrolled: the harness starts with control's key from enrollment", 120_000);
-  check("control enrolled the pod and pinned its keys", Boolean(store.tunnelRig(rig)?.enrolled_at));
+  check(
+    "control enrolled the pod and pinned its keys",
+    Boolean(store.tunnels.get(rig)?.enrolled_at),
+  );
   await waitFor("judge ready");
   // The state snapshot: root's folder, closed to the parts and the roles, taken after enrollment.
   const closed = await waitFor("the snapshot folder is closed to the parts and the roles", 5000);
@@ -313,7 +316,7 @@ try {
   // The rig's reports reach control, through control's pulls only.
   let reported = false;
   for (let i = 0; i < 60 && !reported; i++) {
-    reported = store.rigs().some((r) => r.id === rig);
+    reported = store.reportedRigs.list().some((r) => r.id === rig);
     if (!reported) await sleep(2000);
   }
   check("the rig's reports reach control through control's pulls", reported);

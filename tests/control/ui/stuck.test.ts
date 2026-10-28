@@ -60,7 +60,7 @@ async function stuckRun(settings: Record<string, unknown> = { quiet_minutes: 30 
   ];
   c.ingest(events);
   const report = (lane2: Record<string, unknown>) =>
-    c.store.ingest({
+    c.store.rigEvents.ingest({
       rig: "rig-a",
       ledger_id: "ledger-a",
       cursor: events.length,
@@ -162,7 +162,7 @@ describe("a stuck trial asks under Needs you (goal 143)", () => {
     assert.equal(left.status, 303);
     assert.equal(left.headers.get("location"), RUN);
     assert.doesNotMatch(needsOf(await c.page(RUN)), /sent nothing/);
-    const audit = c.store.listAudit(5).find((a) => a.action === "trial_left");
+    const audit = c.store.auditLog.list(5).find((a) => a.action === "trial_left");
     assert.equal(audit?.actor, "owner:ui");
     // It sent a line, then went quiet again: the card is back.
     c.report({ ...QUIET, last_line_at: ago(45) });
@@ -193,7 +193,7 @@ describe("a stuck trial asks under Needs you (goal 143)", () => {
     assert.equal(fields.kind, "stop_trial");
     const r = await c.send(fields);
     assert.ok(r.status < 400, JSON.stringify(r.answer));
-    assert.deepEqual(c.store.latestCommands("rig-a", "stop_trial", 1)[0]?.payload, {
+    assert.deepEqual(c.store.commands.latest("rig-a", "stop_trial", 1)[0]?.payload, {
       run: "s-1",
       trial: "t-1",
       reason: "stopped from Needs you: it repeated the same calls",
@@ -234,7 +234,7 @@ test("a trial that asks again and again for a refused page is stuck too (goals 1
   });
   // Its answer counts the asks, so it is no streak of the same answer: goal 136's count says it.
   const report = (times: number) =>
-    c.store.ingest({
+    c.store.rigEvents.ingest({
       rig: "rig-a",
       ledger_id: "ledger-a",
       cursor: 0,

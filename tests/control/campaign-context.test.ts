@@ -63,7 +63,7 @@ async function stack() {
     tokens: TOKENS,
     options: { staleAfterMs: 600_000, kits, secrets },
   });
-  store.ingest({
+  store.rigEvents.ingest({
     rig: "rig-a",
     ledger_id: "ledger-rig-a",
     cursor: 0,
@@ -86,13 +86,13 @@ async function stack() {
       },
     },
   });
-  store.putProvider({
+  store.modelProviders.put({
     name: "lab",
     type: "openai",
     base_url: "https://models.example.com/v1",
     key: { sealed: secrets.seal("lab-key-for-tests"), hint: "…ests" },
   });
-  store.setProviderModels("lab", [
+  store.modelProviders.setModels("lab", [
     { id: "wide-model", context_window: 204_800 },
     { id: "narrow-model", context_window: 131_072 },
   ]);
@@ -145,8 +145,8 @@ const text = (r: unknown) =>
 const json = async (r: Response) => (await r.json()) as Record<string, unknown>;
 
 const newest = (s: Awaited<ReturnType<typeof stack>>, campaign: string) =>
-  s.store.campaignVersions(campaign)[0] as NonNullable<
-    ReturnType<typeof s.store.campaignVersions>[number]
+  s.store.campaigns.versions(campaign)[0] as NonNullable<
+    ReturnType<typeof s.store.campaigns.versions>[number]
   >;
 
 describe("a campaign's own context settings (goal 070)", () => {
@@ -235,8 +235,8 @@ describe("a campaign's own context settings (goal 070)", () => {
     const operator = await s.post("/v1/campaigns/matmul-speed/context", {}, TOKENS.operator);
     assert.ok(operator.status === 401 || operator.status === 403, "REST takes the owner's token");
     assert.deepEqual(
-      s.store
-        .listAudit(50, { action: "campaign_context_set" })
+      s.store.auditLog
+        .list(50, { action: "campaign_context_set" })
         .map((e) => (e.body as { version: number }).version)
         .reverse(),
       [2, 3, 4],
@@ -427,7 +427,7 @@ describe("a campaign's own context settings (goal 070)", () => {
     });
     assert.equal(bad.isError, true);
     assert.match(JSON.stringify(bad), /from 50 to 95/);
-    assert.equal(s.store.campaignVersions("matmul-speed-d").length, 0);
+    assert.equal(s.store.campaigns.versions("matmul-speed-d").length, 0);
     await client.close();
     // null: none.
     const none = await s.post("/v1/campaigns/matmul-speed/copy", {
@@ -438,7 +438,7 @@ describe("a campaign's own context settings (goal 070)", () => {
     const body = await json(none);
     assert.equal(body.agents_context, undefined);
     assert.equal("agents_context" in (newest(s, "matmul-speed-e").contract as object), false);
-    const audit = s.store.listAudit(50, { action: "campaign_copied" })[0];
+    const audit = s.store.auditLog.list(50, { action: "campaign_copied" })[0];
     assert.equal((audit?.body as { agents_context?: unknown } | undefined)?.agents_context, null);
   });
 });

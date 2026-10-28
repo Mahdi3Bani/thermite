@@ -40,16 +40,16 @@ export const clusterTarget = (
 /** Reads a cluster again (clusters/facts.ts) and keeps what it found; why not, in words. */
 export async function checkClusterNow(parts: ControlParts, name: string): Promise<string | null> {
   const { store } = parts;
-  const c = store.cluster(name);
+  const c = store.clusters.get(name);
   if (!c) return "no such cluster";
   try {
-    store.setClusterFacts(name, {
+    store.clusters.setFacts(name, {
       facts: await checkCluster(parts.kube, clusterTarget(parts, c), c.slots),
     });
     return null;
   } catch (err) {
     const why = errorText(err);
-    store.setClusterFacts(name, { error: why });
+    store.clusters.setFacts(name, { error: why });
     return why;
   }
 }
@@ -62,18 +62,18 @@ export async function setClusterSlots(
   by: string,
 ): Promise<string | null> {
   const { store } = parts;
-  const k = store.cluster(name);
+  const k = store.clusters.get(name);
   if (!k) return "no such cluster";
   if (k.placement !== "slot")
     return `${name} puts rigs in namespaces control creates, not in slots`;
   const bad = slots.find((x) => !NS.test(x));
   if (bad) return `"${bad}" is not a namespace name`;
-  const using = store
-    .clusterRigs(name)
+  const using = store.clusters
+    .rigs(name)
     .filter((r) => r.status !== "removed" && !slots.includes(r.namespace));
   if (using.length)
     return `${using.map((r) => r.namespace).join(", ")} still holds a rig (${using.map((r) => r.rig).join(", ")}): keep it in the list`;
-  store.setClusterSlots(name, [...new Set(slots)], by);
+  store.clusters.setSlots(name, [...new Set(slots)], by);
   return await checkClusterNow(parts, name);
 }
 
@@ -109,7 +109,7 @@ export async function addClusterRig(
   const { store } = parts;
   const fail = (error: string) => ({ error });
   const { rig } = i;
-  const k = store.cluster(i.cluster);
+  const k = store.clusters.get(i.cluster);
   if (!parts.rigImages) return fail("Control has no rig images configured.");
   if (!parts.publicUrl) return fail("Control's address for rigs is not set.");
   if (!RIG_ID.test(rig)) return fail(RIG_ID_SENTENCE);
@@ -158,7 +158,9 @@ export async function addClusterRig(
     const slot = facts.slots.find((s) => s.namespace === namespace && s.usable && !s.used_by);
     if (!slot) return fail("Choose a free slot.");
     slotQuota = slot.quota;
-    if (store.clusterRigs(k.name).some((r) => r.namespace === namespace && r.status !== "removed"))
+    if (
+      store.clusters.rigs(k.name).some((r) => r.namespace === namespace && r.status !== "removed")
+    )
       return fail(`The slot ${namespace} is in use.`);
     // Refuse a slot whose rules don't keep this harness off the cluster.
     const net = await slotNetwork(parts.kube, clusterTarget(parts, k), namespace, {
@@ -199,8 +201,8 @@ export async function addClusterRig(
   if (gpus && !parts.rigImages.harnessCuda)
     return fail("Control has no CUDA harness image configured (THERMITE_RIG_HARNESS_CUDA_IMAGE).");
   const token = newToken();
-  store.enrollRig(rig, token.sha256, by);
-  store.addClusterRig({
+  store.enrollments.enroll(rig, token.sha256, by);
+  store.clusters.addRig({
     rig,
     cluster: k.name,
     namespace,
@@ -222,8 +224,8 @@ export async function addClusterRig(
     },
     created_by: by,
   });
-  store.rigSetupEvent(rig, "enrolled", true);
-  const deploy = deployClusterRig(parts, store.clusterRig(rig) as ClusterRig, k, token.token);
+  store.rigHistory.add(rig, "enrolled", true);
+  const deploy = deployClusterRig(parts, store.clusters.rig(rig) as ClusterRig, k, token.token);
   void inBackground(store, "cluster", rig, "applied", deploy);
   return { rig };
 }
@@ -266,14 +268,14 @@ async function deployClusterRig(
       120_000,
     );
     if (out.code !== 0) throw new Error(kubeError(out));
-    store.rigSetupEvent(r.rig, "applied", true, `namespace ${r.namespace}`);
-    store.setClusterRigStatus(r.rig, "starting");
+    store.rigHistory.add(r.rig, "applied", true, `namespace ${r.namespace}`);
+    store.clusters.setRigStatus(r.rig, "starting");
   } catch (err) {
-    store.rigSetupEvent(r.rig, "deploy", false, errorText(err));
-    store.setClusterRigStatus(r.rig, "failed");
+    store.rigHistory.add(r.rig, "deploy", false, errorText(err));
+    store.clusters.setRigStatus(r.rig, "failed");
     return;
   }
-  await awaitFirstReport(parts, r.rig, (s) => store.setClusterRigStatus(r.rig, s));
+  await awaitFirstReport(parts, r.rig, (s) => store.clusters.setRigStatus(r.rig, s));
 }
 
 /** Whether both of a rig's deployments (kubectl get -o json) run only their newest pods. */
@@ -317,10 +319,10 @@ export async function awaitNewPods(
 ) {
   const { store } = parts;
   const n = clusterNames(r.rig);
-  const set = (st: string) => store.setClusterRigStatus(r.rig, st);
+  const set = (st: string) => store.clusters.setRigStatus(r.rig, st);
   // The status this wait is for: a stop or a removal meanwhile ends it.
   const waiting = why === "start" ? "starting" : "updating";
-  const still = () => store.clusterRig(r.rig)?.status === waiting;
+  const still = () => store.clusters.rig(r.rig)?.status === waiting;
   const [pods, report] =
     why === "images"
       ? ["images_running", "report_after_images"]
@@ -340,14 +342,14 @@ export async function awaitNewPods(
     if (Date.now() > deadline) {
       if (!still()) return;
       const err = out.code === 0 ? "" : `: ${kubeError(out)}`;
-      store.rigSetupEvent(r.rig, pods, false, `not running after 15 minutes${err}`);
+      store.rigHistory.add(r.rig, pods, false, `not running after 15 minutes${err}`);
       set("failed");
       return;
     }
     await sleep(5000);
   }
   if (!still()) return;
-  store.rigSetupEvent(r.rig, pods, true);
+  store.rigHistory.add(r.rig, pods, true);
   await awaitFirstReport(parts, r.rig, set, 10, Date.now(), { step: report, still });
 }
 
@@ -360,7 +362,9 @@ export function rigWork(
   rig: string,
 ): { trials: number; judge_jobs: number; draining: unknown } | undefined {
   const w = (
-    parts.store.rigs().find((x) => x.id === rig)?.summary as { work?: unknown } | undefined
+    parts.store.reportedRigs.list().find((x) => x.id === rig)?.summary as
+      | { work?: unknown }
+      | undefined
   )?.work as { trials?: unknown; judge_jobs?: unknown; draining?: unknown } | undefined;
   if (!w || typeof w.trials !== "number" || typeof w.judge_jobs !== "number") return undefined;
   return { trials: w.trials, judge_jobs: w.judge_jobs, draining: w.draining ?? null };
@@ -388,8 +392,8 @@ export async function checkClusterRig(
   parts: Pick<ControlParts, "store" | "secrets" | "kube">,
   rig: string,
 ): Promise<{ ok: boolean; words: string }> {
-  const r = parts.store.clusterRig(rig);
-  const k = r ? parts.store.cluster(r.cluster) : undefined;
+  const r = parts.store.clusters.rig(rig);
+  const k = r ? parts.store.clusters.get(r.cluster) : undefined;
   if (!r || !k) return { ok: false, words: "The cluster is no longer in Settings › Providers." };
   const n = clusterNames(rig);
   const out = await parts.kube.kubectl(

@@ -32,8 +32,8 @@ export interface TrialSessionArgs {
 const trialOf = (source: string) => source.slice("trial:".length);
 
 export function trialSession(store: ControlStore, a: TrialSessionArgs): Record<string, unknown> {
-  const all = store.liveTrials(a.rig);
-  const counts = new Map(store.liveSources(a.rig).map((s) => [s.source, s.lines]));
+  const all = store.liveLines.trials(a.rig);
+  const counts = new Map(store.liveLines.sources(a.rig).map((s) => [s.source, s.lines]));
   if (a.trial === undefined) {
     const sessions = all.filter((t) => a.run === undefined || t.run === a.run);
     return keepToBudget(
@@ -63,7 +63,7 @@ export function trialSession(store: ControlStore, a: TrialSessionArgs): Record<s
     throw new Error(
       `control has no lines of trial ${trialOf(source)} on ${a.rig}: it keeps a rig's newest 20,000 lines, and trial_session with no trial lists the sessions it has`,
     );
-  const rows = store.live(a.rig, a.after, a.limit + 1, source);
+  const rows = store.liveLines.after(a.rig, a.after, a.limit + 1, source);
   const page = rows.slice(0, a.limit);
   return keepToBudget(
     {

@@ -15,7 +15,7 @@ export function machineRoutes(app: Hono, dash: Dashboard): void {
   // ---------------------------------------------------------------- machines (Providers)
   /** Reads the machine's facts now (read-only), and keeps them or why it could not. */
   const checkMachine = async (name: string): Promise<string | null> => {
-    const m = store.machine(name);
+    const m = store.machines.get(name);
     if (!m) return "no such machine";
     try {
       const r = await ssh.sshScript(
@@ -32,17 +32,17 @@ export function machineRoutes(app: Hono, dash: Dashboard): void {
       );
       if (r.code !== 0)
         throw new Error(`the check exited ${r.code}: ${r.stderr.trim().split("\n").pop() ?? ""}`);
-      store.setMachineFacts(name, { facts: parseFacts(r.stdout) });
+      store.machines.setFacts(name, { facts: parseFacts(r.stdout) });
       return null;
     } catch (err) {
       const why = errorText(err);
-      store.setMachineFacts(name, { error: why });
+      store.machines.setFacts(name, { error: why });
       // A changed host key: read what it presents now, for the owner to compare.
       if (/different host key/.test(why))
         await ssh
           .scanHostKeys(m.address, m.port)
           .then((keys) =>
-            store.seeMachineHostKeys(
+            store.machines.seeHostKeys(
               name,
               keys.map((k) => k.line),
             ),
@@ -52,10 +52,10 @@ export function machineRoutes(app: Hono, dash: Dashboard): void {
     }
   };
   app.post("/ui/settings/machines/:name/scan", async (c) => {
-    const m = store.machine(c.req.param("name"));
+    const m = store.machines.get(c.req.param("name"));
     if (!m) return c.redirect(machineUrl("error", "No such machine."), 303);
     const keys = await ssh.scanHostKeys(m.address, m.port).catch(() => []);
-    store.seeMachineHostKeys(
+    store.machines.seeHostKeys(
       m.name,
       keys.map((k) => k.line),
     );
@@ -68,7 +68,7 @@ export function machineRoutes(app: Hono, dash: Dashboard): void {
   });
   // The owner trusts exactly the keys they were shown (the form carries them back).
   app.post("/ui/settings/machines/:name/trust", async (c) => {
-    const m = store.machine(c.req.param("name"));
+    const m = store.machines.get(c.req.param("name"));
     const seen = String((await c.req.parseBody()).seen ?? "");
     if (!m) return c.redirect(machineUrl("error", "No such machine."), 303);
     if (!m.seen_host_keys.length || seen !== m.seen_host_keys.join("\n"))
@@ -76,7 +76,7 @@ export function machineRoutes(app: Hono, dash: Dashboard): void {
         machineUrl("error", "The host key changed since the page showed it: compare it again."),
         303,
       );
-    store.trustMachineHostKeys(m.name, m.seen_host_keys, "owner:ui");
+    store.machines.trustHostKeys(m.name, m.seen_host_keys, "owner:ui");
     const why = await checkMachine(m.name);
     return c.redirect(
       why
@@ -90,7 +90,7 @@ export function machineRoutes(app: Hono, dash: Dashboard): void {
   });
   app.post("/ui/settings/machines/:name/check", async (c) => {
     const name = c.req.param("name");
-    if (!store.machine(name)?.host_keys.length)
+    if (!store.machines.get(name)?.host_keys.length)
       return c.redirect(machineUrl("error", "Trust the machine's host key first."), 303);
     const why = await checkMachine(name);
     return c.redirect(
@@ -101,7 +101,7 @@ export function machineRoutes(app: Hono, dash: Dashboard): void {
   // An install the owner allowed: bound to the exact script the page showed, used once, now.
   app.post("/ui/settings/machines/:name/install", async (c) => {
     const f = await c.req.parseBody();
-    const m = store.machine(c.req.param("name"));
+    const m = store.machines.get(c.req.param("name"));
     const id = String(f.recipe ?? "") as RecipeId;
     const fail = (why: string) => c.redirect(machineUrl("error", why), 303);
     if (!m) return fail("No such machine.");
@@ -109,21 +109,22 @@ export function machineRoutes(app: Hono, dash: Dashboard): void {
     if (!m.host_keys.length || !facts) return fail("Trust and check the machine first.");
     if (!(id in RECIPES) || !missing(facts).includes(id))
       return fail("That isn't missing on this machine any more: press Check again.");
-    if (store.machineInstalls(m.name).some((i) => i.started_at && !i.finished_at))
+    if (store.machines.installs(m.name).some((i) => i.started_at && !i.finished_at))
       return fail(`An install is already running on "${m.name}".`);
     const s = recipeScript(id, facts);
     if ("error" in s) return fail(s.error);
     const sha = scriptSha(s.script);
     if (String(f.sha ?? "") !== sha)
       return fail("What control would run changed since the page showed it: read it again.");
-    const approval = store.approveInstall({
+    const approval = store.machines.approveInstall({
       machine: m.name,
       recipe: id,
       script_sha: sha,
       by: "owner:ui",
       ttlMs: 30 * 60_000,
     });
-    if (!store.startInstall(approval, m.name, id, sha)) return fail("That approval can't be used.");
+    if (!store.machines.startInstall(approval, m.name, id, sha))
+      return fail("That approval can't be used.");
     const target = {
       address: m.address,
       port: m.port,
@@ -135,8 +136,9 @@ export function machineRoutes(app: Hono, dash: Dashboard): void {
     void ssh
       .sshScript(target, s.script, [], 30 * 60_000)
       .then(
-        (r) => store.finishInstall(approval, r.code === 0, `${r.stdout}\n${r.stderr}`.trim()),
-        (err) => store.finishInstall(approval, false, errorText(err)),
+        (r) =>
+          store.machines.finishInstall(approval, r.code === 0, `${r.stdout}\n${r.stderr}`.trim()),
+        (err) => store.machines.finishInstall(approval, false, errorText(err)),
       )
       .then(() => checkMachine(m.name))
       .catch(() => {});
@@ -162,7 +164,7 @@ export function machineRoutes(app: Hono, dash: Dashboard): void {
   app.post("/ui/settings/machines/:name/delete", (c) => {
     const name = c.req.param("name");
     return c.redirect(
-      store.deleteMachine(name, "owner:ui")
+      store.machines.delete(name, "owner:ui")
         ? machineUrl("ok", `"${name}" is deleted: control keeps nothing of its key.`)
         : machineUrl("error", "No such machine."),
       303,

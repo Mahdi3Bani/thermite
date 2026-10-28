@@ -11,7 +11,7 @@ function rigWith(events: [string, string, Record<string, unknown>][]) {
     ["harness", "run_created", { campaign: "c", mode: "hill_climb", version: 1, agents: true }],
     ...events,
   ];
-  store.ingest({
+  store.rigEvents.ingest({
     rig: "rig-a",
     ledger_id: "ledger-a",
     cursor: 0,
@@ -592,7 +592,7 @@ test("a change that became the champion no longer waits: only pending promotions
     ],
     ["control:owner:ui", "champion_promoted", "r-1", { seq: 2, attempt: "a-1", commit: "c1" }],
   ];
-  store.ingest({
+  store.rigEvents.ingest({
     rig: "rig-a",
     ledger_id: "ledger-a",
     cursor: 0,

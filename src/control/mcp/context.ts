@@ -99,13 +99,13 @@ export function toolContext(
       const logged: Record<string, unknown> = { ...((args ?? {}) as Record<string, unknown>) };
       for (const k of hide)
         if (typeof logged[k] === "string") logged[k] = `given (${keyHint(String(logged[k]))})`;
-      store.audit(actor, `mcp:${tool}`, logged);
+      store.auditLog.add(actor, `mcp:${tool}`, logged);
       try {
         return json(await fn(args));
       } catch (err) {
         const error = errorText(err);
         // A refusal is in the audit log too, as the dashboard's are.
-        store.audit(actor, "refused", { tool: `mcp:${tool}`, why: redact(error) });
+        store.auditLog.add(actor, "refused", { tool: `mcp:${tool}`, why: redact(error) });
         return { ...json({ error }), isError: true };
       }
     };

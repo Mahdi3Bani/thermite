@@ -54,9 +54,9 @@ export function campaignModes(store: ControlStore, vs: RigView[]): Map<string, s
     return typeof m === "string" ? m : null;
   };
   for (const k of campaignViews(vs)) out.set(k.name, k.mode);
-  for (const v of store.campaignVersions())
+  for (const v of store.campaigns.versions())
     if (!out.get(v.campaign)) out.set(v.campaign, modeOf(v.contract));
-  for (const [name, a] of store.latestAssignments())
+  for (const [name, a] of store.commands.latestAssignments())
     if (!out.get(name)) out.set(name, modeOf(a.payload.contract));
   for (const f of store.kb().folders()) if (!out.has(f.campaign)) out.set(f.campaign, null);
   return out;

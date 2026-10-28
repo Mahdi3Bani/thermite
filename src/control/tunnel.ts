@@ -193,9 +193,9 @@ export class ControlTunnels {
     config?: PodConfig["env"] | undefined;
   }): MintedRig {
     const taken = (r: string) =>
-      Boolean(this.store.tunnelRig(r)) ||
-      this.store.knownRig(r) ||
-      this.store.rigs({ withRetired: true }).some((u) => u.id === r);
+      Boolean(this.store.tunnels.get(r)) ||
+      this.store.enrollments.knownRig(r) ||
+      this.store.reportedRigs.list({ withRetired: true }).some((u) => u.id === r);
     let rig = o.rig;
     if (rig !== undefined) {
       if (!RIG_ID.test(rig)) throw new Error(RIG_ID_WORDS);
@@ -214,7 +214,7 @@ export class ControlTunnels {
     const code = randomBytes(32).toString("hex");
     const until =
       o.codeTtlMs !== undefined ? new Date(this.now() + o.codeTtlMs).toISOString() : null;
-    this.store.addTunnelRig({
+    this.store.tunnels.add({
       rig,
       port,
       prefix_sealed: this.secrets.seal(prefix),
@@ -247,12 +247,12 @@ export class ControlTunnels {
    * (RunPod's proxy address for the pod's port, when none is given). Refused once enrolled.
    */
   attach(rig: string, pod: string, url?: string): void {
-    const t = this.store.tunnelRig(rig);
+    const t = this.store.tunnels.get(rig);
     if (!t) throw new Error(`no rig ${rig} in pull mode`);
     if (!/^[A-Za-z0-9-]{1,64}$/.test(pod)) throw new Error(`${pod} is not a pod's ID`);
     const at = (url ?? podPortUrl(pod, t.port)).replace(/\/$/, "");
     if (!/^https?:\/\/[^\s/]+$/.test(at)) throw new Error(`${at} is not a pod's address`);
-    if (!this.store.attachTunnelPod(rig, pod, at))
+    if (!this.store.tunnels.attachPod(rig, pod, at))
       throw new Error(`rig ${rig} is enrolled already: its pod can't change`);
     this.retry.delete(rig);
   }
@@ -295,14 +295,14 @@ export class ControlTunnels {
    * happened, in words; errors are kept on the rig's record and in control's log.
    */
   async step(rig: string, waitMs = 0): Promise<string> {
-    const t = this.store.tunnelRig(rig);
+    const t = this.store.tunnels.get(rig);
     if (!t) return `no rig ${rig} in pull mode`;
     if (!t.pod || !t.url) return "its pod is not launched yet";
     const at = { rig, pod: t.pod, url: t.url };
     const prefix = this.secrets.open(t.prefix_sealed);
     const fail = (why: string) => {
       const error = redact(why);
-      this.store.tunnelExchanged(rig, { error });
+      this.store.tunnels.exchanged(rig, { error });
       log("control", "pull mode", { rig, error });
       const failures = (this.retry.get(rig)?.failures ?? 0) + 1;
       this.retry.set(rig, {
@@ -346,7 +346,7 @@ export class ControlTunnels {
           return fail("the pod's enrollment answer is not signed by its key: not enrolled");
         if (createPublicKey(box).asymmetricKeyType !== "x25519")
           return fail("the pod's sealing key is not an X25519 key: not enrolled");
-        if (!this.store.pinTunnelRig(rig, sign, box))
+        if (!this.store.tunnels.pin(rig, sign, box))
           return fail("it was enrolled already: a second enrollment is refused");
         this.retry.delete(rig);
         return "enrolled";
@@ -433,7 +433,7 @@ export class ControlTunnels {
         }),
       );
       this.pending.set(rig, [...(this.pending.get(rig) ?? []), ...done.flat()]);
-      this.store.tunnelExchanged(rig, { refused: msg.refused, error: null });
+      this.store.tunnels.exchanged(rig, { refused: msg.refused, error: null });
       this.retry.delete(rig);
       return `exchanged: ${answers.length} answer(s) delivered, ${calls.length} call(s) collected`;
     } catch (err) {
@@ -448,8 +448,8 @@ export class ControlTunnels {
    */
   async advance(waitMs = 20_000): Promise<void> {
     await Promise.all(
-      this.store.tunnelRigs().map(async (t) => {
-        if (!t.pod || this.running.has(t.rig) || this.store.rigRetired(t.rig)) return;
+      this.store.tunnels.list().map(async (t) => {
+        if (!t.pod || this.running.has(t.rig) || this.store.retired.get(t.rig)) return;
         if ((this.retry.get(t.rig)?.at ?? 0) > this.now()) return;
         this.running.add(t.rig);
         try {

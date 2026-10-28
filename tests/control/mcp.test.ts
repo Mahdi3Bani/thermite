@@ -100,7 +100,7 @@ describe("control over MCP", () => {
         ["copied", "words of the caller's own"],
       ],
     );
-    const audit = store.listAudit(100).map((a) => a.action);
+    const audit = store.auditLog.list(100).map((a) => a.action);
     assert.ok(audit.includes("mcp:issue_command"));
     const denied = await control.request("/mcp", { method: "POST", body: "{}" });
     assert.equal(denied.status, 401);
@@ -197,8 +197,8 @@ describe("control over MCP", () => {
     // The queue and the removal of rules are the owner's: an operator changes them for the
     // owner; an agent may add rules, but never changes the queue or removes a rule.
     const queued = () =>
-      store
-        .listCommands(100)
+      store.commands
+        .list(100)
         .filter((c) => c.kind.startsWith("queue_") || c.kind === "drop_directive").length;
     assert.ok(
       await issue(operator, "queue_add", { run: "js-1", title: "unroll the loop" }),
@@ -255,18 +255,26 @@ describe("control over MCP", () => {
         rigs: {},
       },
     });
-    store.addGpuCloud({
+    store.gpuClouds.add({
       name: "runpod",
       kind: "runpod",
       key_sealed: "sealed-cloud-key-000",
       key_hint: "…9z9z",
       by: "owner:ui",
     });
-    store.setGpuCloudFacts("runpod", {
+    store.gpuClouds.setFacts("runpod", {
       facts: { gpus: [{ id: "a4000", name: "RTX A4000", price_secure: 0.25 }], pods: [] },
     });
-    store.audit("owner:ui", "refused", { path: "/ui/settings/add", why: "a name is lowercase" });
-    store.audit("control", "failed", { method: "GET", path: "/ui/x", status: 500, error: "boom" });
+    store.auditLog.add("owner:ui", "refused", {
+      path: "/ui/settings/add",
+      why: "a name is lowercase",
+    });
+    store.auditLog.add("control", "failed", {
+      method: "GET",
+      path: "/ui/x",
+      status: 500,
+      error: "boom",
+    });
 
     const operator = await mcpClient(control, "operator-token-abcdef");
     const providers = text(await operator.callTool({ name: "providers", arguments: {} }));
@@ -293,7 +301,7 @@ describe("control over MCP", () => {
     );
     assert.ok(all.entries.some((e) => e.action === "mcp:providers"));
     // Paging (goal 015): a page at a time, older then newer, every entry once, filters kept.
-    for (let i = 0; i < 5; i++) store.audit("owner:ui", `step_${i}`, { i });
+    for (let i = 0; i < 5; i++) store.auditLog.add("owner:ui", `step_${i}`, { i });
     const call = async (args: Record<string, unknown>): Promise<Page> =>
       text(await operator.callTool({ name: "control_log", arguments: { limit: 3, ...args } }));
     const newest = await call({});
@@ -343,8 +351,12 @@ describe("control over MCP", () => {
         "insert into rig (id, first_seen, last_seen, last_cursor, ledger_id, summary, report_at) values (?, ?, ?, 0, null, '{}', ?)",
       )
       .run("cpu-1", new Date().toISOString(), new Date().toISOString(), new Date().toISOString());
-    store.putProvider({ name: "zen", type: "opencode", base_url: "https://opencode.ai/zen/v1" });
-    store.setProviderModels("zen", [{ id: "deepseek-v4.1-flash-free" }]);
+    store.modelProviders.put({
+      name: "zen",
+      type: "opencode",
+      base_url: "https://opencode.ai/zen/v1",
+    });
+    store.modelProviders.setModels("zen", [{ id: "deepseek-v4.1-flash-free" }]);
     const operator = await mcpClient(control, "operator-token-abcdef");
     const r = text(
       await operator.callTool({
@@ -353,7 +365,7 @@ describe("control over MCP", () => {
       }),
     );
     assert.equal(r.model, "deepseek-v4.1-flash-free");
-    assert.deepEqual(store.rigModels()["cpu-1"], {
+    assert.deepEqual(store.agentModels.byRig()["cpu-1"], {
       provider: "zen",
       model: "deepseek-v4.1-flash-free",
       harness: "opencode",
@@ -364,13 +376,13 @@ describe("control over MCP", () => {
     })) as { isError?: boolean };
     assert.ok(wrong.isError);
     // The Codex CLI, for a provider OpenAI's Responses API reaches; never for OpenCode's own.
-    store.putProvider({
+    store.modelProviders.put({
       name: "openai",
       type: "openai",
       base_url: "https://api.openai.com/v1",
       key: { sealed: "s1:not-opened-here", hint: "…abcd" },
     });
-    store.setProviderModels("openai", [{ id: "gpt-test" }]);
+    store.modelProviders.setModels("openai", [{ id: "gpt-test" }]);
     const codex = text(
       await operator.callTool({
         name: "set_rig_model",
@@ -378,7 +390,7 @@ describe("control over MCP", () => {
       }),
     );
     assert.match(String(codex.said), /cpu-1 takes gpt-test from "openai" under Codex/);
-    assert.equal(store.rigModels()["cpu-1"]?.harness, "codex");
+    assert.equal(store.agentModels.byRig()["cpu-1"]?.harness, "codex");
     const notCodex = await operator.callTool({
       name: "set_rig_model",
       arguments: {
@@ -390,7 +402,11 @@ describe("control over MCP", () => {
     });
     assert.equal(notCodex.isError, true);
     assert.match(JSON.stringify(notCodex), /Codex runs only with a ChatGPT subscription/);
-    assert.equal(store.rigModels()["cpu-1"]?.harness, "codex", "the refused call changed nothing");
+    assert.equal(
+      store.agentModels.byRig()["cpu-1"]?.harness,
+      "codex",
+      "the refused call changed nothing",
+    );
     await operator.close();
   });
 });

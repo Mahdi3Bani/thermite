@@ -54,7 +54,7 @@ describe("what each lane's trial is doing, in at_work (goal 143)", () => {
       ev("trial_started", { trial: "t-2", lane: "lane-2", family: "contradict", focus: "f2" }),
     ];
     c.ingest(events);
-    c.store.ingest({
+    c.store.rigEvents.ingest({
       rig: "rig-a",
       ledger_id: "ledger-a",
       cursor: events.length,

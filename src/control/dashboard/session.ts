@@ -67,13 +67,13 @@ export function sessionRoutes(app: Hono, dash: Dashboard): void {
     const token = String(form.token ?? "");
     if (!opts.admin.matches(token)) {
       failures.push(now);
-      if (failures.length === 20) store.audit("control", "login_throttled", {});
+      if (failures.length === 20) store.auditLog.add("control", "login_throttled", {});
       return c.redirect("/ui/login", 303);
     }
     const sid = randomBytes(24).toString("base64url");
-    store.createUiSession(hashOf(sid), tokenFp, Date.now() + sessionMs);
+    store.uiSessions.create(hashOf(sid), tokenFp, Date.now() + sessionMs);
     cookie(c, sid);
-    store.audit("owner:ui", "login", {});
+    store.auditLog.add("owner:ui", "login", {});
     return c.redirect("/ui", 303);
   });
 
@@ -96,7 +96,7 @@ export function sessionRoutes(app: Hono, dash: Dashboard): void {
 
   app.post("/ui/logout", (c) => {
     const sid = sessionOf(c);
-    if (sid) store.deleteUiSession(hashOf(sid));
+    if (sid) store.uiSessions.delete(hashOf(sid));
     return c.redirect("/ui/login", 303);
   });
 

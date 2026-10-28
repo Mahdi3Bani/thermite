@@ -66,8 +66,8 @@ export function usageQueryRefusal(raw: unknown): string | undefined {
 export function pricingOf(
   store: ControlStore,
 ): (provider: string | null, model: string, harness: string) => Pricing {
-  const providers = new Map(store.providers().map((p) => [p.name, p]));
-  const owner = new Map(store.modelPrices().map((x) => [`${x.provider}\n${x.model}`, x.price]));
+  const providers = new Map(store.modelProviders.list().map((p) => [p.name, p]));
+  const owner = new Map(store.usage.prices().map((x) => [`${x.provider}\n${x.model}`, x.price]));
   return (provider, model, harness) => {
     const p = provider ? providers.get(provider) : undefined;
     if (p?.type === "claude" || p?.type === "chatgpt" || harness === "claude-code")
@@ -105,10 +105,10 @@ export function usageData(
   const tz = q.tz ?? "UTC";
   const since = usageSince(q.period, now, tz);
   const price = pricingOf(store);
-  const rows = store
-    .usageRows(scope, since)
+  const rows = store.usage
+    .rows(scope, since)
     .map((r) => ({ ...r, pricing: price(r.provider, r.model, r.harness) }));
-  const pods = store.podSpend(scope, since);
+  const pods = store.usage.podSpend(scope, since);
   return { report: usageReport(rows, scope, q.period, since, pods, tz), rows, pods };
 }
 
@@ -136,10 +136,10 @@ export interface PriceView {
 /** Every price model usage uses: the providers' listed ones, then the owner's. */
 export function modelPrices(store: ControlStore): PriceView[] {
   const out: PriceView[] = [];
-  for (const p of store.providers())
+  for (const p of store.modelProviders.list())
     for (const m of p.models)
       if (m.price) out.push({ provider: p.name, model: m.id, price: m.price, source: "list" });
-  for (const x of store.modelPrices())
+  for (const x of store.usage.prices())
     if (!out.some((o) => o.provider === x.provider && o.model === x.model))
       out.push({ provider: x.provider, model: x.model, price: x.price, source: "owner" });
   return out;
@@ -178,7 +178,7 @@ export function setModelPrice(
     };
   }
   const q = r.data;
-  const p = store.provider(q.provider);
+  const p = store.modelProviders.get(q.provider);
   if (!p) return { ok: false, status: 404, error: `Providers has no provider ${q.provider}.` };
   if (p.type === "claude" || p.type === "chatgpt")
     return {
@@ -202,7 +202,7 @@ export function setModelPrice(
   if (q.clear) {
     if (q.input !== undefined || q.output !== undefined || q.cached_input !== undefined)
       return { ok: false, status: 400, error: "Give clear: true alone, or a price." };
-    store.setModelPrice(p.name, q.model, null, by);
+    store.usage.setPrice(p.name, q.model, null, by);
     return {
       ok: true,
       answer: {
@@ -224,7 +224,7 @@ export function setModelPrice(
     cached_input: q.cached_input ?? null,
     output: q.output,
   };
-  store.setModelPrice(p.name, q.model, price, by);
+  store.usage.setPrice(p.name, q.model, price, by);
   return {
     ok: true,
     answer: {

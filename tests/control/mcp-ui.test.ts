@@ -125,7 +125,7 @@ describe("Settings › MCP servers", () => {
     s.fake.down = true;
     const again = await s.post("/ui/settings/mcp/gbrain/check", {});
     assert.match(decodeURIComponent(again.headers.get("location") ?? ""), /can't read its tools/);
-    s.store.putCampaign({
+    s.store.campaigns.put({
       campaign: "q4-gemv",
       version: 1,
       contract: {
@@ -274,7 +274,7 @@ describe("New campaign › MCP servers for the agents", () => {
       }),
     ) as { mcp_servers: unknown };
     assert.deepEqual(kitJson.mcp_servers, uses);
-    assert.deepEqual(s.store.campaignVersions("matmul-speed")[0]?.sources.mcp_servers, uses);
+    assert.deepEqual(s.store.campaigns.versions("matmul-speed")[0]?.sources.mcp_servers, uses);
     const cmd = s.store.db
       .prepare("select signed from command where kind = 'assign_campaign'")
       .get() as { signed: string };

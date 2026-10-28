@@ -64,7 +64,7 @@ export function rigSettingsOf(
   store: ControlStore,
   rig: string,
 ): Pick<RigView, "settings" | "gpu_split"> | undefined {
-  const u = store.rigs().find((x) => x.id === rig);
+  const u = store.reportedRigs.list().find((x) => x.id === rig);
   if (!u) return undefined;
   const summary = u.summary as { settings?: unknown; gpu_split?: unknown } | undefined;
   return { settings: readSettings(summary?.settings), gpu_split: readGpuSplit(summary?.gpu_split) };

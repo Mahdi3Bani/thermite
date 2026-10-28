@@ -29,7 +29,7 @@ export function registerReads(tools: ToolContext): void {
       inputSchema: {},
     },
     audited("list_rigs", () =>
-      store.rigs().map((u) => {
+      store.reportedRigs.list().map((u) => {
         const v = view(u.id);
         return {
           rig: v.id,
@@ -163,7 +163,9 @@ export function registerReads(tools: ToolContext): void {
         limit: z.number().int().min(1).max(50).default(5),
       },
     },
-    audited("rig_reports", (a: { rig?: string; limit: number }) => store.reports(a.limit, a.rig)),
+    audited("rig_reports", (a: { rig?: string; limit: number }) =>
+      store.rigReports.list(a.limit, a.rig),
+    ),
   );
 
   server.registerTool(
@@ -173,6 +175,6 @@ export function registerReads(tools: ToolContext): void {
       description: "Recently issued commands and their delivery status and outcome.",
       inputSchema: { limit: z.number().int().min(1).max(500).default(50) },
     },
-    audited("list_commands", (a: { limit: number }) => store.listCommands(a.limit)),
+    audited("list_commands", (a: { limit: number }) => store.commands.list(a.limit)),
   );
 }

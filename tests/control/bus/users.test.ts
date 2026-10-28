@@ -12,7 +12,6 @@ import {
 } from "../../../src/control/bus/users.ts";
 import { STEP_WORDS } from "../../../src/control/rigs/setup.ts";
 import { SecretBox } from "../../../src/control/secrets.ts";
-import { rigBusKey } from "../../../src/control/store/bus.ts";
 import { ControlStore } from "../../../src/control/store.ts";
 import {
   BUS_ACCOUNT,
@@ -68,9 +67,9 @@ function setup(o: { secrets?: SecretBox; store?: ControlStore } = {}) {
       },
       body: JSON.stringify({ at: new Date().toISOString(), bus_key: busKey }),
     });
-  const audits = (action: string) => s.store.listAudit(50, { action }).map((e) => e.body);
+  const audits = (action: string) => s.store.auditLog.list(50, { action }).map((e) => e.body);
   const steps = (rig: string) =>
-    s.store.rigSetupEvents(rig).filter((e) => e.step.startsWith("bus"));
+    s.store.rigHistory.list(rig).filter((e) => e.step.startsWith("bus"));
   return { ...s, file, server, users, secrets, figures, audits, steps };
 }
 
@@ -82,7 +81,7 @@ describe("each rig's key on the message bus", () => {
     const key = user();
     const r = await s.figures("rig-a", key);
     assert.equal(r.status, 200, await r.clone().text());
-    assert.equal(rigBusKey(s.store.db, "rig-a"), key);
+    assert.equal(s.store.busKeys.rigKey("rig-a"), key);
     const fp = userKeyFingerprint(key);
     assert.deepEqual(s.audits("rig_bus_key_registered"), [{ fingerprint: fp }]);
     assert.deepEqual(
@@ -95,7 +94,7 @@ describe("each rig's key on the message bus", () => {
     const users = accountsIn(s.file)[BUS_ACCOUNT]?.users ?? [];
     assert.deepEqual(users[1], { nkey: key, permissions: rigPermissions("rig-a") });
     // The key is kept apart from the figures, which pages show.
-    assert.equal("bus_key" in (s.store.supervisor("rig-a") ?? {}), false);
+    assert.equal("bus_key" in (s.store.reportedRigs.supervisor("rig-a") ?? {}), false);
     // The same key again changes nothing, and asks no reload.
     assert.equal((await s.figures("rig-a", key)).status, 200);
     assert.equal(s.server.calls.length, 2);
@@ -141,10 +140,14 @@ describe("each rig's key on the message bus", () => {
         assert.ok(!body.error.includes(bad), "the answer does not repeat what was sent");
       }
     }
-    assert.equal(rigBusKey(s.store.db, "rig-a"), undefined);
+    assert.equal(s.store.busKeys.rigKey("rig-a"), undefined);
     assert.deepEqual(s.audits("rig_bus_key"), []);
     assert.deepEqual(s.steps("rig-a"), []);
-    assert.equal(s.store.supervisor("rig-a"), null, "the figures with it are refused whole");
+    assert.equal(
+      s.store.reportedRigs.supervisor("rig-a"),
+      null,
+      "the figures with it are refused whole",
+    );
     assert.equal(s.server.calls.length, calls);
     // Figures without a key are taken as before.
     const r = await s.figures("rig-a", undefined);
@@ -200,13 +203,13 @@ describe("each rig's key on the message bus", () => {
     const key = user();
     await s.figures("rig-a", key);
     const calls = s.server.calls.length;
-    s.store.retireAnyRig("rig-a", "owner:test");
+    s.store.retired.add("rig-a", "owner:test");
     await s.users.sync();
     assert.equal(s.server.calls.length, calls + 1);
     assert.ok(!readFileSync(s.file, "utf8").includes(key));
     assert.equal(accountsIn(s.file)[BUS_ACCOUNT]?.users.length, 1, "control's own alone");
     // Its key stays recorded: brought back, it has its user again.
-    s.store.bringBackRig("rig-a", "owner:test");
+    s.store.retired.bringBack("rig-a", "owner:test");
     await s.users.sync();
     assert.ok(readFileSync(s.file, "utf8").includes(key));
   });

@@ -225,7 +225,7 @@ describe("MCP servers in Settings", () => {
       { name: "spare", url: "https://spare.example.com/mcp", auth: "none" },
       "owner:test",
     );
-    store.putCampaign({
+    store.campaigns.put({
       campaign: "q4-gemv",
       version: 1,
       contract: {
@@ -266,14 +266,14 @@ describe("a campaign whose kit names a server Settings lacks can't start", () =>
 
   test("refused with the server's name and what to do; started once Settings has it", () => {
     const { store, servers } = setup();
-    store.setConfiguredRigs(["rig-a"]);
+    store.enrollments.setConfiguredRigs(["rig-a"]);
     assert.throws(
       () =>
         assign(store, { contract, mcp_servers: [{ name: "paper-search", agents: ["advisors"] }] }),
       /names the MCP server paper-search, and Settings has no server of that name/,
     );
     assert.equal(
-      mcpRefusal(store.db, [{ name: "paper-search", agents: ["workers"] }]).length > 0,
+      mcpRefusal(store, [{ name: "paper-search", agents: ["workers"] }]).length > 0,
       true,
     );
     servers.put(
@@ -287,7 +287,7 @@ describe("a campaign whose kit names a server Settings lacks can't start", () =>
 
   test("a research contract's servers go into its assignment, and a different list is refused", () => {
     const { store, servers } = setup();
-    store.setConfiguredRigs(["rig-a"]);
+    store.enrollments.setConfiguredRigs(["rig-a"]);
     servers.put(
       { name: "gbrain", url: "https://brain.example.com/mcp", auth: "none" },
       "owner:test",
@@ -486,7 +486,10 @@ describe("the update from goal 065's outside knowledge base", () => {
         .all();
       assert.deepEqual(tables, []);
       assert.deepEqual(store.kb().reads("pn"), ["other"]);
-      const audit = store.lastAudit("control", "outside_kb_migrated") as Record<string, unknown>;
+      const audit = store.auditLog.last("control", "outside_kb_migrated") as Record<
+        string,
+        unknown
+      >;
       assert.deepEqual(audit, {
         outside_kb: "team.brain",
         mcp_server: "team-brain",
@@ -534,7 +537,7 @@ describe("control's log lines", () => {
     }
     // Control logs a refused page with the same words it writes to its audit (api.ts): the
     // reason is there (the server answered 401), the key is not.
-    const refused = store.lastAudit("owner:ui", "refused") as { why?: string } | undefined;
+    const refused = store.auditLog.last("owner:ui", "refused") as { why?: string } | undefined;
     assert.match(refused?.why ?? "", /401/);
     assert.ok(!everything(store).includes("brainkeyforthetestsonly"));
   });

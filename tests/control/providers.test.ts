@@ -176,11 +176,11 @@ describe("the first settings page's routes", () => {
       insert into rig_model_route values ('rig-a', 'oc', '2026-10-17');`);
     old.close();
     const store = new ControlStore(path);
-    const p = store.provider("oc");
+    const p = store.modelProviders.get("oc");
     assert.equal(p?.type, "openai");
     assert.equal(p?.key_sealed, "s1:x");
     assert.deepEqual(p?.models, [{ id: "m-1", added: true }]);
-    assert.deepEqual(store.rigModels(), {
+    assert.deepEqual(store.agentModels.byRig(), {
       "rig-a": { provider: "oc", model: "m-1", harness: "pi" },
     });
     assert.equal(

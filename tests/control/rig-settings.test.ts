@@ -57,7 +57,7 @@ function stack() {
     options: { staleAfterMs: 600_000 },
   });
   const report = (rig: string, summary: Record<string, unknown>) =>
-    store.ingest({
+    store.rigEvents.ingest({
       rig,
       ledger_id: `ledger-${rig}`,
       cursor: 0,
@@ -83,8 +83,8 @@ function stack() {
   const set = (body: unknown, rig = "rig-a") => owner("POST", body, rig);
   /** The rig_settings commands waiting for a rig, oldest first. */
   const sent = (rig = "rig-a") =>
-    store
-      .pendingCommands(rig)
+    store.commands
+      .pending(rig)
       .filter((c) => c.envelope.kind === "rig_settings")
       .map((c) => ({ payload: c.envelope.payload, by: c.envelope.issued_by, id: c.envelope.id }));
   return { store, api, call, owner, set, sent, report };
@@ -217,7 +217,7 @@ describe("Edit rig's settings over REST and MCP", () => {
 
   test("REST: nothing differing sends nothing", async () => {
     const s = stack();
-    const before = s.store.listCommands(100).length;
+    const before = s.store.commands.list(100).length;
     for (const body of [
       {},
       { ...DEFAULTS, judge_gpus: 2 },
@@ -233,7 +233,7 @@ describe("Edit rig's settings over REST and MCP", () => {
         said: "Nothing changed.",
       });
     }
-    assert.equal(s.store.listCommands(100).length, before, "no command");
+    assert.equal(s.store.commands.list(100).length, before, "no command");
   });
 
   test("REST: every refusal in words, in the audit log, and nothing sent", async () => {
@@ -287,7 +287,7 @@ describe("Edit rig's settings over REST and MCP", () => {
       assert.match(String(r.body.error), /^bad request: /);
     }
     // A rig control refuses for its version gets no command.
-    s.store.setRigRefusal("rig-b", "Its protocol is older than control's oldest.");
+    s.store.refusals.set("rig-b", "Its protocol is older than control's oldest.");
     assert.deepEqual(await s.set({ lanes: 2 }, "rig-b"), {
       status: 409,
       body: {
@@ -296,8 +296,8 @@ describe("Edit rig's settings over REST and MCP", () => {
     });
     assert.deepEqual(s.sent(), [], "a refusal sends nothing");
     assert.deepEqual(s.sent("rig-b"), []);
-    const refused = s.store
-      .auditPage(100, { action: "refused" })
+    const refused = s.store.auditLog
+      .page(100, { action: "refused" })
       .entries.filter((e) => JSON.stringify(e.body).includes("/settings"));
     assert.ok(refused.length >= cases.length + 8);
     assert.ok(refused.every((e) => e.actor === "owner:api"));
@@ -379,7 +379,7 @@ describe("Edit rig's settings over REST and MCP", () => {
     assert.ok(isError(wrong));
     assert.match(JSON.stringify(wrong), /Input validation error/);
     assert.equal(s.sent().length, before, "a refusal sends nothing");
-    const audit = s.store.auditPage(200, { mcp: true }).entries;
+    const audit = s.store.auditLog.page(200, { mcp: true }).entries;
     assert.ok(audit.some((e) => e.action === "mcp:set_rig_settings"));
     assert.ok(
       audit.some(
@@ -491,7 +491,11 @@ describe("Edit rig's settings over REST and MCP", () => {
     // The harness's owner-only gate passes the operator, who acts for the owner.
     assert.equal(env.service.settings.get().lanes, 3);
     assert.equal(env.service.settings.get().review, false);
-    assert.equal(store.listCommands(10).find((c) => c.id === r.id)?.status, "delivered", "applied");
+    assert.equal(
+      store.commands.list(10).find((c) => c.id === r.id)?.status,
+      "delivered",
+      "applied",
+    );
     // The rig reports its new settings at its next report: the same lanes are then no change.
     await relay();
     const owner = (method: "GET" | "POST", body?: unknown) =>

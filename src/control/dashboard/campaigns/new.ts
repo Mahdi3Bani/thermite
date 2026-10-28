@@ -75,11 +75,11 @@ export function newCampaignRoutes(app: Hono, dash: Dashboard): void {
       newCampaignBody({
         csrf: csrf(c),
         rigs: views(),
-        access: store.gitAccessList(),
+        access: store.gitAccess.list(),
         // The MCP servers in Settings, for the kit's MCP servers block (goal 068).
         mcp: mcpServers.list(),
-        models: store
-          .providers()
+        models: store.modelProviders
+          .list()
           .filter((p) => p.models.length)
           .map((p) => ({
             group: p.name,
@@ -253,7 +253,7 @@ export function newCampaignRoutes(app: Hono, dash: Dashboard): void {
       }
     }
     // Control gave the rig a model it has not taken yet: saved now, started once it has.
-    const pending = store.rigModels()[rig.id];
+    const pending = store.agentModels.byRig()[rig.id];
     if (
       !chosen &&
       startValue === "start" &&

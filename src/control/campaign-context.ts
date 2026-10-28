@@ -50,8 +50,8 @@ export function contractContext(contract: unknown): AgentsContext | undefined {
 /** A campaign's newest contract on control: its newest saved version, or else its newest assignment's. */
 export function campaignContract(store: ControlStore, campaign: string): unknown {
   return (
-    store.campaignVersions(campaign)[0]?.contract ??
-    store.latestAssignments().get(campaign)?.payload.contract
+    store.campaigns.versions(campaign)[0]?.contract ??
+    store.commands.latestAssignments().get(campaign)?.payload.contract
   );
 }
 
@@ -136,8 +136,8 @@ export function setCampaignContext(
     compact_at: req.compactAt,
   });
   if (why) return refuse(why, 400);
-  const saved = store.campaignVersions(campaign)[0];
-  const assigned = store.latestAssignments().get(campaign);
+  const saved = store.campaigns.versions(campaign)[0];
+  const assigned = store.commands.latestAssignments().get(campaign);
   const source = (saved?.contract ?? assigned?.payload.contract) as
     | Record<string, unknown>
     | undefined;
@@ -158,7 +158,7 @@ export function setCampaignContext(
   // Newer than every version a rig may hold: the harness refuses a version that is not newer.
   const assignedVersion = Number((assigned?.payload.contract as { version?: unknown })?.version);
   const version = Math.max(
-    store.nextCampaignVersion(campaign),
+    store.campaigns.nextVersion(campaign),
     Number.isInteger(assignedVersion) ? assignedVersion + 1 : 1,
   );
   const { agents_context: _old, ...rest } = source;
@@ -176,7 +176,7 @@ export function setCampaignContext(
           ),
         ),
       };
-  store.putCampaign({
+  store.campaigns.put({
     campaign,
     version,
     contract: parsed.contract,
@@ -186,7 +186,7 @@ export function setCampaignContext(
     copiedFrom: saved?.copied_from ?? undefined,
     by,
   });
-  store.audit(by, "campaign_context_set", {
+  store.auditLog.add(by, "campaign_context_set", {
     campaign,
     version,
     sha: parsed.sha,
@@ -266,10 +266,12 @@ function ownModel(
 ):
   | { model: string; listed: number; cap?: number | undefined; at?: number | undefined }
   | undefined {
-  const own = agent === "workers" ? store.rigModels()[rig] : store.roleModels(rig)[agent];
+  const own =
+    agent === "workers" ? store.agentModels.byRig()[rig] : store.agentModels.byRole(rig)[agent];
   if (!own) return undefined;
   const listed =
-    store.provider(own.provider)?.models.find((m) => m.id === own.model)?.context_window ?? 0;
+    store.modelProviders.get(own.provider)?.models.find((m) => m.id === own.model)
+      ?.context_window ?? 0;
   return { model: own.model, listed, cap: own.contextCap, at: own.compactAt };
 }
 

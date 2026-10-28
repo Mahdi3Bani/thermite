@@ -149,8 +149,8 @@ export function registerCampaignSettings(tools: ToolContext): void {
   // Archive a campaign, and the dashboard navigation's folders (goal 077): the same functions as
   // the dashboard and REST. The reader may read them; the owner and an operator change them.
   const allViews = () =>
-    store
-      .rigs()
+    store.reportedRigs
+      .list()
       .map((u) =>
         rigView(store, u.id, {
           staleAfterMs: opts.staleAfterMs,

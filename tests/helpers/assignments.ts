@@ -1,4 +1,3 @@
-import { registerAssignment } from "../../src/control/store/runs.ts";
 import type { ControlStore } from "../../src/control/store.ts";
 
 /**
@@ -21,5 +20,11 @@ export function assigned(
       "insert into command (id, rig, kind, signed, issued_by, issued_at, status) values (?, ?, 'assign_campaign', ?, 'owner:ui', ?, 'delivered')",
     )
     .run(id, rig, JSON.stringify({ envelope: { payload } }), at);
-  registerAssignment(store.db, { id, rig, kind: "assign_campaign", issued_at: at, payload });
+  store.runRegistry.registerAssignment({
+    id,
+    rig,
+    kind: "assign_campaign",
+    issued_at: at,
+    payload,
+  });
 }

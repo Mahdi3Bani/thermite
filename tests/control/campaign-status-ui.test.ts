@@ -16,7 +16,7 @@ async function control() {
   // Each event a minute after the one before, so the runs' starts have an order.
   const t0 = Date.now() - 24 * 3600_000;
   const ingest = (events: { kind: string; subject: string; body: Record<string, unknown> }[]) =>
-    store.ingest({
+    store.rigEvents.ingest({
       rig: "rig-a",
       ledger_id: "ledger-a",
       cursor: id,

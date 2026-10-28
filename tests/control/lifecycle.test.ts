@@ -142,8 +142,9 @@ describe("full reset", () => {
         driver,
         staleAfterMs: 180_000,
       });
-    const state = () => String(store.openReset("rig-a")?.state ?? store.resets(1)[0]?.state);
-    const id = store.createReset("rig-a", "owner:test");
+    const state = () =>
+      String(store.fullResets.open("rig-a")?.state ?? store.fullResets.list(1)[0]?.state);
+    const id = store.fullResets.create("rig-a", "owner:test");
     await step();
     assert.equal(state(), "quiescing");
     await relay(); // the pause reaches the harness; the rig reports idle
@@ -160,15 +161,15 @@ describe("full reset", () => {
     await relay(); // the harness's signed report carries it
     await step();
     assert.equal(state(), "verifying");
-    const name = String(store.openReset("rig-a")?.export_name);
+    const name = String(store.fullResets.open("rig-a")?.export_name);
     await step();
     assert.equal(state(), "verifying", "waits until the supervisor reports the export pushed");
-    store.setSupervisor("rig-a", {
+    store.reportedRigs.setSupervisor("rig-a", {
       export: { remote: true, pushed: [name], pushed_commit: "c".repeat(40) },
     });
     await step();
     assert.equal(state(), "awaiting_owner", "the owner checks the pushed commit and confirms");
-    assert.match(String(store.openReset("rig-a")?.detail), /c{40}/);
+    assert.match(String(store.fullResets.open("rig-a")?.detail), /c{40}/);
     confirmReset(store, id, "owner:test");
     await step();
     assert.equal(state(), "wiping");
@@ -243,7 +244,7 @@ describe("leaderboard and propagation", () => {
       subject,
       body,
     });
-    store.ingest({
+    store.rigEvents.ingest({
       rig: "rig-a",
       ledger_id: "la",
       cursor: 0,
@@ -268,7 +269,7 @@ describe("leaderboard and propagation", () => {
         }),
       ],
     });
-    store.ingest({
+    store.rigEvents.ingest({
       rig: "rig-b",
       ledger_id: "lb",
       cursor: 0,
@@ -311,7 +312,7 @@ describe("leaderboard and propagation", () => {
       staleAfterMs: 180_000,
     });
     assert.equal(seq, 2);
-    const cmd = store.pendingCommands("rig-b").find((c) => c.envelope.id === id);
+    const cmd = store.commands.pending("rig-b").find((c) => c.envelope.id === id);
     assert.ok(cmd);
     assert.deepEqual((cmd.envelope.payload as { import: unknown }).import, {
       kind: "champion_patch",

@@ -387,12 +387,12 @@ export function harnessRefusal(
 
 /** Each agent's model, as control keeps them for the rig. */
 export function agentModelsOf(store: ControlStore, rig: string): AgentModels {
-  const w = store.rigModels()[rig];
-  const roles = store.roleModels(rig);
+  const w = store.agentModels.byRig()[rig];
+  const roles = store.agentModels.byRole(rig);
   const of = (role: AgentRole): AgentModel | null => {
     const r = roles[role];
     if (!r) return null;
-    const p = store.provider(r.provider);
+    const p = store.modelProviders.get(r.provider);
     return {
       provider: r.provider,
       model: r.model,
@@ -457,7 +457,7 @@ export const rigModelsAnswer = (store: ControlStore, rig: string, agents: AgentM
   rig,
   agents,
   // null: the supervisor has not reported it (none yet, or an older supervisor).
-  advisors_file: advisorsFileOf(store.supervisor(rig)) ?? null,
+  advisors_file: advisorsFileOf(store.reportedRigs.supervisor(rig)) ?? null,
 });
 
 /**

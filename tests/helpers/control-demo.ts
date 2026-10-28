@@ -15,7 +15,7 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
     events: [number, string, string | null, Record<string, unknown>][],
     summary: Record<string, unknown>,
   ) => {
-    store.ingest({
+    store.rigEvents.ingest({
       rig: id,
       ledger_id: `ledger-${id}`,
       cursor: 0,
@@ -36,7 +36,7 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
     });
   };
   const live = (id: string, lines: [number, Omit<LiveEntry, "seq" | "at">][]) =>
-    store.addLive(
+    store.liveLines.add(
       id,
       `log-${id}`,
       lines.map(([ago, e], i) => ({ seq: i + 1, at: at(ago), ...e })),
@@ -698,7 +698,7 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
     ],
     { jobs: { queued: 0, leased: 0, done: 12 } },
   );
-  store.setSupervisor("rig-c", {
+  store.reportedRigs.setSupervisor("rig-c", {
     at: at(1),
     advisors: {
       teacher_runs: 4,
@@ -712,5 +712,5 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
       usd: 2.4,
     },
   });
-  store.setSupervisor("rig-a", { at: at(1), advisors: null });
+  store.reportedRigs.setSupervisor("rig-a", { at: at(1), advisors: null });
 }

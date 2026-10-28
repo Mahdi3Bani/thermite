@@ -90,8 +90,8 @@ export interface DrainPage {
 
 /** The stops sent for this rig's trials during the drain, newest first. */
 function stopsSent(o: DrainPage): CommandRow[] {
-  return o.store
-    .latestCommands(o.rig, "stop_trial", 20)
+  return o.store.commands
+    .latest(o.rig, "stop_trial", 20)
     .filter((c) => Date.parse(c.issued_at) >= Date.parse(o.drain.since));
 }
 
@@ -135,7 +135,7 @@ export function lastDone(
   o: { store: ControlStore; rig: string; now: number },
   t: { trial: string },
 ): { at: string | null; html: string } {
-  const lines = o.store.liveTail(o.rig, 12, `trial:${t.trial}`);
+  const lines = o.store.liveLines.tail(o.rig, 12, `trial:${t.trial}`);
   const newest = lines.at(-1);
   if (!newest) return { at: null, html: "" };
   const i = lines.map((l) => l.kind).lastIndexOf("tool");

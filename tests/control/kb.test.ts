@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { KnowledgeBase } from "../../src/control/kb.ts";
+import { KnowledgeBase } from "../../src/control/store/kb.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { KbSync } from "../../src/core/kb.ts";
 import { assigned } from "../helpers/assignments.ts";
@@ -19,7 +19,7 @@ function ingest(
   from = 0,
   ledger = `ledger-${rig}`,
 ) {
-  store.ingest({
+  store.rigEvents.ingest({
     rig,
     ledger_id: ledger,
     cursor: from,
@@ -576,7 +576,7 @@ test("a folder holds everything a run produces: the run, its trials, its documen
     assert.match(x.at, /^2026-10-20T01:0\d:00\.000Z$/);
   }
   // The pages are built without the text a source's or a document's event carries.
-  const events = store.events("rig-r", 0, 100, null, { lean: true }) as {
+  const events = store.rigEvents.after("rig-r", 0, 100, null, { lean: true }) as {
     kind: string;
     body: Record<string, unknown>;
   }[];
@@ -586,7 +586,10 @@ test("a folder holds everything a run produces: the run, its trials, its documen
     events.find((e) => e.kind === "source_fetched")?.body.url,
     "https://docs.example.com/guide",
   );
-  const full = store.events("rig-r", 0, 100) as { kind: string; body: Record<string, unknown> }[];
+  const full = store.rigEvents.after("rig-r", 0, 100) as {
+    kind: string;
+    body: Record<string, unknown>;
+  }[];
   assert.equal(full.find((e) => e.kind === "source_fetched")?.body.text, text);
 });
 

@@ -220,7 +220,7 @@ export class RunpodRigs {
   }
 
   private key(cloud: string): string | undefined {
-    const g = this.store.gpuCloud(cloud);
+    const g = this.store.gpuClouds.get(cloud);
     return g ? this.secrets.open(g.key_sealed) : undefined;
   }
 
@@ -267,7 +267,7 @@ export class RunpodRigs {
       );
     // A fresh read: prices and stock change.
     const facts = await readRunpod(key, this.fetchImpl);
-    this.store.setGpuCloudFacts(cloud, { facts });
+    this.store.gpuClouds.setFacts(cloud, { facts });
     const gpu = facts.gpus.find((g) => g.id === gpuName || g.name === gpuName);
     if (!gpu) throw new Error(`RunPod lists no GPU type "${gpuName}"`);
     if (cloudType === "SECURE" ? !gpu.secure : !gpu.community)
@@ -317,7 +317,7 @@ export class RunpodRigs {
           minted.env.THERMITE_TUNNEL_PREFIX,
         ])
           err.message = err.message.replaceAll(secret, "***");
-      this.store.dropTunnelRig(minted.rig, by);
+      this.store.tunnels.drop(minted.rig, by);
       // RunPod's stock changes by the minute: say so, and what to do, in words.
       const busy = noFreeGpu(err);
       if (busy)
@@ -341,7 +341,7 @@ export class RunpodRigs {
           "warn",
         ),
       );
-      this.store.dropTunnelRig(minted.rig, by);
+      this.store.tunnels.drop(minted.rig, by);
       throw err;
     }
     const now = this.iso();
@@ -373,14 +373,14 @@ export class RunpodRigs {
       error: null,
       notes: [],
     };
-    this.store.addRunpodRig({ rig: minted.rig, cloud, pod: pod.id, state, by });
-    this.store.rigSetupEvent(
+    this.store.runpod.addRig({ rig: minted.rig, cloud, pod: pod.id, state, by });
+    this.store.rigHistory.add(
       minted.rig,
       "runpod_launched",
       true,
       `by ${by}: pod ${pod.id}, ${count} × ${gpu.name} on ${cloudType === "SECURE" ? "Secure" : "Community"} cloud${state.price_per_hr === null ? "" : `, ${money(state.price_per_hr)} an hour`}`,
     );
-    this.store.audit(by, "runpod_rig_launched", {
+    this.store.auditLog.add(by, "runpod_rig_launched", {
       rig: minted.rig,
       cloud,
       pod: pod.id,
@@ -398,7 +398,7 @@ export class RunpodRigs {
 
   /** Sets or clears a rig's spend limit and idle stop. The owner's alone. */
   limits(rig: string, change: LimitsChange, by: string): RunpodRigView {
-    const r = this.store.runpodRig(rig);
+    const r = this.store.runpod.rig(rig);
     if (!r) throw new Error(`no rig ${rig} on a GPU cloud`);
     checkLimits(change);
     const s = r.state as RigState;
@@ -408,11 +408,11 @@ export class RunpodRigs {
       if (change.idle_stop_minutes !== null && s.idle_stop_minutes === null)
         s.idle_from = this.iso();
       s.idle_stop_minutes = change.idle_stop_minutes;
-      if (s.idle_stop_minutes !== null && this.store.tunnelRig(rig)?.enrolled_at)
+      if (s.idle_stop_minutes !== null && this.store.tunnels.get(rig)?.enrolled_at)
         this.noteWork(rig, s, this.now());
     }
-    this.store.saveRunpodRig(rig, s, r.active);
-    this.store.audit(by, "runpod_rig_limits", {
+    this.store.runpod.saveRig(rig, s, r.active);
+    this.store.auditLog.add(by, "runpod_rig_limits", {
       rig,
       spend_limit_usd: s.spend_limit_usd,
       idle_stop_minutes: s.idle_stop_minutes,
@@ -428,7 +428,7 @@ export class RunpodRigs {
     if (this.busy) return;
     this.busy = true;
     try {
-      for (const r of this.store.runpodRigs({ active: true }))
+      for (const r of this.store.runpod.rigs({ active: true }))
         await this.locked(r.rig, () => this.step(r.rig));
     } finally {
       this.busy = false;
@@ -475,13 +475,13 @@ export class RunpodRigs {
   }
 
   private async step(rig: string): Promise<void> {
-    const r = this.store.runpodRig(rig);
+    const r = this.store.runpod.rig(rig);
     if (!r?.active) return;
     const s = r.state as RigState;
     const key = this.key(r.cloud);
     if (!key) {
       s.error = `the GPU cloud "${r.cloud}" was deleted, so control can't follow pod ${r.pod}: see RunPod's console`;
-      this.store.saveRunpodRig(rig, s, r.active);
+      this.store.runpod.saveRig(rig, s, r.active);
       return;
     }
     const nowMs = this.now();
@@ -502,7 +502,7 @@ export class RunpodRigs {
         s.running_since = null;
         s.op = null;
         s.notes.push("RunPod no longer has the pod.");
-        this.store.rigSetupEvent(rig, "runpod_gone", false, "it was removed outside Thermite");
+        this.store.rigHistory.add(rig, "runpod_gone", false, "it was removed outside Thermite");
         active = false;
       } else {
         s.status = pod.status;
@@ -527,8 +527,8 @@ export class RunpodRigs {
       log("control", "runpod rig step failed", { rig, error: s.error }, "error");
     }
     // A refusal stays until a newer step in the rig's history (a full reset, say), not a read.
-    if (s.refusal && this.store.rigSetupEvents(rig).length > s.refusal.steps) s.refusal = null;
-    this.store.saveRunpodRig(rig, s, active);
+    if (s.refusal && this.store.rigHistory.list(rig).length > s.refusal.steps) s.refusal = null;
+    this.store.runpod.saveRig(rig, s, active);
   }
 
   /** The owner's limits, if set: a pod that reached one is stopped, its results sent out first. */
@@ -539,7 +539,7 @@ export class RunpodRigs {
     nowMs: number,
     seenAt: number | null,
   ): Promise<void> {
-    const enrolledAt = this.store.tunnelRig(r.rig)?.enrolled_at ?? null;
+    const enrolledAt = this.store.tunnels.get(r.rig)?.enrolled_at ?? null;
     if (s.idle_stop_minutes !== null && enrolledAt) this.noteWork(r.rig, s, nowMs);
     const spent = spentBy(s, nowMs);
     let why: "spend_limit" | "idle_stop" | undefined;
@@ -564,7 +564,7 @@ export class RunpodRigs {
 
   /** A rig control follows, its state and its key; throws, in words, when there is none. */
   private ready(rig: string): { r: StoredRunpodRig; s: RigState; key: string } {
-    const r = this.store.runpodRig(rig);
+    const r = this.store.runpod.rig(rig);
     if (!r) throw new Error(`no rig ${rig} on a GPU cloud`);
     const key = this.key(r.cloud);
     if (!key)
@@ -589,7 +589,7 @@ export class RunpodRigs {
         await fn(r, s, key);
       } finally {
         if (JSON.stringify(s) !== before)
-          this.store.saveRunpodRig(rig, s, s.status !== "TERMINATED");
+          this.store.runpod.saveRig(rig, s, s.status !== "TERMINATED");
       }
       return this.view(rig) as RunpodRigView;
     });
@@ -618,9 +618,9 @@ export class RunpodRigs {
    * reached, no GPU free at RunPod, a full reset under way).
    */
   wake(rig: string, by: string, why?: string): Promise<string | null> {
-    if (!this.store.runpodRig(rig)?.active) return Promise.resolve(null);
+    if (!this.store.runpod.rig(rig)?.active) return Promise.resolve(null);
     return this.locked(rig, async () => {
-      const r = this.store.runpodRig(rig);
+      const r = this.store.runpod.rig(rig);
       if (!r?.active) return null;
       const s = r.state as RigState;
       if (s.op?.kind === "stop")
@@ -639,7 +639,7 @@ export class RunpodRigs {
       try {
         await this.life.start(r, s, key, by, why);
       } finally {
-        if (JSON.stringify(s) !== before) this.store.saveRunpodRig(rig, s, r.active);
+        if (JSON.stringify(s) !== before) this.store.runpod.saveRig(rig, s, r.active);
       }
       return `${rig}'s pod was stopped: control started it. The run starts once the pod runs.`;
     });
@@ -667,8 +667,8 @@ export class RunpodRigs {
    * step also in words (null for another kind of step, such as a model download).
    */
   history(rig: string) {
-    return this.store
-      .rigSetupEvents(rig)
+    return this.store.rigHistory
+      .list(rig)
       .map((e) => ({ ...e, words: RUNPOD_STEP_WORDS[e.step] ?? null }));
   }
 
@@ -682,7 +682,7 @@ export class RunpodRigs {
     rig: string,
     o: { tail?: number | undefined; source?: "container" | "system" | undefined } = {},
   ): Promise<PodLogRead> {
-    const r = this.store.runpodRig(rig);
+    const r = this.store.runpod.rig(rig);
     if (!r) return Promise.reject(new Error(`no rig ${rig} on a GPU cloud`));
     const k = `${rig}\n${o.tail ?? ""}\n${o.source ?? ""}`;
     const going = this.logReads.get(k);
@@ -719,13 +719,13 @@ export class RunpodRigs {
   }
 
   view(rig: string): RunpodRigView | undefined {
-    const r = this.store.runpodRig(rig);
-    return r ? runpodRigView(r, this.store.tunnelRig(rig), this.now()) : undefined;
+    const r = this.store.runpod.rig(rig);
+    return r ? runpodRigView(r, this.store.tunnels.get(rig), this.now()) : undefined;
   }
 
   list(cloud?: string): RunpodRigView[] {
-    return this.store
-      .runpodRigs({ cloud })
-      .map((r) => runpodRigView(r, this.store.tunnelRig(r.rig), this.now()));
+    return this.store.runpod
+      .rigs({ cloud })
+      .map((r) => runpodRigView(r, this.store.tunnels.get(r.rig), this.now()));
   }
 }

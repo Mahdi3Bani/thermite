@@ -13,7 +13,7 @@ function report(
   ledger: string,
   events: [string, string, object][],
 ) {
-  store.ingest({
+  store.rigEvents.ingest({
     rig,
     ledger_id: ledger,
     cursor: 0,
@@ -48,7 +48,7 @@ describe("a run's name is used once on control (goal 170)", () => {
 
   test("a used name is refused on every rig, also after a full reset; a failed one is free", () => {
     const store = new ControlStore(":memory:");
-    store.setConfiguredRigs(["rig-a", "rig-b"]);
+    store.enrollments.setConfiguredRigs(["rig-a", "rig-b"]);
     const first = assign(store, "rig-a", "sort-speed-1");
     // On its way: refused on the other rig too, and Start a run names the next.
     assert.throws(
@@ -57,7 +57,7 @@ describe("a run's name is used once on control (goal 170)", () => {
     );
     assert.equal(nextRunName(store, "sort-speed"), "sort-speed-2");
     // The rig ran it, then a full reset gave it a new ledger: the name stays used.
-    store.ackCommand("rig-a", first.id, "delivered", { source: "harness" });
+    store.commands.ack("rig-a", first.id, "delivered", { source: "harness" });
     report(store, "rig-a", "ledger-1", [
       ["run_created", "sort-speed-1", { campaign: "sort-speed" }],
     ]);
@@ -65,7 +65,7 @@ describe("a run's name is used once on control (goal 170)", () => {
     assert.throws(() => assign(store, "rig-a", "sort-speed-1"), /was used already, on rig-a/);
     // An assignment that failed started nothing: its name is free again.
     const failed = assign(store, "rig-b", "sort-speed-7");
-    store.ackCommand("rig-b", failed.id, "failed", { error: "staging failed" });
+    store.commands.ack("rig-b", failed.id, "failed", { error: "staging failed" });
     assert.ok(assign(store, "rig-b", "sort-speed-7").id);
   });
 
@@ -80,11 +80,15 @@ describe("a run's name is used once on control (goal 170)", () => {
       base_commit: "c".repeat(40),
     });
     report(store, "rig-a", "ledger-1", [["champion_published", "r-1", published(old)]]);
-    assert.equal(store.putChampionPatch("rig-a", "r-1", 2, old), "stored");
+    assert.equal(store.championPatches.put("rig-a", "r-1", 2, old), "stored");
     // A run of the same name in the rig's next ledger publishes its own champion 2.
     report(store, "rig-a", "ledger-2", [["champion_published", "r-1", published(now)]]);
-    assert.equal(store.championPatch("rig-a", "r-1", 2), undefined, "not the old run's patch");
-    assert.equal(store.putChampionPatch("rig-a", "r-1", 2, now), "stored");
-    assert.equal(store.championPatch("rig-a", "r-1", 2)?.patch.toString(), now.toString());
+    assert.equal(
+      store.championPatches.get("rig-a", "r-1", 2),
+      undefined,
+      "not the old run's patch",
+    );
+    assert.equal(store.championPatches.put("rig-a", "r-1", 2, now), "stored");
+    assert.equal(store.championPatches.get("rig-a", "r-1", 2)?.patch.toString(), now.toString());
   });
 });

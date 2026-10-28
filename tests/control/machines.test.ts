@@ -92,7 +92,7 @@ describe("machines in Providers", () => {
     });
     assert.match(added, /"gpu-box-1" is added. Compare its host key below/);
     // Control made the key: its public half is shown, its private half sealed.
-    const machine = s.store.machine("gpu-box-1");
+    const machine = s.store.machines.get("gpu-box-1");
     assert.ok(machine);
     assert.match(s.secrets.open(machine.key_sealed), /OPENSSH PRIVATE KEY/);
     let page = await s.page("/ui/settings");
@@ -162,7 +162,7 @@ describe("machines in Providers", () => {
       /read the machine/,
     );
     assert.match(await s.post("/ui/settings/machines/box/delete", {}), /"box" is deleted/);
-    assert.equal(s.store.machine("box"), undefined);
+    assert.equal(s.store.machines.get("box"), undefined);
   });
 
   test("bad addresses, users and ports are refused before anything connects", async () => {
@@ -180,7 +180,7 @@ describe("machines in Providers", () => {
     assert.match(await add({ address: "-oProxyCommand=id" }), /host name or an IP address/);
     assert.match(await add({ user: "root;id" }), /Unix account name/);
     assert.match(await add({ port: "70000" }), /from 1 to 65535/);
-    assert.equal(s.store.machines().length, 0);
+    assert.equal(s.store.machines.list().length, 0);
   });
 
   test("an install runs only with the owner's yes, for the exact script shown, once", async () => {
@@ -249,12 +249,12 @@ describe("machines in Providers", () => {
       /already running/,
     );
     // The approval is recorded, and can't be used again.
-    const [inst] = s.store.machineInstalls("box");
+    const [inst] = s.store.machines.installs("box");
     assert.equal(inst?.approved_by, "owner:ui");
-    assert.equal(s.store.startInstall(inst?.id ?? 0, "box", "nvidia_toolkit", sha), false);
+    assert.equal(s.store.machines.startInstall(inst?.id ?? 0, "box", "nvidia_toolkit", sha), false);
     finish();
     await new Promise((r) => setTimeout(r, 20));
-    assert.equal(s.store.machineInstalls("box")[0]?.ok, true);
+    assert.equal(s.store.machines.installs("box")[0]?.ok, true);
     assert.match(
       await s.page("/ui/settings"),
       /Last install: NVIDIA(&#39;|')s container toolkit, allowed by owner:ui, <span class="chip ok">done/,
@@ -308,15 +308,15 @@ describe("machines in Providers", () => {
       await s.post("/ui/rigs/add", { machine: "box", rig: "Box A" }),
       /A rig's name is 2 to 40 characters of a-z, 0-9 and -/,
     );
-    assert.equal(s.store.machineRigs().length, 0);
+    assert.equal(s.store.machines.rigs().length, 0);
     assert.equal(await s.post("/ui/rigs/add", { machine: "box", rig: "box-a" }), "/ui/rigs/box-a");
     await new Promise((r) => setTimeout(r, 20));
     // Enrolled with a token of its own; the deploy script carries it, and the units the CPU image.
-    assert.ok(s.store.enrolledRig("box-a"));
+    assert.ok(s.store.enrollments.rig("box-a"));
     assert.equal(scripts.length, 1);
     assert.match(scripts[0] ?? "", /Image=registry\.example\.com\/thermite\/harness:1/);
     assert.match(scripts[0] ?? "", /Environment=CONTROL_URL=https:\/\/control\.example\.com/);
-    assert.equal(s.store.machineRig("box-a")?.status, "starting");
+    assert.equal(s.store.machines.rig("box-a")?.status, "starting");
     let page = await s.page("/ui/rigs/box-a");
     assert.match(page, /Control is setting box-a up on box/);
     assert.match(page, /Enrolled with control: a token of its own/);
@@ -331,7 +331,7 @@ describe("machines in Providers", () => {
       scripts[1] ?? "",
       /systemctl --user stop thermite-box-a-supervisor\.service thermite-box-a-harness\.service/,
     );
-    assert.equal(s.store.machineRig("box-a")?.status, "stopped");
+    assert.equal(s.store.machines.rig("box-a")?.status, "stopped");
     assert.match(await s.post("/ui/rigs/box-a/machine/start", {}), /ok=Started/);
     assert.match(
       await s.post("/ui/rigs/box-a/machine/remove", { confirm: "remove" }),
@@ -339,20 +339,20 @@ describe("machines in Providers", () => {
     );
     // Refused while its results have not left it (goal 165), with how to get them out.
     const exports = (waiting: number) => ({ export: { remote: false, to: "control", waiting } });
-    s.store.setSupervisor("box-a", exports(2));
+    s.store.reportedRigs.setSupervisor("box-a", exports(2));
     assert.match(
       await s.post("/ui/rigs/box-a/machine/remove", { confirm: "remove box-a" }),
       /box-a still holds results: 2 exports wait on the rig to go to control\. Use Export/,
     );
-    assert.equal(s.store.machineRig("box-a")?.status, "running");
+    assert.equal(s.store.machines.rig("box-a")?.status, "running");
     assert.equal(scripts.length, 3);
-    s.store.setSupervisor("box-a", exports(0));
+    s.store.reportedRigs.setSupervisor("box-a", exports(0));
     assert.match(
       await s.post("/ui/rigs/box-a/machine/remove", { confirm: "remove box-a" }),
       /ok=Removed/,
     );
-    assert.equal(s.store.machineRig("box-a")?.status, "removed");
-    assert.equal(s.store.enrolledRig("box-a"), undefined);
+    assert.equal(s.store.machines.rig("box-a")?.status, "removed");
+    assert.equal(s.store.enrollments.rig("box-a"), undefined);
     page = await s.page("/ui/rigs/box-a");
     assert.match(page, /Removed from the machine/);
   });

@@ -24,7 +24,7 @@ const HOUR = 3_600_000;
 function setup(o: { noCapacity?: boolean; image?: string | undefined } = {}) {
   const store = new ControlStore(":memory:");
   const secrets = SecretBox.ephemeral();
-  store.addGpuCloud({
+  store.gpuClouds.add({
     name: "runpod",
     kind: "runpod",
     key_sealed: secrets.seal(KEY),
@@ -61,7 +61,7 @@ function setup(o: { noCapacity?: boolean; image?: string | undefined } = {}) {
   /** The rig's harness reports these events at control's clock now, as its signed reports would. */
   let seq = 0;
   const report = (rig: string, ...events: [kind: string, subject: string, body?: object][]) => {
-    store.ingest({
+    store.rigEvents.ingest({
       rig,
       ledger_id: "l1",
       cursor: seq,
@@ -118,7 +118,7 @@ describe("rigs on RunPod: the launch", () => {
     assert.equal(body.env.THERMITE_TUNNEL_PORT, "8790");
     assert.ok(!JSON.stringify(body).includes(KEY), "control's RunPod key never goes to the pod");
     // Control follows the pod in pull mode, with the rig's settings for a GPU rig.
-    const t = s.store.tunnelRig(v.rig);
+    const t = s.store.tunnels.get(v.rig);
     assert.equal(t?.pod, "pod1");
     assert.equal(t?.url, podPortUrl("pod1", 8790));
     assert.deepEqual(t?.config.env, { THERMITE_TARGET: "cuda-gpu", THERMITE_GPUS: "0" });
@@ -131,7 +131,7 @@ describe("rigs on RunPod: the launch", () => {
     assert.equal(v.idle_stop_minutes, DEFAULT_IDLE_STOP_MINUTES, "the default: none, until set");
     assert.equal(v.idle_stop_minutes, null);
     assert.equal(v.enrolled_at, null);
-    const audit = s.store.listAudit(10).find((a) => a.action === "runpod_rig_launched");
+    const audit = s.store.auditLog.list(10).find((a) => a.action === "runpod_rig_launched");
     assert.equal(audit?.actor, "owner:api");
     assert.equal((audit?.body as { pod?: string } | undefined)?.pod, "pod1");
   });
@@ -162,7 +162,7 @@ describe("rigs on RunPod: the launch", () => {
     assert.deepEqual(body?.mounts, { persistent: { size: 300, path: "/workspace" } });
     assert.equal(v.rig, "big-rig");
     assert.ok(body?.env.THERMITE_TUNNEL_ENROLL_UNTIL);
-    assert.deepEqual(s.store.tunnelRig("big-rig")?.config.env, {
+    assert.deepEqual(s.store.tunnels.get("big-rig")?.config.env, {
       THERMITE_TARGET: "cuda-gpu",
       THERMITE_GPUS: "0,1",
       THERMITE_JUDGE_GPUS: "1",
@@ -204,8 +204,8 @@ describe("rigs on RunPod: the launch", () => {
     );
     for (const x of [s, noImage]) {
       assert.deepEqual(x.created(), [], "no pod was asked for");
-      assert.deepEqual(x.store.tunnelRigs(), []);
-      assert.deepEqual(x.store.runpodRigs(), []);
+      assert.deepEqual(x.store.tunnels.list(), []);
+      assert.deepEqual(x.store.runpod.rigs(), []);
     }
   });
 
@@ -215,13 +215,13 @@ describe("rigs on RunPod: the launch", () => {
       s.rigs.launch("runpod", { gpu: "RTX A4000", rig: "rig-x" }, "owner:api"),
       /^Error: RunPod has no 1 × .+ free on Secure cloud now: RunPod answered 400 .*no capacity for that GPU.*\. No pod was started and nothing is billed\. Choose another GPU, or try again in a few minutes\.$/,
     );
-    assert.equal(s.store.tunnelRig("rig-x"), undefined);
-    assert.deepEqual(s.store.runpodRigs(), []);
-    assert.ok(s.store.listAudit(10).some((a) => a.action === "tunnel_rig_dropped"));
+    assert.equal(s.store.tunnels.get("rig-x"), undefined);
+    assert.deepEqual(s.store.runpod.rigs(), []);
+    assert.ok(s.store.auditLog.list(10).some((a) => a.action === "tunnel_rig_dropped"));
     // The name is free again.
     const ok = setup();
     await ok.rigs.launch("runpod", { gpu: "RTX A4000", rig: "rig-x" }, "owner:api");
-    assert.ok(ok.store.tunnelRig("rig-x")?.pod);
+    assert.ok(ok.store.tunnels.get("rig-x")?.pod);
   });
 
   test("each pod gets its own snapshot key, which goes to RunPod's settings and nowhere else", async () => {
@@ -349,7 +349,7 @@ describe("rigs on RunPod: price, spend and the owner's limits", () => {
     assert.equal(stopped.status, "EXITED");
     assert.equal(stopped.spend_usd, 1);
     assert.match(stopped.notes.join(" "), /reached the spend limit you set \(\$1\.00\)/);
-    const audit = s.store.listAudit(10).find((a) => a.action === "runpod_rig_stopped");
+    const audit = s.store.auditLog.list(10).find((a) => a.action === "runpod_rig_stopped");
     assert.deepEqual(audit?.body, { rig: v.rig, pod: "pod1", why: "spend_limit", spend_usd: 1 });
     // Stopped, it costs nothing more and is not stopped again.
     await s.advance(10 * HOUR);
@@ -392,7 +392,7 @@ describe("rigs on RunPod: price, spend and the owner's limits", () => {
     assert.deepEqual(s.cloud.stops(), []);
     assert.equal(s.rigs.view(v.rig)?.idle_since, null);
     // Enrolled, with a lane's trial in progress: at work, however long the trial takes.
-    assert.ok(s.store.pinTunnelRig(v.rig, "sign", "box"));
+    assert.ok(s.store.tunnels.pin(v.rig, "sign", "box"));
     s.report(v.rig, runCreated(), ["trial_started", RUN, { lane: "lane-1", trial: "t-1" }]);
     for (let i = 0; i < 4; i++) await s.advance(20 * 60_000);
     assert.deepEqual(s.cloud.stops(), [], "a trial is in progress");
@@ -432,7 +432,7 @@ describe("rigs on RunPod: price, spend and the owner's limits", () => {
       { gpu: "RTX A4000", idle_stop_minutes: 30 },
       "owner:api",
     );
-    assert.ok(s.store.pinTunnelRig(v.rig, "sign", "box"));
+    assert.ok(s.store.tunnels.pin(v.rig, "sign", "box"));
     // The run runs, but no trial is in progress and no judge job waits: it waits for the owner.
     s.report(v.rig, runCreated(), ["promotion_awaiting_approval", RUN, { attempt: "a-1" }]);
     await s.advance(20 * 60_000);
@@ -452,7 +452,7 @@ describe("rigs on RunPod: price, spend and the owner's limits", () => {
       { gpu: "RTX A4000", idle_stop_minutes: 30 },
       "owner:api",
     );
-    assert.ok(s.store.pinTunnelRig(v.rig, "sign", "box"));
+    assert.ok(s.store.tunnels.pin(v.rig, "sign", "box"));
     s.report(v.rig, runCreated());
     await s.advance(20 * 60_000);
     // The planner planned a round, 20 minutes in: the idle time counts from here.
@@ -470,7 +470,7 @@ describe("rigs on RunPod: price, spend and the owner's limits", () => {
       { gpu: "RTX A4000", idle_stop_minutes: 30 },
       "owner:api",
     );
-    assert.ok(s.store.pinTunnelRig(v.rig, "sign", "box"));
+    assert.ok(s.store.tunnels.pin(v.rig, "sign", "box"));
     // A job queued for the run, then the run paused: the job waits for the resume.
     s.report(
       v.rig,
@@ -496,7 +496,7 @@ describe("rigs on RunPod: price, spend and the owner's limits", () => {
   test("limits are set and cleared later; an idle stop set later counts from then", async () => {
     const s = setup();
     const v = await s.rigs.launch("runpod", { gpu: "RTX A4000" }, "owner:api");
-    s.store.pinTunnelRig(v.rig, "sign", "box");
+    s.store.tunnels.pin(v.rig, "sign", "box");
     await s.advance(3 * HOUR);
     assert.deepEqual(s.cloud.stops(), [], "idle for hours, but no idle stop is set");
     const set = s.rigs.limits(v.rig, { idle_stop_minutes: 60, spend_limit_usd: 100 }, "owner:api");
@@ -510,7 +510,7 @@ describe("rigs on RunPod: price, spend and the owner's limits", () => {
     assert.deepEqual(s.cloud.stops(), []);
     assert.throws(() => s.rigs.limits(v.rig, { spend_limit_usd: -1 }, "o"), /above 0/);
     assert.throws(() => s.rigs.limits("nope", {}, "o"), /no rig nope on a GPU cloud/);
-    assert.ok(s.store.listAudit(20).some((a) => a.action === "runpod_rig_limits"));
+    assert.ok(s.store.auditLog.list(20).some((a) => a.action === "runpod_rig_limits"));
   });
 });
 

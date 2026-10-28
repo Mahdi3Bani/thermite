@@ -85,7 +85,7 @@ async function control(o: { ssh?: MachineSsh; kube?: ClusterKubectl } = {}) {
       rigUpdates: updates,
     },
   });
-  store.addMachine({
+  store.machines.add({
     name: "gpu-host-1",
     address: "gpu-host-1.example.com",
     port: 22,
@@ -96,7 +96,7 @@ async function control(o: { ssh?: MachineSsh; kube?: ClusterKubectl } = {}) {
     seen_host_keys: [],
     by: "owner:ui",
   });
-  store.addCluster({
+  store.clusters.add({
     name: "cluster-1",
     kubeconfig_sealed: secrets.seal("apiVersion: v1\nkind: Config\n"),
     context: "c",
@@ -119,7 +119,7 @@ async function control(o: { ssh?: MachineSsh; kube?: ClusterKubectl } = {}) {
   const cursors = new Map<string, number>();
   const report = (rig: string, events: { kind: string; subject: string; body: object }[] = []) => {
     const from = cursors.get(rig) ?? 0;
-    store.ingest({
+    store.rigEvents.ingest({
       rig,
       ledger_id: `ledger-${rig}`,
       cursor: from,
@@ -140,15 +140,15 @@ async function control(o: { ssh?: MachineSsh; kube?: ClusterKubectl } = {}) {
       .prepare("update rig set last_seen = ? where id = ?")
       .run(new Date(Date.now() - ms).toISOString(), rig);
   const builds = (rig: string, b: typeof OLD | BuildInfo) => {
-    store.setRigBuild(rig, "harness", b);
-    store.setRigBuild(rig, "supervisor", b);
+    store.builds.setRig(rig, "harness", b);
+    store.builds.setRig(rig, "supervisor", b);
   };
   return { store, keys, api, page, post, send, report, lastSeen, builds, updates, places };
 }
 
 /** A rig control set up on gpu-host-1, which reports. */
 function machineRig(s: Awaited<ReturnType<typeof control>>, rig: string) {
-  s.store.addMachineRig({
+  s.store.machines.addRig({
     rig,
     machine: "gpu-host-1",
     gpus: [],
@@ -159,7 +159,7 @@ function machineRig(s: Awaited<ReturnType<typeof control>>, rig: string) {
     root: false,
     created_by: "owner:ui",
   });
-  s.store.setMachineRigStatus(rig, "running");
+  s.store.machines.setRigStatus(rig, "running");
   s.report(rig);
 }
 
@@ -225,9 +225,9 @@ describe("a rig's page: its version", () => {
       },
     ]);
     await s.post("/ui/rigs/gpu-1/update");
-    await until(() => s.store.pendingCommands("gpu-1").length === 1);
-    const pause = s.store.pendingCommands("gpu-1")[0]?.envelope;
-    s.store.ackCommand("gpu-1", pause?.id ?? "", "delivered", { source: "harness" });
+    await until(() => s.store.commands.pending("gpu-1").length === 1);
+    const pause = s.store.commands.pending("gpu-1")[0]?.envelope;
+    s.store.commands.ack("gpu-1", pause?.id ?? "", "delivered", { source: "harness" });
     await until(() => /Moving its containers/.test(s.updates.waiting("gpu-1") ?? ""));
     // Control starts again on the same store: the update it kept there ends.
     const after = new RigUpdates({
@@ -238,11 +238,11 @@ describe("a rig's page: its version", () => {
     });
     after.endUnfinished();
     await until(() => after.waiting("gpu-1") === null);
-    const resume = s.store.pendingCommands("gpu-1").find((c) => c.envelope.kind === "resume_run");
+    const resume = s.store.commands.pending("gpu-1").find((c) => c.envelope.kind === "resume_run");
     assert.deepEqual(resume?.envelope.payload, { run: "run-1" });
     assert.deepEqual(
-      s.store
-        .rigSetupEvents("gpu-1")
+      s.store.rigHistory
+        .list("gpu-1")
         .filter((e) => ["update_resumed", "update_failed"].includes(e.step))
         .map((e) => [e.step, e.detail]),
       [
@@ -288,11 +288,11 @@ describe("a rig's page: its version", () => {
     assert.equal(again.status, 400);
     assert.match(String(again.body.said), /^Not sent: An update of gpu-1 is under way/);
     // 1. The run pauses: the rig takes the command.
-    await until(() => s.store.pendingCommands("gpu-1").length === 1);
-    const pause = s.store.pendingCommands("gpu-1")[0]?.envelope;
+    await until(() => s.store.commands.pending("gpu-1").length === 1);
+    const pause = s.store.commands.pending("gpu-1")[0]?.envelope;
     assert.equal(pause?.kind, "pause_run");
     assert.deepEqual(pause?.payload, { run: "run-1", reason: "control updates the rig to 0.1.0" });
-    s.store.ackCommand("gpu-1", pause?.id ?? "", "delivered", { source: "harness" });
+    s.store.commands.ack("gpu-1", pause?.id ?? "", "delivered", { source: "harness" });
     // 2. Control's images, over SSH: pulled first, the units written again, both services restarted.
     await until(() => m.calls.some((c) => c.script.includes("echo updated")));
     const script = m.calls.find((c) => c.script.includes("echo updated"))?.script ?? "";
@@ -304,14 +304,14 @@ describe("a rig's page: its version", () => {
       /restart thermite-gpu-1-harness\.service thermite-gpu-1-supervisor\.service/,
     );
     assert.doesNotMatch(script, /cat > "[^"]*\/secrets\//, "its tokens stay as they are");
-    await until(() => s.store.machineRig("gpu-1")?.images.harness === IMAGES.harness);
+    await until(() => s.store.machines.rig("gpu-1")?.images.harness === IMAGES.harness);
     // 3. A report from 0.1.0.
     await new Promise((r) => setTimeout(r, 20));
     s.builds("gpu-1", CONTROL);
     s.report("gpu-1");
     // 4. The isolation check, then the run resumes.
     await until(() =>
-      s.store.pendingCommands("gpu-1").some((c) => c.envelope.kind === "rig_check"),
+      s.store.commands.pending("gpu-1").some((c) => c.envelope.kind === "rig_check"),
     );
     s.report("gpu-1", [
       { kind: "rig_check_started", subject: "isolation", body: { check: "isolation" } },
@@ -321,12 +321,12 @@ describe("a rig's page: its version", () => {
         body: { check: "isolation", ok: true, summary: "every probe came out as it must" },
       },
     ]);
-    await until(() => s.store.rigSetupEvents("gpu-1").some((e) => e.step === "update_resumed"));
-    const resume = s.store.pendingCommands("gpu-1").find((c) => c.envelope.kind === "resume_run");
+    await until(() => s.store.rigHistory.list("gpu-1").some((e) => e.step === "update_resumed"));
+    const resume = s.store.commands.pending("gpu-1").find((c) => c.envelope.kind === "resume_run");
     assert.deepEqual(resume?.envelope.payload, { run: "run-1" });
     assert.deepEqual(
-      s.store
-        .rigSetupEvents("gpu-1")
+      s.store.rigHistory
+        .list("gpu-1")
         .filter((e) => e.step.startsWith("update_"))
         .map((e) => [e.step, e.ok]),
       [
@@ -351,7 +351,7 @@ describe("a rig's page: its version", () => {
       page,
       /The isolation check after the update <span class="muted">· passed: every probe/,
     );
-    assert.ok(s.store.listAudit(50).some((a) => a.action === "rig_update"));
+    assert.ok(s.store.auditLog.list(50).some((a) => a.action === "rig_update"));
   });
 
   test("Stop and Start on Set up by control, from the page's script: the block follows the change", async () => {
@@ -372,14 +372,14 @@ describe("a rig's page: its version", () => {
     );
     assert.match(String(stop.body.state), /^stopped:\d+$/);
     // A change under way: the block names the route, which is final once the change ended.
-    s.store.setMachineRigStatus("gpu-1", "starting");
+    s.store.machines.setRigStatus("gpu-1", "starting");
     page = await s.page("/ui/rigs/gpu-1");
     assert.match(
       page,
       /data-part="placed" data-follow="\/ui\/rigs\/gpu-1\/place\.json" data-follow-state="starting:\d+"/,
     );
     assert.equal(JSON.parse(await s.page("/ui/rigs/gpu-1/place.json")).final, false);
-    s.store.setMachineRigStatus("gpu-1", "running");
+    s.store.machines.setRigStatus("gpu-1", "running");
     assert.equal(JSON.parse(await s.page("/ui/rigs/gpu-1/place.json")).final, true);
     const bad = await s.send("/ui/rigs/no-such-rig/machine/stop");
     assert.equal(bad.status, 400);
@@ -418,20 +418,20 @@ describe("a rig's page: its version", () => {
     machineRig(s, "gpu-1");
     s.builds("gpu-1", OLD);
     await s.post("/ui/rigs/gpu-1/update");
-    await until(() => s.store.machineRig("gpu-1")?.images.harness === IMAGES.harness);
+    await until(() => s.store.machines.rig("gpu-1")?.images.harness === IMAGES.harness);
     await new Promise((r) => setTimeout(r, 20));
     s.builds("gpu-1", CONTROL);
     s.report("gpu-1");
     await until(() =>
-      s.store.pendingCommands("gpu-1").some((c) => c.envelope.kind === "rig_check"),
+      s.store.commands.pending("gpu-1").some((c) => c.envelope.kind === "rig_check"),
     );
-    const check = s.store.pendingCommands("gpu-1").find((c) => c.envelope.kind === "rig_check");
-    s.store.ackCommand("gpu-1", check?.envelope.id ?? "", "failed", {
+    const check = s.store.commands.pending("gpu-1").find((c) => c.envelope.kind === "rig_check");
+    s.store.commands.ack("gpu-1", check?.envelope.id ?? "", "failed", {
       source: "harness",
       error: "not now: 1 open trial(s) and 0 judge job(s)",
     });
-    await until(() => s.store.rigSetupEvents("gpu-1").some((e) => e.step === "update_isolation"));
-    const step = s.store.rigSetupEvents("gpu-1").find((e) => e.step === "update_isolation");
+    await until(() => s.store.rigHistory.list("gpu-1").some((e) => e.step === "update_isolation"));
+    const step = s.store.rigHistory.list("gpu-1").find((e) => e.step === "update_isolation");
     assert.equal(step?.ok, false);
     assert.equal(step?.detail, "not run: not now: 1 open trial(s) and 0 judge job(s)");
     await until(() => s.updates.waiting("gpu-1") === null);
@@ -447,11 +447,11 @@ describe("a rig's page: its version", () => {
     machineRig(s, "gpu-1");
     s.builds("gpu-1", OLD);
     await s.post("/ui/rigs/gpu-1/update");
-    await until(() => s.store.rigSetupEvents("gpu-1").some((e) => e.step === "update_failed"));
-    const failed = s.store.rigSetupEvents("gpu-1").find((e) => e.step === "update_images");
+    await until(() => s.store.rigHistory.list("gpu-1").some((e) => e.step === "update_failed"));
+    const failed = s.store.rigHistory.list("gpu-1").find((e) => e.step === "update_images");
     assert.equal(failed?.ok, false);
     assert.match(failed?.detail ?? "", /manifest unknown\. The rig keeps the images it had/);
-    assert.equal(s.store.machineRig("gpu-1")?.status, "failed");
+    assert.equal(s.store.machines.rig("gpu-1")?.status, "failed");
     const page = await s.page("/ui/rigs/gpu-1");
     assert.match(page, /data-state="behind"/);
     assert.match(page, /The update stopped/);
@@ -478,7 +478,7 @@ describe("a rig's page: its version", () => {
         "x-thermite-oldest-protocol": "9",
       },
     });
-    assert.equal(s.store.rigRefusal("cpu-9")?.calls, 2);
+    assert.equal(s.store.refusals.get("cpu-9")?.calls, 2);
     s.lastSeen("cpu-9", 2 * 24 * 60 * MIN);
     const page = await s.page("/ui/rigs/cpu-9");
     assert.match(page, /data-state="refused"/);
@@ -504,7 +504,7 @@ describe("a rig's page: its version", () => {
   test("an older rig refused: Update for a rig control set up, and the words for the others", async () => {
     const s = await control();
     machineRig(s, "gpu-1");
-    s.store.setRigRefusal(
+    s.store.refusals.set(
       "gpu-1",
       "Control cannot work with this rig: its harness speaks protocol 0, older than the oldest control works with (1). Update the rig's images.",
     );
@@ -553,7 +553,7 @@ describe("a rig's page: stale and offline", () => {
 
   test("offline: no report for long, a cluster's API that does not answer, and Retire", async () => {
     const s = await control();
-    s.store.addClusterRig({
+    s.store.clusters.addRig({
       rig: "wc-1",
       cluster: "cluster-1",
       namespace: "thermite-wc-1",
@@ -561,7 +561,7 @@ describe("a rig's page: stale and offline", () => {
       spec: { gpus: 0, gpuMode: "device-plugin", storageGi: 10, images: IMAGES },
       created_by: "owner:ui",
     });
-    s.store.setClusterRigStatus("wc-1", "running");
+    s.store.clusters.setRigStatus("wc-1", "running");
     s.report("wc-1");
     s.builds("wc-1", CONTROL);
     s.lastSeen("wc-1", 3 * 60 * MIN + 12 * MIN);
@@ -615,14 +615,16 @@ describe("control looks where a quiet rig runs", () => {
     s.lastSeen("own-1", 6 * MIN);
     assert.deepEqual(await quiet(), ["gpu-1"], "control can't reach own-1");
     assert.deepEqual(await quiet(), [], "once while it is stale");
-    const step = s.store.rigSetupEvents("gpu-1").find((e) => e.step === "check");
+    const step = s.store.rigHistory.list("gpu-1").find((e) => e.step === "check");
     assert.equal(step?.ok, false);
     assert.match(
       step?.detail ?? "",
       /Not both containers run: the harness is running, the supervisor is inactive\./,
     );
     assert.ok(
-      s.store.listAudit(20).some((a) => a.action === "rig_check_place" && a.actor === "control"),
+      s.store.auditLog
+        .list(20)
+        .some((a) => a.action === "rig_check_place" && a.actor === "control"),
     );
     assert.match(
       await s.page("/ui/rigs/gpu-1"),
@@ -637,7 +639,7 @@ describe("control looks where a quiet rig runs", () => {
     assert.deepEqual(await quiet(), []);
     // A refused rig is quiet because control refuses it: not checked.
     s.lastSeen("gpu-1", 60 * MIN);
-    s.store.setRigRefusal(
+    s.store.refusals.set(
       "gpu-1",
       "Control cannot work with this rig: its harness speaks protocol 0. Update the rig's images.",
     );

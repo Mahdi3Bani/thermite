@@ -29,7 +29,7 @@ async function rigsStack() {
   const store = new ControlStore(":memory:");
   const secrets = SecretBox.ephemeral();
   const keys = generateSigningKeys();
-  store.addGpuCloud({
+  store.gpuClouds.add({
     name: "runpod",
     kind: "runpod",
     key_sealed: secrets.seal(FAKE_RUNPOD_KEY),
@@ -64,7 +64,7 @@ async function rigsStack() {
   const cursors = new Map<string, number>();
   const report = (rig: string, events: { kind: string; subject: string; body: object }[] = []) => {
     const from = cursors.get(rig) ?? 0;
-    store.ingest({
+    store.rigEvents.ingest({
       rig,
       ledger_id: `ledger-${rig}`,
       cursor: from,
@@ -95,10 +95,10 @@ async function rigsStack() {
       .prepare("update rig set last_seen = ? where id = ?")
       .run(new Date(Date.now() - ms).toISOString(), rig);
   const builds = (rig: string, b: typeof OLD) => {
-    store.setRigBuild(rig, "harness", b);
-    store.setRigBuild(rig, "supervisor", b);
+    store.builds.setRig(rig, "harness", b);
+    store.builds.setRig(rig, "supervisor", b);
   };
-  store.addMachine({
+  store.machines.add({
     name: "gpu-host-1",
     address: "gpu-host-1.example.com",
     port: 22,
@@ -110,7 +110,7 @@ async function rigsStack() {
     by: "owner:ui",
   });
   for (const rig of ["gpu-1", "gpu-2", "cpu-1", "cpu-2"]) {
-    store.addMachineRig({
+    store.machines.addRig({
       rig,
       machine: "gpu-host-1",
       gpus: [],
@@ -121,7 +121,7 @@ async function rigsStack() {
       root: false,
       created_by: "owner:ui",
     });
-    store.setMachineRigStatus(rig, "running");
+    store.machines.setRigStatus(rig, "running");
   }
   // Live, as control.
   running("gpu-1", "q4-gemv-3");
@@ -131,7 +131,7 @@ async function rigsStack() {
   builds("gpu-2", OLD);
   // Refused for an older version, two days after the last report control took.
   running("cpu-1", "rl-2", "research");
-  store.setRigRefusal(
+  store.refusals.set(
     "cpu-1",
     "Control cannot work with this rig: its harness speaks protocol 0, older than the oldest control works with (1). Update the rig's images.",
   );
@@ -141,7 +141,7 @@ async function rigsStack() {
   builds("cpu-2", CONTROL);
   lastSeen("cpu-2", 6 * MIN);
   // Offline, on a cluster: no report for 3 h 12 min.
-  store.addCluster({
+  store.clusters.add({
     name: "cluster-1",
     kubeconfig_sealed: secrets.seal("apiVersion: v1\nkind: Config\n"),
     context: "c",
@@ -150,7 +150,7 @@ async function rigsStack() {
     slots: [],
     by: "owner:ui",
   });
-  store.addClusterRig({
+  store.clusters.addRig({
     rig: "wc-1",
     cluster: "cluster-1",
     namespace: "thermite-wc-1",
@@ -166,13 +166,13 @@ async function rigsStack() {
     },
     created_by: "owner:ui",
   });
-  store.setClusterRigStatus("wc-1", "running");
+  store.clusters.setRigStatus("wc-1", "running");
   running("wc-1", "q4-gemv-2");
   builds("wc-1", CONTROL);
   lastSeen("wc-1", (3 * 60 + 12) * MIN);
   // Refused because it is newer than control: control needs the update.
   report("new-1");
-  store.setRigRefusal(
+  store.refusals.set(
     "new-1",
     "Control cannot work with this rig: it speaks protocol 9, newer than control's (1). Update control.",
   );
@@ -181,7 +181,7 @@ async function rigsStack() {
   const idle = await pods.launch("runpod", { gpu: "RTX A4000", idle_stop_minutes: 30 }, "owner:ui");
   clock += 30_000;
   await pods.advance();
-  for (const v of [live, idle]) assert.ok(store.pinTunnelRig(v.rig, "sign", "box"));
+  for (const v of [live, idle]) assert.ok(store.tunnels.pin(v.rig, "sign", "box"));
   running(live.rig, "q4-gemv-4");
   report(live.rig, [
     { kind: "trial_started", subject: "q4-gemv-4", body: { lane: "lane-1", trial: "t-1" } },

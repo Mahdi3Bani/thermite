@@ -24,17 +24,17 @@ describe("supervisor relay between control and harness", () => {
 
     // With its commands left to their own loop, a report round does not deliver them.
     let state = await relayOnce({ ...cfg, skipCommands: true }, { cursor: 0 });
-    assert.equal(store.command(id)?.status, "pending");
+    assert.equal(store.commands.get(id)?.status, "pending");
     state = await relayOnce(cfg, state);
-    assert.equal(store.command(id)?.status, "delivered");
+    assert.equal(store.commands.get(id)?.status, "delivered");
     assert.equal(env.service.ledger.runs.get("smoke-1")?.status, "running");
 
     state = await relayOnce(cfg, state);
-    const events = store.events("rig-a", 0, 10_000) as { id: number; kind: string }[];
+    const events = store.rigEvents.after("rig-a", 0, 10_000) as { id: number; kind: string }[];
     assert.equal(events.length, env.service.ledger.latestEventId());
     assert.ok(events.some((e) => e.kind === "run_created"));
     assert.equal(
-      store.ingest({
+      store.rigEvents.ingest({
         rig: "rig-a",
         ledger_id: env.service.ledger.ledgerId(),
         cursor: 0,
@@ -46,7 +46,7 @@ describe("supervisor relay between control and harness", () => {
     );
 
     const foreign = generateSigningKeys();
-    store.enqueueCommand(
+    store.commands.enqueue(
       signEnvelope(
         {
           v: 1,
@@ -95,9 +95,13 @@ describe("supervisor relay between control and harness", () => {
         ++asked === 1 ? ("wait" as const) : { failed: "staging: the repository has no commit" },
     };
     const state = await relayOnce(cfg, { cursor: 0 });
-    assert.equal(store.command(id)?.status, "pending", "it waits while its content is fetched");
+    assert.equal(
+      store.commands.get(id)?.status,
+      "pending",
+      "it waits while its content is fetched",
+    );
     await relayOnce(cfg, state);
-    const cmd = store.command(id) as { status: string; outcome: unknown };
+    const cmd = store.commands.get(id) as { status: string; outcome: unknown };
     assert.equal(cmd.status, "failed");
     assert.match(JSON.stringify(cmd.outcome), /staging: the repository has no commit/);
     assert.equal(harnessCalls, 0);
@@ -132,7 +136,7 @@ describe("supervisor relay between control and harness", () => {
     let state = await relayOnce(cfg, { cursor: 0 });
     state = await relayOnce(cfg, state);
     state = await relayOnce(cfg, state);
-    assert.equal(store.command(id)?.status, "pending", "it waits for its sources");
+    assert.equal(store.commands.get(id)?.status, "pending", "it waits for its sources");
     const [whole = 0, ...ids] = sizes;
     assert.ok(whole > 1000, `the first fetch carries the command (${whole} bytes)`);
     assert.deepEqual(ids, [ids[0], ids[0]]);
@@ -140,7 +144,7 @@ describe("supervisor relay between control and harness", () => {
     // Its sources arrive: the command it holds is delivered, and leaves what it holds.
     ready = true;
     state = await relayOnce(cfg, state);
-    assert.equal(store.command(id)?.status, "delivered");
+    assert.equal(store.commands.get(id)?.status, "delivered");
     assert.equal(env.service.ledger.runs.get("smoke-1")?.status, "running");
     await relayOnce(cfg, state);
     assert.equal(cfg.held.size, 0);
@@ -168,14 +172,14 @@ describe("supervisor relay between control and harness", () => {
     state = await relayOnce(cfg, state);
     await new Promise((r) => setTimeout(r, 2000));
     state = await relayOnce(cfg, state);
-    assert.equal(store.command(id)?.status, "pending", "alive while its sources stage");
+    assert.equal(store.commands.get(id)?.status, "pending", "alive while its sources stage");
     assert.ok(
-      store.listAudit(20).some((a) => a.action === "command_renewed"),
+      store.auditLog.list(20).some((a) => a.action === "command_renewed"),
       "the renewal is in the audit log",
     );
     ready = true;
     await relayOnce(cfg, state);
-    assert.equal(store.command(id)?.status, "delivered");
+    assert.equal(store.commands.get(id)?.status, "delivered");
     assert.equal(env.service.ledger.runs.get("smoke-1")?.status, "running");
   });
 
@@ -209,7 +213,7 @@ describe("supervisor relay between control and harness", () => {
     // A wiped harness also has a new signing key: control holds it until the owner accepts.
     await assert.rejects(relayOnce(cfg, state), /409/);
     // The owner accepts the key whose fingerprint they checked.
-    const pending = fingerprint(String(store.rigKey("rig-a").pending));
+    const pending = fingerprint(String(store.reportedRigs.key("rig-a").pending));
     const accept = await control.request(`/v1/rigs/rig-a/key/accept?fingerprint=${pending}`, {
       method: "POST",
       headers: { authorization: `Bearer ${controlTokens.admin}` },
@@ -218,7 +222,7 @@ describe("supervisor relay between control and harness", () => {
     const after = await relayOnce(cfg, state);
     assert.equal(after.cursor, 3);
     assert.equal(after.ledgerId, wiped.service.ledger.ledgerId());
-    const kinds = (store.events("rig-a", 0, 100) as { kind: string }[]).map((e) => e.kind);
+    const kinds = (store.rigEvents.after("rig-a", 0, 100) as { kind: string }[]).map((e) => e.kind);
     assert.deepEqual(kinds, ["old", "old", "old", "old", "old", "new", "new", "new"]);
   });
 
@@ -254,7 +258,7 @@ describe("supervisor relay between control and harness", () => {
     assert.equal((await post(forged)).status, 403);
     const { signature: _s, ...unsigned } = snap;
     assert.equal((await post(unsigned)).status, 400);
-    const kinds = (store.events("rig-a", 0, 100) as { kind: string }[]).map((e) => e.kind);
+    const kinds = (store.rigEvents.after("rig-a", 0, 100) as { kind: string }[]).map((e) => e.kind);
     assert.ok(!kinds.includes("champion_promoted"));
   });
 

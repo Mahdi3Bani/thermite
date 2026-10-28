@@ -164,8 +164,8 @@ export function modelRoutes(app: Hono, api: ApiContext): void {
    * agent's own cap on its window and its compaction point (goal 070), as the workers' route has.
    */
   const roleRouteOf = async (rig: string, role: AgentRole) => {
-    const a = store.roleModels(rig)[role];
-    const p = a ? store.provider(a.provider) : undefined;
+    const a = store.agentModels.byRole(rig)[role];
+    const p = a ? store.modelProviders.get(a.provider) : undefined;
     if (!a || !p) return null;
     // The harness the owner chose for the agent (goal 073), else what its model needs: Claude
     // Code for a subscription, OpenCode for OpenCode's own models, else Pi.
@@ -178,7 +178,7 @@ export function modelRoutes(app: Hono, api: ApiContext): void {
   app.get(MODEL_ROUTE.path, rigAuth, async (c) => {
     c.header("cache-control", "no-store");
     const rig = c.req.param("rig");
-    const r = store.rigModelFor(rig);
+    const r = store.agentModels.forRig(rig);
     const planner = await roleRouteOf(rig, "planner");
     if (!r) return c.json({ route: null, planner });
     const route = await routeOf(

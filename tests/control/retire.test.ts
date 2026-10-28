@@ -46,7 +46,7 @@ describe("retiring a rig that is gone", () => {
       headers: { authorization: `Bearer ${RIG_TOKEN}` },
     });
     assert.equal(refused.status, 403);
-    assert.ok(store.listAudit(20).some((a) => a.action === "rig_retired"));
+    assert.ok(store.auditLog.list(20).some((a) => a.action === "rig_retired"));
 
     assert.match(await post("/ui/rigs/rig-a/bring-back", {}), /rig-a is back/);
     assert.match(await page("/ui"), /rig-a stopped reporting/);

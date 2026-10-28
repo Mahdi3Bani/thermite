@@ -82,7 +82,7 @@ describe("the Copy panel's script (goal 069)", () => {
     ) as Record<string, unknown>;
     const src = parseContract({ ...example, campaign: "src", version: 1 });
     assert.ok(src.ok);
-    store.putCampaign({
+    store.campaigns.put({
       campaign: "src",
       version: 1,
       contract: src.contract,

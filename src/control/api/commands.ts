@@ -31,7 +31,7 @@ export function commandRoutes(app: Hono, api: ApiContext): void {
       // A refused command (a bad payload, a message nothing would read) is the client's to fix,
       // and in the audit log as the dashboard's and MCP's refusals are.
       const error = errorText(err);
-      store.audit("owner:api", "refused", {
+      store.auditLog.add("owner:api", "refused", {
         path: "/v1/commands",
         kind: body.kind,
         why: redact(error),
@@ -49,7 +49,7 @@ export function commandRoutes(app: Hono, api: ApiContext): void {
   });
 
   app.get("/v1/commands", admin, (c) =>
-    c.json({ commands: store.listCommands(clampLimit(c.req.query("limit"), 100)) }),
+    c.json({ commands: store.commands.list(clampLimit(c.req.query("limit"), 100)) }),
   );
 }
 
@@ -58,7 +58,7 @@ export function commandStatusRoutes(app: Hono, api: ApiContext): void {
   const { store, admin } = api;
 
   app.get("/v1/commands/:id", admin, (c) => {
-    const cmd = store.command(c.req.param("id"));
+    const cmd = store.commands.get(c.req.param("id"));
     return cmd ? c.json(cmd) : c.json({ error: "not found" }, 404);
   });
 }

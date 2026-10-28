@@ -17,16 +17,16 @@ export function takeLive(
   const body = LIVE.body.parse(raw);
   const b = body.batch;
   if (b.rig !== rig) return [403, { error: "rig mismatch" }];
-  const pinned = store.rigKey(rig).pubkey;
+  const pinned = store.reportedRigs.key(rig).pubkey;
   if (!pinned) return [409, { error: "the rig's report key is not accepted yet" }];
   if (!b.signature || !b.rig_pubkey || b.rig_pubkey.trim() !== pinned.trim())
     return [409, { error: "live lines must be signed with the rig's pinned key" }];
   if (!verifyJson(liveBody(b), b.signature, pinned)) return [403, { error: "bad live signature" }];
   const read = readLiveEntries(b.entries);
-  let added = store.addLive(rig, b.log_id, read.entries, true);
+  let added = store.liveLines.add(rig, b.log_id, read.entries, true);
   if (body.supervisor) {
     const own = readLiveEntries(body.supervisor.entries).entries;
-    added += store.addLive(
+    added += store.liveLines.add(
       rig,
       `supervisor:${body.supervisor.log_id}`,
       own.filter((e) => e.source === "supervisor"),

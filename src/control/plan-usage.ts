@@ -133,7 +133,7 @@ export function providersWithUsage(
   usage: ((p: ModelProvider) => Promise<PlanUsage | undefined>) | undefined,
 ) {
   return Promise.all(
-    store.providers().map(async (p) => ({
+    store.modelProviders.list().map(async (p) => ({
       name: p.name,
       type: p.type,
       base_url: redact(p.base_url),
@@ -171,7 +171,7 @@ export class PlanUsageReader {
     if (p.type === "claude")
       return claudeUsage(
         p.name,
-        this.store.rigs().map((r) => ({ id: r.id, summary: r.summary })),
+        this.store.reportedRigs.list().map((r) => ({ id: r.id, summary: r.summary })),
       );
     if (p.type !== "chatgpt") return undefined;
     let k = this.kept.get(p.name);

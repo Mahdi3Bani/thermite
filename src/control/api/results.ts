@@ -32,7 +32,7 @@ export function resultRoutes(
       return c.json({ error: "after is a whole number from 0" }, 400);
     // Only a run control assigned to this rig, of the campaign control assigned: a rig cannot
     // read another campaign's folders by naming it in its own events.
-    const assigned = store.assignedCampaigns(c.req.param("rig")).get(run);
+    const assigned = store.runRegistry.assignedCampaigns(c.req.param("rig")).get(run);
     if (!assigned) {
       const error = `control did not assign run ${run} to this rig`;
       return c.json({ error, code: KB_NOT_ASSIGNED }, 404);
@@ -54,7 +54,7 @@ export function resultRoutes(
       const seq = Number(c.req.param("seq"));
       if (!Number.isInteger(seq) || seq < 1) return c.json({ error: "bad seq" }, 400);
       const patch = Buffer.from(await c.req.arrayBuffer());
-      const r = store.putChampionPatch(c.req.param("rig"), c.req.param("run"), seq, patch);
+      const r = store.championPatches.put(c.req.param("rig"), c.req.param("run"), seq, patch);
       if (r === "not_published")
         return c.json({ error: "control has no champion_published event for it yet" }, 409);
       if (r === "mismatch")
@@ -63,7 +63,7 @@ export function resultRoutes(
     },
   );
   app.get("/v1/rigs/:rig/champions/:run/:seq/patch", admin, (c) => {
-    const p = store.championPatch(
+    const p = store.championPatches.get(
       c.req.param("rig"),
       c.req.param("run"),
       Number(c.req.param("seq")),
@@ -90,12 +90,15 @@ export function resultRoutes(
 
   app.post(REPORTS.path, rigAuth, bodyLimit({ maxSize: REPORTS.maxBytes }), async (c) => {
     const body = REPORTS.body.parse(await jsonBody(c.req));
-    return c.json({ id: store.addReport(c.req.param("rig"), body.kind, body.body) }, 201);
+    return c.json({ id: store.rigReports.add(c.req.param("rig"), body.kind, body.body) }, 201);
   });
 
   app.get("/v1/reports", admin, (c) =>
     c.json({
-      reports: store.reports(clampLimit(c.req.query("limit"), 20), c.req.query("rig") || undefined),
+      reports: store.rigReports.list(
+        clampLimit(c.req.query("limit"), 20),
+        c.req.query("rig") || undefined,
+      ),
     }),
   );
 

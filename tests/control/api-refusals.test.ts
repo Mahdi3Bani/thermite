@@ -63,7 +63,7 @@ describe("refusals over REST are answered as refusals, never as server errors (g
       status: 409,
       error: "no reset 99",
     });
-    store.createReset("rig-a", "owner:api");
+    store.fullResets.create("rig-a", "owner:api");
     assert.deepEqual(
       await post("/v1/rigs/rig-a/reset", JSON.stringify({ confirm: "reset rig-a" })),
       {

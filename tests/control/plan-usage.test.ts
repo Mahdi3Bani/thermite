@@ -38,13 +38,13 @@ function signedIn(answer: (url: string, init: RequestInit) => Response) {
     client_id: "c",
     host_id: "h",
   });
-  store.putProvider({
+  store.modelProviders.put({
     name: "codex-1",
     type: "chatgpt",
     base_url: CHATGPT_API,
     key: { sealed, hint: "…ab12" },
   });
-  const p = store.provider("codex-1") as ModelProvider;
+  const p = store.modelProviders.get("codex-1") as ModelProvider;
   return { store, chatgpt, p, seen, access };
 }
 
@@ -129,7 +129,7 @@ describe("a subscription's usage on Providers (goal 151)", () => {
       at: new Date(NOW).toISOString(),
       error: "x",
     };
-    const store = { rigs: () => [] } as unknown as ControlStore;
+    const store = { reportedRigs: { list: () => [] } } as unknown as ControlStore;
     const reader = new PlanUsageReader(
       store,
       async () => {

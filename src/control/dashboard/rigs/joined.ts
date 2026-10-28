@@ -34,7 +34,7 @@ export function joinedRigRoutes(app: Hono, dash: Dashboard): void {
         : c.json(notSent(msg), 400)
       : c.redirect(`/ui/rigs/${encodeURIComponent(rig)}?${k}=${encodeURIComponent(msg)}`, 303);
   app.post("/ui/rigs/:rig/join/:action", async (c) => {
-    const r = store.joinedRig(c.req.param("rig"));
+    const r = store.joinedRigs.get(c.req.param("rig"));
     const action = c.req.param("action");
     const back = (k: "ok" | "error", msg: string) =>
       c.redirect(
@@ -46,17 +46,17 @@ export function joinedRigRoutes(app: Hono, dash: Dashboard): void {
     const f = await c.req.parseBody();
     if (action === "new") return joinedPage(c, r, "", mintJoin(r.rig));
     if (action === "revoke") {
-      store.revokeJoinToken(r.rig, "owner:ui");
-      store.rigSetupEvent(r.rig, "join_revoked", true);
+      store.joinedRigs.revokeToken(r.rig, "owner:ui");
+      store.rigHistory.add(r.rig, "join_revoked", true);
       return back("ok", "The join command no longer works.");
     }
     if (action === "retire") {
       if (String(f.confirm ?? "").trim() !== `retire ${r.rig}`)
         return back("error", `Type "retire ${r.rig}" to retire it.`);
-      store.revokeJoinToken(r.rig, "owner:ui");
-      if (store.enrolledRig(r.rig)) store.retireRig(r.rig, "owner:ui");
-      store.setJoinedRig(r.rig, { status: "retired" });
-      store.rigSetupEvent(r.rig, "retired", true);
+      store.joinedRigs.revokeToken(r.rig, "owner:ui");
+      if (store.enrollments.rig(r.rig)) store.enrollments.retire(r.rig, "owner:ui");
+      store.joinedRigs.set(r.rig, { status: "retired" });
+      store.rigHistory.add(r.rig, "retired", true);
       return back(
         "ok",
         `${r.rig} is retired: its token no longer works. Remove its files there with the command on this page.`,
@@ -69,21 +69,22 @@ export function joinedRigRoutes(app: Hono, dash: Dashboard): void {
   app.get("/v1/join/:rig/:what", (c) => {
     const rig = c.req.param("rig");
     const what = c.req.param("what");
-    const r = store.joinedRig(rig);
+    const r = store.joinedRigs.get(rig);
     const no = (status: 401 | 404 | 409, msg: string) =>
       c.text(`thermite: ${msg}\n`, status, { "cache-control": "no-store" });
     if (!r || what !== (r.form === "machine" ? "script" : "manifest"))
       return no(404, "no such join command");
     if (!parts.publicUrl) return no(409, "control's address for rigs is not set");
     const token = (c.req.header("authorization") ?? "").replace(/^Bearer\s+/i, "");
-    if (!store.useJoinToken(rig, token))
+    if (!store.joinedRigs.useToken(rig, token))
       return no(
         401,
         "this join command does not work: it was used, revoked or expired. Make a new one on the rig's page in Thermite.",
       );
     const rigToken = newToken();
-    if (store.enrolledRig(rig)) store.rotateRigToken(rig, rigToken.sha256, `rig:${rig}`);
-    else store.enrollRig(rig, rigToken.sha256, "owner:ui");
+    if (store.enrollments.rig(rig))
+      store.enrollments.rotateToken(rig, rigToken.sha256, `rig:${rig}`);
+    else store.enrollments.enroll(rig, rigToken.sha256, "owner:ui");
     const secrets = { controlToken: rigToken.token, harnessSupervisorToken: newToken().token };
     const s = r.spec;
     let body: string;
@@ -103,7 +104,7 @@ export function joinedRigRoutes(app: Hono, dash: Dashboard): void {
         },
         secrets,
       );
-      store.setJoinedRig(rig, { status: "joining", spec: { ...s, root } });
+      store.joinedRigs.set(rig, { status: "joining", spec: { ...s, root } });
       detail = root ? "as root" : "as a user, with rootless Podman";
     } else {
       body = joinNamespaceManifest(
@@ -122,24 +123,29 @@ export function joinedRigRoutes(app: Hono, dash: Dashboard): void {
         },
         secrets,
       );
-      store.setJoinedRig(rig, { status: "joining" });
+      store.joinedRigs.set(rig, { status: "joining" });
       detail = `namespace ${s.namespace}`;
     }
-    store.rigSetupEvent(rig, "join_used", true, detail);
+    store.rigHistory.add(rig, "join_used", true, detail);
     // Pulling the images can take a while on a new machine: wait up to an hour.
-    const first = awaitFirstReport(parts, rig, (st) => store.setJoinedRig(rig, { status: st }), 60);
+    const first = awaitFirstReport(
+      parts,
+      rig,
+      (st) => store.joinedRigs.set(rig, { status: st }),
+      60,
+    );
     void inBackground(store, "joined", rig, "first_report", first);
     return c.text(body, 200, { "cache-control": "no-store" });
   });
 
   app.get("/ui/rigs/:rig/place.json", (c) => {
     const rig = c.req.param("rig");
-    return store.clusterRig(rig) || store.machineRig(rig)
+    return store.clusters.rig(rig) || store.machines.rig(rig)
       ? c.json(placeProgress(rig))
       : c.json({ error: "not found" }, 404);
   });
   app.post("/ui/rigs/:rig/cluster/:action", async (c) => {
-    const r = store.clusterRig(c.req.param("rig"));
+    const r = store.clusters.rig(c.req.param("rig"));
     const action = c.req.param("action");
     const back = (k: "ok" | "error", msg: string) => placeBack(c, c.req.param("rig"), k, msg);
     if (!r || r.status === "removed") return back("error", "Control didn't set this rig up.");
@@ -175,7 +181,7 @@ export function joinedRigRoutes(app: Hono, dash: Dashboard): void {
     return "error" in done ? back("error", done.error) : back("ok", done.ok);
   });
   app.post("/ui/rigs/:rig/machine/:action", async (c) => {
-    const r = store.machineRig(c.req.param("rig"));
+    const r = store.machines.rig(c.req.param("rig"));
     const action = c.req.param("action") as RigAction;
     const back = (k: "ok" | "error", msg: string) => placeBack(c, c.req.param("rig"), k, msg);
     if (!r || r.status === "removed") return back("error", "Control didn't set this rig up.");
@@ -185,7 +191,7 @@ export function joinedRigRoutes(app: Hono, dash: Dashboard): void {
     const removing =
       action === "remove" ? removeCheck(store, r.rig, String(f.confirm ?? "").trim()) : null;
     if (removing && "refused" in removing) return back("error", removing.refused);
-    const m = store.machine(r.machine);
+    const m = store.machines.get(r.machine);
     if (!m) return back("error", `The machine ${r.machine} is no longer in Providers.`);
     try {
       const out = await ssh.sshScript(
@@ -203,16 +209,16 @@ export function joinedRigRoutes(app: Hono, dash: Dashboard): void {
       if (out.code !== 0) throw new Error(tail(out.stderr) || `exit ${out.code}`);
     } catch (err) {
       const why = errorText(err);
-      store.rigSetupEvent(r.rig, action, false, why);
+      store.rigHistory.add(r.rig, action, false, why);
       return back("error", why);
     }
-    store.rigSetupEvent(r.rig, action, true);
-    store.setMachineRigStatus(
+    store.rigHistory.add(r.rig, action, true);
+    store.machines.setRigStatus(
       r.rig,
       action === "stop" ? "stopped" : action === "remove" ? "removed" : "running",
     );
-    if (action === "remove") store.retireRig(r.rig, "owner:ui");
-    store.audit("owner:ui", `machine_rig_${action}`, {
+    if (action === "remove") store.enrollments.retire(r.rig, "owner:ui");
+    store.auditLog.add("owner:ui", `machine_rig_${action}`, {
       rig: r.rig,
       machine: r.machine,
       ...removing,

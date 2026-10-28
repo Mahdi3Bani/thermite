@@ -99,9 +99,9 @@ export function needs(
   back: string,
 ): Need[] {
   const out: Need[] = [];
-  const c: NeedsContext = { ds: store.decisions(), f, now, back };
+  const c: NeedsContext = { ds: store.commands.decisions(), f, now, back };
   for (const u of vs) {
-    const key = store.rigKey(u.id);
+    const key = store.reportedRigs.key(u.id);
     out.push(...keyNeeds(c, u, key));
     for (const r of u.runs) {
       // A closed run is finished, and nothing in it waits for the owner (goal 087; the owner,

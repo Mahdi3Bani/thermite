@@ -26,7 +26,7 @@ export async function stack() {
     tokens: TOKENS,
     options: { staleAfterMs: 600_000, secrets },
   });
-  store.ingest({
+  store.rigEvents.ingest({
     rig: "rig-a",
     ledger_id: "ledger-rig-a",
     cursor: 0,
@@ -35,13 +35,13 @@ export async function stack() {
     events: [],
     summary: {},
   });
-  store.putProvider({
+  store.modelProviders.put({
     name: "lab",
     type: "openai",
     base_url: "https://models.example.com/v1",
     key: { sealed: secrets.seal("lab-key-for-tests"), hint: "…ests" },
   });
-  store.setProviderModels("lab", [
+  store.modelProviders.setModels("lab", [
     { id: "wide-model", context_window: 204_800 },
     { id: "strong-model", context_window: 400_000 },
   ]);
@@ -54,22 +54,26 @@ export async function stack() {
     client_id: "client-for-tests",
     host_id: "host-for-tests",
   };
-  store.putProvider({
+  store.modelProviders.put({
     name: "sub",
     type: "chatgpt",
     base_url: "",
     key: { sealed: secrets.seal(JSON.stringify(login)), hint: "ChatGPT" },
   });
-  store.setProviderModels("sub", [{ id: "gpt-sol", context_window: 272_000 }]);
-  store.putProvider({ name: "zen", type: "opencode", base_url: "https://opencode.ai/zen/v1" });
-  store.setProviderModels("zen", [{ id: "big-pickle" }]);
-  store.putProvider({
+  store.modelProviders.setModels("sub", [{ id: "gpt-sol", context_window: 272_000 }]);
+  store.modelProviders.put({
+    name: "zen",
+    type: "opencode",
+    base_url: "https://opencode.ai/zen/v1",
+  });
+  store.modelProviders.setModels("zen", [{ id: "big-pickle" }]);
+  store.modelProviders.put({
     name: "claude-sub",
     type: "claude",
     base_url: "",
     key: { sealed: secrets.seal("claude-subscription-for-tests"), hint: "…ests" },
   });
-  store.setProviderModels("claude-sub", [{ id: "opus-5.5", context_window: 200_000 }]);
+  store.modelProviders.setModels("claude-sub", [{ id: "opus-5.5", context_window: 200_000 }]);
   const as =
     (token: string) =>
     (method: "GET" | "POST", body?: Record<string, unknown>, rig = "rig-a") =>

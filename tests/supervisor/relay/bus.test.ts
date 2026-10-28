@@ -124,7 +124,9 @@ describe("the supervisor's reports on the message bus", () => {
     const state = await relayOnce(s.cfg, { cursor: 0 });
     assert.equal(state.cursor, 5);
     assert.ok(s.calls.includes("/v1/rigs/rig-a/ingest"));
-    const kinds = (s.store.events("rig-a", 0, 100) as { kind: string }[]).map((e) => e.kind);
+    const kinds = (s.store.rigEvents.after("rig-a", 0, 100) as { kind: string }[]).map(
+      (e) => e.kind,
+    );
     assert.deepEqual(kinds, ["step", "step", "step", "step", "step"]);
   });
 });

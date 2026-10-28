@@ -38,7 +38,7 @@ export function relayRoutes(app: Hono, api: ApiContext): void {
 
   app.post(ACK.path, rigAuth, bodyLimit({ maxSize: ACK.maxBytes }), async (c) => {
     const body = ACK.body.parse(await jsonBody(c.req));
-    const ok = store.ackCommand(c.req.param("rig"), c.req.param("id"), body.status, body.outcome);
+    const ok = store.commands.ack(c.req.param("rig"), c.req.param("id"), body.status, body.outcome);
     return ok ? c.json({ ok }) : c.json({ error: "no such pending command" }, 404);
   });
 
@@ -70,8 +70,8 @@ export function relayRoutes(app: Hono, api: ApiContext): void {
   app.get(GIT_ACCESS.path, rigAuth, (c) => {
     const rig = c.req.param("rig");
     const name = c.req.param("name");
-    const g = store.gitAccess(name);
-    if (!g || !store.rigUsesGitAccess(rig, name))
+    const g = store.gitAccess.get(name);
+    if (!g || !store.commands.rigUsesGitAccess(rig, name))
       return c.json({ error: "no such Git access for this rig" }, 404);
     let secret: string;
     try {
@@ -82,7 +82,7 @@ export function relayRoutes(app: Hono, api: ApiContext): void {
         500,
       );
     }
-    store.audit(`rig:${rig}`, "git_access_handed", { name });
+    store.auditLog.add(`rig:${rig}`, "git_access_handed", { name });
     c.header("cache-control", "no-store");
     return c.json(
       g.kind === "ssh"

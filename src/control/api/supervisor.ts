@@ -32,10 +32,10 @@ export function supervisorRoutes(
     const { bus_key: busKey, ...stats } = FIGURES.body.parse(await jsonBody(c.req));
     if (busKey !== undefined && !isUserKey(busKey))
       throw new BadInput(`bus_key is not ${USER_KEY_WORDS}`);
-    const before = store.supervisor(rig)?.models;
-    store.setSupervisor(rig, stats);
+    const before = store.reportedRigs.supervisor(rig)?.models;
+    store.reportedRigs.setSupervisor(rig, stats);
     for (const s of modelSteps(before, stats.models))
-      store.rigSetupEvent(rig, s.step, s.ok, s.detail);
+      store.rigHistory.add(rig, s.step, s.ok, s.detail);
     if (busKey && takeRigBusKey(store, rig, busKey) !== "same") await deps.busUsers?.sync();
     return c.json({ ok: true, reports: reportPlace(store, rig) });
   });

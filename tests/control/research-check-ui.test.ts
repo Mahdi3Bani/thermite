@@ -17,7 +17,7 @@ async function control() {
   let id = 0;
   const t0 = Date.now() - 3600_000;
   const ingest = (...events: { kind: string; subject: string; body: Record<string, unknown> }[]) =>
-    store.ingest({
+    store.rigEvents.ingest({
       rig: "rig-a",
       ledger_id: "ledger-a",
       cursor: id,
@@ -87,12 +87,12 @@ describe("a research run's answer check on control (goal 112)", () => {
       "The review panel checks whether every question is answered (review 1).",
     );
     // A rig whose supervisor has no review panel: the check waits for one.
-    c.store.setSupervisor("rig-a", { advisors: null });
+    c.store.reportedRigs.setSupervisor("rig-a", { advisors: null });
     assert.equal(
       await c.line(),
       "The check waits for a review panel: this rig's supervisor has no review panel set up. The run keeps researching.",
     );
-    c.store.setSupervisor("rig-a", { advisors: { roles: { review_panel: 3 } } });
+    c.store.reportedRigs.setSupervisor("rig-a", { advisors: { roles: { review_panel: 3 } } });
     c.ingest({
       kind: "review_panel",
       subject: "s-1",

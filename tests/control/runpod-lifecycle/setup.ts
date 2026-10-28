@@ -28,7 +28,7 @@ export const TOKENS = {
 export function setup(o: Parameters<typeof fakeRunpod>[0] = {}) {
   const store = new ControlStore(":memory:");
   const secrets = SecretBox.ephemeral();
-  store.addGpuCloud({
+  store.gpuClouds.add({
     name: "runpod",
     kind: "runpod",
     key_sealed: secrets.seal(FAKE_RUNPOD_KEY),
@@ -63,13 +63,13 @@ export function setup(o: Parameters<typeof fakeRunpod>[0] = {}) {
     await rigs.advance();
   };
   const view = (rig: string) => rigs.view(rig) as RunpodRigView;
-  const steps = (rig: string) => store.rigSetupEvents(rig).map((e) => [e.step, e.ok]);
+  const steps = (rig: string) => store.rigHistory.list(rig).map((e) => [e.step, e.ok]);
   return { store, cloud, control, rigs, api, call, advance, view, steps };
 }
 
 /** The rig's harness reports a run that runs (or one that ended), as its signed reports would. */
 function reportRun(store: ControlStore, rig: string, run: string, n: number, ended = false) {
-  store.ingest({
+  store.rigEvents.ingest({
     rig,
     ledger_id: "l1",
     cursor: n - 1,
@@ -94,7 +94,7 @@ function reportRun(store: ControlStore, rig: string, run: string, n: number, end
 export async function working(s: ReturnType<typeof setup>, o: { spend_limit_usd?: number } = {}) {
   const v = await s.rigs.launch("runpod", { gpu: "RTX A4000", ...o }, "owner:api");
   await s.advance();
-  assert.ok(s.store.pinTunnelRig(v.rig, "sign", "box"));
+  assert.ok(s.store.tunnels.pin(v.rig, "sign", "box"));
   reportRun(s.store, v.rig, "run-1", 1);
   supervisorReports(s.store, v.rig);
   return v.rig;

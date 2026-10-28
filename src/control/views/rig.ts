@@ -68,7 +68,7 @@ export function eachEvent(
   each: (e: StoredEvent) => void,
 ): number {
   for (;;) {
-    const page = store.events(rig, after, PAGE, ledgerId, { lean: true }) as StoredEvent[];
+    const page = store.rigEvents.after(rig, after, PAGE, ledgerId, { lean: true }) as StoredEvent[];
     for (const e of page) each(e);
     if (page.length) after = (page.at(-1) as StoredEvent).seq;
     if (page.length < PAGE) return after;
@@ -89,15 +89,15 @@ export function rigEvents(
 /** What a rig's view reads besides its events, from the store, the clock and control's build. */
 export function rigInputs(store: ControlStore, row: RigRow, opts: ViewOptions): RigInputs {
   const now = opts.now ?? Date.now();
-  const launched = store.runpodRig(row.id);
+  const launched = store.runpod.rig(row.id);
   return {
     row,
     now,
     staleAfterMs: opts.staleAfterMs,
     offlineAfterMs: opts.offlineAfterMs,
     version: rigVersions(store, row.id, opts.control ?? buildInfo()),
-    supervisor: store.supervisor(row.id),
-    runpod: launched ? runpodRigView(launched, store.tunnelRig(row.id), now) : undefined,
+    supervisor: store.reportedRigs.supervisor(row.id),
+    runpod: launched ? runpodRigView(launched, store.tunnels.get(row.id), now) : undefined,
   };
 }
 

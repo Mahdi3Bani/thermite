@@ -11,8 +11,8 @@ export function metricsText(store: ControlStore, staleAfterMs: number, now = Dat
   const help = (name: string, type: string, text: string) =>
     lines.push(`# HELP ${name} ${text}`, `# TYPE ${name} ${type}`);
   const label = (v: string) => v.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, " ");
-  const views = store
-    .rigs()
+  const views = store.reportedRigs
+    .list()
     .map((u) => rigView(store, u.id, { staleAfterMs, now }))
     .filter((v) => v !== undefined);
 

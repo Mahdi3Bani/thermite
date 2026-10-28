@@ -29,7 +29,10 @@ export function editRigRoutes(app: Hono, api: ApiContext): void {
     const rig = c.req.param("rig");
     const raw: unknown = await c.req.json().catch(() => undefined);
     const refuse = (error: string) => {
-      store.audit("owner:api", "refused", { path: `/v1/rigs/${rig}/model`, why: redact(error) });
+      store.auditLog.add("owner:api", "refused", {
+        path: `/v1/rigs/${rig}/model`,
+        why: redact(error),
+      });
       return c.json({ error }, error === `no rig ${rig}` ? 404 : 400);
     };
     const body = RigModelBody.safeParse(raw);
@@ -59,7 +62,7 @@ export function editRigRoutes(app: Hono, api: ApiContext): void {
       ? setRigSettings(store, privateKeyPem, rig, body.data, "owner:api", true)
       : ({ state: "refused", error: bodyRefusal(body.error), status: 400 } as const);
     if (out.state === "refused") {
-      store.audit("owner:api", "refused", {
+      store.auditLog.add("owner:api", "refused", {
         path: `/v1/rigs/${rig}/settings`,
         why: redact(out.error),
       });
@@ -89,7 +92,7 @@ export function editRigRoutes(app: Hono, api: ApiContext): void {
           )
         : ({ error: bodyRefusal(body.error), status: 400 } as const);
       if ("error" in out) {
-        store.audit("owner:api", "refused", {
+        store.auditLog.add("owner:api", "refused", {
           path: `/v1/rigs/${rig}/cluster/resources`,
           why: redact(out.error),
         });

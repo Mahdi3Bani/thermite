@@ -47,7 +47,7 @@ describe("control's commands on the message bus", () => {
     assert.deepEqual(c.bus.streams.get(COMMAND_STREAM), COMMAND_STREAM_CONFIG, "control made it");
     const id = c.pause();
     // Recorded at once: the store stays the record, and the command's status there the truth.
-    assert.equal(c.store.command(id)?.status, "pending");
+    assert.equal(c.store.commands.get(id)?.status, "pending");
     await settle();
     const [m, ...more] = c.bus.on(SUBJECT);
     assert.equal(more.length, 0);
@@ -77,7 +77,7 @@ describe("control's commands on the message bus", () => {
     const lost = c.pause("the bus is away");
     await settle();
     assert.equal(c.bus.on(SUBJECT).length, 0);
-    assert.equal(c.store.command(lost)?.status, "pending");
+    assert.equal(c.store.commands.get(lost)?.status, "pending");
     assert.deepEqual(await c.pending(), [lost]);
     // The bus is back: the next command goes on it, and the first still comes over HTTP.
     c.bus.failing = false;
@@ -117,7 +117,7 @@ describe("control's commands on the message bus", () => {
     assert.deepEqual(await cancel(id), { cancelled: true });
     await settle();
     assert.equal(c.bus.on(SUBJECT).length, 0, "its supervisor will never take it");
-    assert.equal(c.store.command(id)?.status, "failed");
+    assert.equal(c.store.commands.get(id)?.status, "failed");
     assert.deepEqual(await c.pending(), []);
 
     // Cancelled while its publish still waits its turn: taken off once it is on.

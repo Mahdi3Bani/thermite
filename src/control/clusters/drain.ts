@@ -15,12 +15,12 @@ export function cancelDrain(
   by: string,
 ): { ok: string } | { error: string } {
   const { store } = parts;
-  const r = store.clusterRig(rig);
+  const r = store.clusters.rig(rig);
   if (r?.status !== "draining") return { error: `${rig} is not draining.` };
   undrain(parts, rig, by);
-  store.setClusterRigStatus(rig, "running");
+  store.clusters.setRigStatus(rig, "running");
   if (r.pending) {
-    store.rigSetupEvent(
+    store.rigHistory.add(
       rig,
       "drain",
       true,
@@ -28,7 +28,7 @@ export function cancelDrain(
     );
     return { ok: `${rig} goes back to work with its GPUs, CPUs and memory as they were.` };
   }
-  store.rigSetupEvent(rig, "drain", true, "called off: the rig goes back to work on its images");
+  store.rigHistory.add(rig, "drain", true, "called off: the rig goes back to work on its images");
   return { ok: `${rig} goes back to work on its images.` };
 }
 
@@ -48,9 +48,9 @@ export function watchDrains(parts: ControlParts, everyMs = DRAIN_WATCH_MS): void
    */
   const undrained = new Map<string, { ask: string; seen: string }>();
   const redrain = (rig: string) => {
-    const last = store.latestCommands(rig, "drain_rig", 1)[0];
+    const last = store.commands.latest(rig, "drain_rig", 1)[0];
     if (last?.payload.drain !== true || last.status === "pending" || !last.acked_at) return;
-    const seen = store.rigs().find((x) => x.id === rig)?.last_seen;
+    const seen = store.reportedRigs.list().find((x) => x.id === rig)?.last_seen;
     if (!seen || Date.parse(seen) <= Date.parse(last.acked_at)) return;
     const first = undrained.get(rig);
     if (first?.ask !== last.id) {
@@ -64,11 +64,11 @@ export function watchDrains(parts: ControlParts, everyMs = DRAIN_WATCH_MS): void
       kind: "drain_rig",
       payload: {
         drain: true,
-        reason: store.clusterRig(rig)?.pending ? RESIZE_REASON : IMAGES_REASON,
+        reason: store.clusters.rig(rig)?.pending ? RESIZE_REASON : IMAGES_REASON,
       },
       issuedBy: "control:drain",
     });
-    store.rigSetupEvent(
+    store.rigHistory.add(
       rig,
       "drain",
       true,
@@ -77,13 +77,13 @@ export function watchDrains(parts: ControlParts, everyMs = DRAIN_WATCH_MS): void
   };
   const moving = new Set<string>();
   const watch = setInterval(() => {
-    for (const r of store.clusterRigs().filter((x) => x.status === "draining")) {
+    for (const r of store.clusters.rigs().filter((x) => x.status === "draining")) {
       if (moving.has(r.rig)) continue;
       const w = rigWork(parts, r.rig);
       if (w && w.draining === null) redrain(r.rig);
       else undrained.delete(r.rig);
       if (!w || w.draining === null || w.trials > 0 || w.judge_jobs > 0) continue;
-      store.rigSetupEvent(r.rig, "drain", true, "nothing runs any more: its pods restart now");
+      store.rigHistory.add(r.rig, "drain", true, "nothing runs any more: its pods restart now");
       moving.add(r.rig);
       const move = r.pending
         ? applyResize(parts, r.rig, r.pending, "control:drain")

@@ -29,7 +29,7 @@ export function registerCommands(tools: ToolContext): void {
         "issue_command",
         async (a: { rig: string; kind: CommandKind; payload: unknown; ttl_minutes: number }) => {
           // During the owner's full reset of a rig, agents do not steer it.
-          if (role === "agent" && store.openReset(a.rig))
+          if (role === "agent" && store.fullResets.open(a.rig))
             throw new Error(`${a.rig} is being reset by the owner`);
           // A briefing takes the knowledge base's own words (goal 065); the queue's come next.
           if (a.kind === "assign_campaign") a.payload = briefingFromKb(store, a.payload);
@@ -86,7 +86,7 @@ export function registerCommands(tools: ToolContext): void {
       inputSchema: { id: z.string().min(1) },
     },
     audited("command_status", (a: { id: string }) => {
-      const c = store.command(a.id);
+      const c = store.commands.get(a.id);
       if (!c) throw new Error(`no command ${a.id}`);
       return c;
     }),

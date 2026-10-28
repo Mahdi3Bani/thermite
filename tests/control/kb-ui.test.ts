@@ -7,7 +7,7 @@ import { ADMIN, controlOnly, mcpClient, signIn } from "../helpers/control-stack.
 type Ev = [string, string, string, Record<string, unknown>];
 
 function ingest(store: ControlStore, rig: string, events: Ev[], from = 0) {
-  store.ingest({
+  store.rigEvents.ingest({
     rig,
     ledger_id: `ledger-${rig}`,
     cursor: from,
@@ -40,7 +40,7 @@ async function stack() {
   };
   const { keys, store, control } = controlOnly({ tokens, options: { staleAfterMs: 600_000 } });
   // The assignment that started gs-3, before the rig reported it.
-  store.setConfiguredRigs(["rig-a"]);
+  store.enrollments.setConfiguredRigs(["rig-a"]);
   issueCommand(store, keys.privateKeyPem, {
     rig: "rig-a",
     kind: "assign_campaign",
@@ -239,7 +239,7 @@ test("a campaign's read grants: forms with the form token, refused for itself, a
   assert.equal(ok.status, 303);
   assert.match(s.where(ok), /may now read survey-study's folder/);
   assert.deepEqual(s.store.kb().reads("gemv-speed"), ["survey-study"]);
-  const audit = s.store.listAudit(50);
+  const audit = s.store.auditLog.list(50);
   assert.ok(
     audit.some(
       (a) =>
@@ -270,7 +270,9 @@ test("a campaign's read grants: forms with the form token, refused for itself, a
   });
   assert.match(s.where(rm), /no longer read survey-study's folder/);
   assert.deepEqual(s.store.kb().reads("gemv-speed"), []);
-  assert.ok(s.store.listAudit(50).some((a) => a.action === "kb_revoke" && a.actor === "owner:ui"));
+  assert.ok(
+    s.store.auditLog.list(50).some((a) => a.action === "kb_revoke" && a.actor === "owner:ui"),
+  );
   assert.match(
     s.where(
       await s.post("/ui/campaigns/gemv-speed/kb/revoke", { csrf: s.csrf, reads: "survey-study" }),
@@ -369,7 +371,7 @@ test("Start a run from past research: the search reads only granted folders; tic
   const finding = kb.search("verifier", ["survey-study"], { kinds: ["finding"] })[0];
   const attempt = kb.search("vector", ["gemv-speed"], { kinds: ["attempt"] })[0];
   assert.ok(exp && finding && attempt);
-  const before = s.store.listCommands(50).length;
+  const before = s.store.commands.list(50).length;
   const started = await s.post("/ui/campaigns/gemv-speed/runs", [
     ["csrf", s.csrf],
     ["rig", "rig-a"],
@@ -420,7 +422,7 @@ test("Start a run from past research: the search reads only granted folders; tic
     ]);
     assert.match(s.where(bad), /not one this campaign may read and start from/);
   }
-  assert.equal(s.store.listCommands(50).length, before + 1);
+  assert.equal(s.store.commands.list(50).length, before + 1);
   // A try (agents off): the copy box it hides is ignored, and nothing is said left out; past
   // research the owner ticked where the form showed it (no script) is said left out.
   const tried = await s.post("/ui/campaigns/gemv-speed/runs", [
@@ -491,7 +493,7 @@ test("MCP: the owner and an operator read, search and grant the folders; agents 
   );
   assert.deepEqual(g, { granted: true, reads: ["survey-study"] });
   assert.ok(
-    s.store.listAudit(50).some((a) => a.action === "kb_grant" && a.actor === "owner:operator"),
+    s.store.auditLog.list(50).some((a) => a.action === "kb_grant" && a.actor === "owner:operator"),
   );
   const self = await operator.callTool({
     name: "kb_grant",
@@ -511,7 +513,9 @@ test("MCP: the owner and an operator read, search and grant the folders; agents 
     }),
   );
   assert.deepEqual(v, { revoked: true, reads: [] });
-  assert.ok(s.store.listAudit(50).some((a) => a.action === "kb_revoke" && a.actor === "owner:mcp"));
+  assert.ok(
+    s.store.auditLog.list(50).some((a) => a.action === "kb_revoke" && a.actor === "owner:mcp"),
+  );
   // An agent's token cannot call them even by name.
   const agent = await mcpClient(s.control, s.tokens.agent);
   const refused = await agent

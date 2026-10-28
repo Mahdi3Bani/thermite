@@ -14,7 +14,7 @@ type Line = {
 export function liveSessions(store: ControlStore): void {
   const lines = (rig: string, items: Line[], minutesAgo: number) => {
     let seq = 0;
-    store.addLive(
+    store.liveLines.add(
       rig,
       "demo-log",
       items.map((l, n) => ({
@@ -181,7 +181,7 @@ export function liveSessions(store: ControlStore): void {
   );
   // The supervisor's lines for the research run's reviews (goal 116): each reviewer's answer, and a
   // third review whose tries failed on the provider, which the Reviews tab shows from Live.
-  store.addLive(
+  store.liveLines.add(
     "cpu-1",
     "demo-supervisor",
     [

@@ -24,7 +24,7 @@ describe("a store from before goal 074", () => {
       insert into rig_role_model values ('rig-b', 'combiner', 'lab', 'strong-model', null, '2026-10-20');`);
     old.close();
     const store = new ControlStore(path);
-    const roles = store.roleModels("rig-a");
+    const roles = store.agentModels.byRole("rig-a");
     assert.deepEqual(Object.keys(roles).sort(), [
       "auditor",
       "merged_by",
@@ -38,22 +38,22 @@ describe("a store from before goal 074", () => {
     );
     assert.equal(roles.merged_by?.model, "strong-model");
     assert.equal(roles.review_panel?.model, "wide-model");
-    assert.deepEqual(Object.keys(store.roleModels("rig-b")), ["merged_by"]);
+    assert.deepEqual(Object.keys(store.agentModels.byRole("rig-b")), ["merged_by"]);
     // The new roles are taken, the old ones refused, and the columns of goals 070 and 073 kept.
-    store.putProvider({
+    store.modelProviders.put({
       name: "lab",
       type: "openai",
       base_url: "https://models.example.com/v1",
       key: { sealed: "sealed-for-tests", hint: "…ests" },
     });
-    store.assignRoleModel("rig-b", "second_teacher", {
+    store.agentModels.assignRole("rig-b", "second_teacher", {
       provider: "lab",
       model: "wide-model",
       harness: "codex",
       contextCap: 8192,
       compactAt: 70,
     });
-    assert.deepEqual(store.roleModels("rig-b").second_teacher, {
+    assert.deepEqual(store.agentModels.byRole("rig-b").second_teacher, {
       provider: "lab",
       model: "wide-model",
       effort: null,
@@ -71,6 +71,6 @@ describe("a store from before goal 074", () => {
     // Opened again: nothing changes twice.
     store.db.close();
     const again = new ControlStore(path);
-    assert.deepEqual(again.roleModels("rig-a"), roles);
+    assert.deepEqual(again.agentModels.byRole("rig-a"), roles);
   });
 });

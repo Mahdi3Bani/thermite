@@ -62,7 +62,7 @@ export function createControlApi(
     if (c.error || status >= 500) {
       const error = redact(c.error?.message ?? `status ${status}`);
       log("control", "request failed", { method: c.req.method, path, status, error }, "error");
-      store.audit("control", "failed", { method: c.req.method, path, status, error });
+      store.auditLog.add("control", "failed", { method: c.req.method, path, status, error });
       return;
     }
     if (!path.startsWith("/ui/") || c.req.method !== "POST") return;
@@ -73,7 +73,7 @@ export function createControlApi(
     if (why || status >= 400) {
       const reason = redact(why ?? `status ${status}`);
       log("control", "refused", { path, why: reason }, "warn");
-      store.audit("owner:ui", "refused", { path, why: reason });
+      store.auditLog.add("owner:ui", "refused", { path, why: reason });
     }
   });
 

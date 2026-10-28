@@ -14,19 +14,16 @@ import {
   type McpConnection,
   type McpUnavailable,
 } from "../core/mcp.ts";
-import { assignedMcpServers, namedBy } from "./mcp-servers/campaigns.ts";
-import { migrateOutsideKb } from "./mcp-servers/migrate.ts";
+import { namedBy } from "./mcp-servers/campaigns.ts";
 import { OAuthSignIns, type SignInDone } from "./mcp-servers/oauth.ts";
 import { type SignIn, SignIns } from "./mcp-servers/sign-in.ts";
 import {
-  ensureMcpTables,
   MCP_AUTHS,
   type McpServer,
   type McpServerInput,
   type McpStatus,
   type McpTool,
   orNull,
-  type Row,
   ServerTable,
   str,
   viewOf,
@@ -35,7 +32,6 @@ import { keyHint, type SecretBox } from "./secrets.ts";
 import type { ControlStore } from "./store.ts";
 
 export {
-  assignedMcpServers,
   campaignMcpServers,
   mcpRefusal,
   namedBy,
@@ -45,14 +41,12 @@ export {
 export type { SignInDone } from "./mcp-servers/oauth.ts";
 export type { SignIn } from "./mcp-servers/sign-in.ts";
 export {
-  ensureMcpTables,
   MCP_AUTHS,
   type McpAuth,
   type McpServer,
   type McpServerInput,
   type McpStatus,
   type McpTool,
-  mcpServerNames,
 } from "./mcp-servers/table.ts";
 
 /**
@@ -72,9 +66,10 @@ export {
  * servers the runs it assigned that rig name, with their sign-in as headers, kept in memory there.
  *
  * McpServers is their interface. Its parts are in mcp-servers/: table.ts (a server as control shows
- * it, the table and the rows with their sealed secrets), campaigns.ts (which servers campaigns and
- * runs name), sign-in.ts (the sign-in as headers, renewed), oauth.ts (an OAuth sign-in on the
- * server's page) and migrate.ts (goal 065's outside knowledge bases, once, at the update).
+ * it, and the rows with their sealed secrets), campaigns.ts (which servers campaigns and runs
+ * name), sign-in.ts (the sign-in as headers, renewed) and oauth.ts (an OAuth sign-in on the
+ * server's page). The store keeps the rows (store/mcp-servers.ts), and turns goal 065's outside
+ * knowledge bases into servers, once, at the update.
  */
 
 const HEADER_NAME = /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,100}$/;
@@ -95,7 +90,7 @@ export class McpServers {
     o: { connect?: McpConnect | undefined; fetch?: typeof fetch | undefined } = {},
   ) {
     this.store = store;
-    this.table = new ServerTable(store.db, secrets);
+    this.table = new ServerTable(store.mcpServers, secrets);
     // The SDK's OAuth helpers tell an error answer by `instanceof Response`, and the HTTP server
     // control runs on replaces the global Response: each answer is made again as one, so an
     // ended sign-in reads as invalid_grant and not as a garbled answer.
@@ -111,16 +106,14 @@ export class McpServers {
     this.signIns = new SignIns(this.table, fetchImpl);
     this.oauth = new OAuthSignIns(this.table, store, fetchImpl, this);
     this.connect = o.connect ?? mcpConnect(o.fetch, "thermite-control");
-    ensureMcpTables(this.table.db);
-    migrateOutsideKb(this.table, store);
+    store.mcpServers.ensureTables();
+    store.mcpServers.migrateOutsideKb(secrets);
   }
 
   // ------------------------------------------------------------------ reading
 
   list(): McpServer[] {
-    return (this.table.db.prepare("select * from mcp_server order by name").all() as Row[]).map(
-      viewOf,
-    );
+    return this.store.mcpServers.list().map(viewOf);
   }
 
   get(name: string): McpServer | undefined {
@@ -180,34 +173,22 @@ export class McpServers {
         ? orNull(old?.login_sealed)
         : null;
     const status: McpStatus = p.auth === "oauth" && !loginKept ? "needs_sign_in" : "unchecked";
-    this.table.db
-      .prepare(
-        `insert into mcp_server (name, url, auth, header, client_id, scope, secret_sealed, secret_hint,
-           login_sealed, status, created_at, created_by, updated_at)
-         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         on conflict (name) do update set url = excluded.url, auth = excluded.auth,
-           header = excluded.header, client_id = excluded.client_id, scope = excluded.scope,
-           secret_sealed = excluded.secret_sealed, secret_hint = excluded.secret_hint,
-           login_sealed = excluded.login_sealed, status = excluded.status, last_error = null,
-           updated_at = excluded.updated_at`,
-      )
-      .run(
-        name,
-        url,
-        p.auth,
-        header,
-        clientId,
-        scope,
-        sealed,
-        hint,
-        loginKept,
-        status,
-        now,
-        by,
-        now,
-      );
+    this.store.mcpServers.put({
+      name,
+      url,
+      auth: p.auth,
+      header,
+      clientId,
+      scope,
+      secretSealed: sealed,
+      secretHint: hint,
+      loginSealed: loginKept,
+      status,
+      now,
+      by,
+    });
     const r = old ? "changed" : "created";
-    this.store.audit(by, r === "created" ? "mcp_server_added" : "mcp_server_changed", {
+    this.store.auditLog.add(by, r === "created" ? "mcp_server_added" : "mcp_server_changed", {
       name,
       url,
       auth: p.auth,
@@ -224,9 +205,8 @@ export class McpServers {
     if (!this.table.row(name)) return "missing";
     const named = namedBy(this.store, name);
     if (named.length) return { named_by: named.map((n) => n.kit) };
-    this.table.db.prepare("delete from mcp_sign_in where name = ?").run(name);
-    this.table.db.prepare("delete from mcp_server where name = ?").run(name);
-    this.store.audit(by, "mcp_server_deleted", { name });
+    this.store.mcpServers.delete(name);
+    this.store.auditLog.add(by, "mcp_server_deleted", { name });
     return "deleted";
   }
 
@@ -268,9 +248,7 @@ export class McpServers {
       const now = this.table.row(name);
       // A sign-in that ended keeps its own state; anything else is a failing server.
       if (str(now?.status) !== "needs_sign_in") this.table.setState(name, "failing", signIn.error);
-      this.table.db
-        .prepare("update mcp_server set checked_at = ? where name = ?")
-        .run(new Date().toISOString(), name);
+      this.store.mcpServers.setCheckedAt(name, new Date().toISOString());
       return signIn.error;
     }
     const h = signIn.headers;
@@ -287,25 +265,19 @@ export class McpServers {
         reads: t.annotations?.readOnlyHint === true,
       }));
       const now = new Date().toISOString();
-      this.table.db
-        .prepare(
-          "update mcp_server set status = 'ok', last_error = null, tools = ?, tools_at = ?, checked_at = ? where name = ?",
-        )
-        .run(JSON.stringify(tools), now, now, name);
+      this.store.mcpServers.setTools(name, JSON.stringify(tools), now);
       return null;
     } catch (err) {
       const why = cleanMcpError(err, headerSecrets(h));
       const words = /\b401\b|unauthori[sz]ed/i.test(why)
         ? `the server answered 401: check the ${str(r.auth) === "client" ? "client secret" : str(r.auth) === "oauth" ? "sign-in" : "key"}`
         : `can't read its tools: ${why}`;
-      this.table.db
-        .prepare("update mcp_server set status = ?, last_error = ?, checked_at = ? where name = ?")
-        .run(
-          str(r.auth) === "oauth" && /\b401\b/.test(why) ? "needs_sign_in" : "failing",
-          words,
-          new Date().toISOString(),
-          name,
-        );
+      this.store.mcpServers.setCheckFailed(
+        name,
+        str(r.auth) === "oauth" && /\b401\b/.test(why) ? "needs_sign_in" : "failing",
+        words,
+        new Date().toISOString(),
+      );
       return words;
     } finally {
       await session?.close().catch(() => {});
@@ -321,7 +293,7 @@ export class McpServers {
    */
   async forRig(rig: string): Promise<{ servers: McpConnection[]; unavailable: McpUnavailable[] }> {
     const agents = new Map<string, Set<AgentKind>>();
-    for (const uses of assignedMcpServers(this.table.db, rig).values())
+    for (const uses of this.store.commands.assignedMcpServers(rig).values())
       for (const u of uses) {
         const set = agents.get(u.name) ?? new Set<AgentKind>();
         for (const a of u.agents) set.add(a);

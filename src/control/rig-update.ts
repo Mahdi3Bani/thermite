@@ -114,18 +114,12 @@ export class RigUpdates {
 
   // The update under way on each rig is kept in the store, with the runs it paused (goal 165).
   private row(rig: string) {
-    return this.o.store.db.prepare("select * from rig_update where rig = ?").get(rig) as
-      | { phase: string; paused: string; requested_by: string }
-      | undefined;
+    return this.o.store.rigUpdates.get(rig);
   }
 
   private setPhase(rig: string, phase: Phase, paused?: string[]): void {
     const at = new Date().toISOString();
-    this.o.store.db
-      .prepare(
-        "update rig_update set phase = ?, paused = coalesce(?, paused), updated_at = ? where rig = ?",
-      )
-      .run(phase, paused ? JSON.stringify(paused) : null, at, rig);
+    this.o.store.rigUpdates.setPhase(rig, phase, paused ? JSON.stringify(paused) : null, at);
   }
 
   /**
@@ -134,18 +128,13 @@ export class RigUpdates {
    * update is the owner's to ask again from the rig's page.
    */
   endUnfinished(): void {
-    const left = this.o.store.db.prepare("select * from rig_update").all() as {
-      rig: string;
-      phase: string;
-      paused: string;
-      requested_by: string;
-    }[];
+    const left = this.o.store.rigUpdates.list();
     for (const u of left) {
       void this.resume(u.rig, JSON.parse(u.paused) as string[], u.requested_by).then(() => {
         const why = `control restarted while it was ${PHASE_WORDS[u.phase as Phase]?.toLowerCase().replace(/\.$/, "") ?? u.phase}: update the rig again from its page`;
         log("control", "rig update ended by a restart", { rig: u.rig, phase: u.phase });
         this.step(u.rig, "update_failed", false, why);
-        this.o.store.db.prepare("delete from rig_update where rig = ?").run(u.rig);
+        this.o.store.rigUpdates.end(u.rig);
       });
     }
   }
@@ -159,7 +148,7 @@ export class RigUpdates {
   }
 
   private step(rig: string, step: string, ok: boolean, detail: string): void {
-    this.o.store.rigSetupEvent(rig, step, ok, detail);
+    this.o.store.rigHistory.add(rig, step, ok, detail);
   }
 
   private issue(
@@ -196,18 +185,14 @@ export class RigUpdates {
     if (this.row(rig))
       throw new Error(`An update of ${rig} is under way: wait until its steps end.`);
     const at = new Date().toISOString();
-    this.o.store.db
-      .prepare(
-        "insert into rig_update (rig, phase, requested_by, started_at, updated_at) values (?, 'pausing', ?, ?, ?)",
-      )
-      .run(rig, by, at, at);
+    this.o.store.rigUpdates.begin(rig, by, at);
     return this.run(rig, by, target)
       .catch((err) => {
         const why = redact(errorText(err));
         log("control", "rig update failed", { rig, error: why }, "error");
         this.step(rig, "update_failed", false, why);
       })
-      .finally(() => this.o.store.db.prepare("delete from rig_update where rig = ?").run(rig));
+      .finally(() => this.o.store.rigUpdates.end(rig));
   }
 
   private async run(rig: string, by: string, target: UpdateTarget): Promise<void> {
@@ -220,7 +205,7 @@ export class RigUpdates {
       `from ${before ? rigVersionWords(before.version) : "no version"} to ${to}, asked by ${by}`,
     );
     // 1. Pause the running runs, when the rig can take a command.
-    const refused = this.o.store.rigRefusal(rig);
+    const refused = this.o.store.refusals.get(rig);
     let paused: string[] = [];
     if (refused)
       this.step(
@@ -244,7 +229,7 @@ export class RigUpdates {
       paused = running;
       this.setPhase(rig, "pausing", paused);
       const took = await this.until(this.o.waits.pause, () =>
-        ids.every((id) => this.o.store.command(id)?.status !== "pending"),
+        ids.every((id) => this.o.store.commands.get(id)?.status !== "pending"),
       );
       this.step(
         rig,
@@ -308,7 +293,7 @@ export class RigUpdates {
       // The rig may refuse the check (a busy rig, say): its command then fails, with why.
       let refused: string | null = null;
       const ended = await this.until(this.o.waits.isolation, () => {
-        const cmd = this.o.store.command(id);
+        const cmd = this.o.store.commands.get(id);
         if (cmd && cmd.status !== "pending" && cmd.status !== "delivered") {
           const why = (cmd.outcome as { error?: unknown } | null)?.error;
           refused = typeof why === "string" && why ? why : `its command ${cmd.status}`;

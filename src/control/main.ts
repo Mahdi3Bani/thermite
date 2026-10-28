@@ -163,8 +163,8 @@ async function main(): Promise<void> {
     port,
     build: buildInfo(),
     rigs: Object.keys(tokens.rigs),
-    enrolled: store
-      .enrolledRigs()
+    enrolled: store.enrollments
+      .rigs()
       .filter((r) => !r.retired_at)
       .map((r) => r.rig),
     lifecycle: driver?.kind ?? null,

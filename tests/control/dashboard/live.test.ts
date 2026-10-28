@@ -12,7 +12,7 @@ describe("control dashboard", () => {
     const s = await stack();
     await s.env.service.applyCommand(s.env.assign);
     await s.relay();
-    s.store.addLive(
+    s.store.liveLines.add(
       "rig-a",
       "log-1",
       [
@@ -67,7 +67,7 @@ describe("control dashboard", () => {
       s.env.service.takeMessages({ id: "t-0123456789abcdef", run: "js-1", lane: "lane-1" }),
       ["try the closed form"],
     );
-    const cmd = s.store.listCommands(5).find((c) => c.kind === "message_agent");
+    const cmd = s.store.commands.list(5).find((c) => c.kind === "message_agent");
     assert.equal(cmd?.issued_by, "owner:ui");
   });
 
@@ -88,14 +88,14 @@ describe("control dashboard", () => {
     });
     assert.equal(sent.status, 303);
     assert.equal(sent.headers.get("location"), "/ui/live?run=rig-a%2Fjs-1&w=lane-1");
-    const cmd = s.store.listCommands(5).find((c) => c.kind === "message_agent");
+    const cmd = s.store.commands.list(5).find((c) => c.kind === "message_agent");
     assert.equal(cmd?.issued_by, "owner:ui");
     await s.relay();
     await s.relay();
-    const [id] = [...s.store.runMessages("rig-a", "js-1").keys()];
+    const [id] = [...s.store.rigEvents.runMessages("rig-a", "js-1").keys()];
     assert.ok(id, "the rig's signed agent_message event reached control");
     const at = new Date().toISOString();
-    s.store.addLive(
+    s.store.liveLines.add(
       "rig-a",
       "log-2",
       [
@@ -321,7 +321,7 @@ describe("control dashboard", () => {
       /msgerror=The planner is off on this rig \(Edit rig\), so nothing would read it\./,
     );
     assert.doesNotMatch(refused, /Sent to the rig/);
-    assert.equal(s.store.listCommands(20).filter((c) => c.kind === "message_agent").length, 0);
+    assert.equal(s.store.commands.list(20).filter((c) => c.kind === "message_agent").length, 0);
     // A lane reads its message: that one goes, trimmed.
     assert.equal(await where(send("lane-1", "  keep it simple  ")), "/ui/live?run=rig-a/js-1");
     const sent = s.store.db

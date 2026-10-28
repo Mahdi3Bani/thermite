@@ -208,9 +208,9 @@ export const checkWaits = (row: CheckRow): boolean =>
  * often without building the rig's whole view.
  */
 export function checkRows(store: ControlStore, rig: string, now: number): Record<string, CheckRow> {
-  const ledger = store.rigs().find((x) => x.id === rig)?.ledger_id ?? null;
+  const ledger = store.reportedRigs.list().find((x) => x.id === rig)?.ledger_id ?? null;
   const runs: Record<string, RigCheckView> = {};
-  for (const e of store.rigCheckEvents(rig, ledger)) foldCheck(runs, e);
+  for (const e of store.rigEvents.rigChecks(rig, ledger)) foldCheck(runs, e);
   return checkRowsOf(store, rig, runs, now);
 }
 
@@ -222,7 +222,7 @@ export function checkRowsOf(
   now: number,
 ): Record<string, CheckRow> {
   const newest: Record<string, CommandRow> = {};
-  for (const c of store.latestCommands(rig, "rig_check")) {
+  for (const c of store.commands.latest(rig, "rig_check")) {
     const k = String(c.payload.check ?? "");
     if (k && !newest[k]) newest[k] = c;
   }
@@ -271,9 +271,9 @@ export const modelFollowUrl = (rig: string): string =>
  * the model control gives it; then its model check, which the rig runs by itself, to its result.
  */
 export function modelProgress(store: ControlStore, rig: string, now: number): Progress {
-  const r = store.rigs().find((x) => x.id === rig);
+  const r = store.reportedRigs.list().find((x) => x.id === rig);
   const m = readModelInfo((r?.summary as { model?: unknown } | null)?.model);
-  if (takingModel(m, store.rigModels()[rig]))
+  if (takingModel(m, store.agentModels.byRig()[rig]))
     return { state: "taking", final: false, said: "", tone: "" };
   const chk = checkRows(store, rig, now).model;
   return {

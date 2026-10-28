@@ -164,12 +164,12 @@ export function apiContext(
   privateKeyPem: string,
   opts: ControlOptions,
 ): ApiContext {
-  store.setConfiguredRigs(Object.keys(tokens.rigs));
+  store.enrollments.setConfiguredRigs(Object.keys(tokens.rigs));
   const control = opts.build ?? buildInfo();
   // A rig refused by an earlier control may work with this one.
   recheckRefusals(store, control);
   // Since when control runs this build: a rig's page says since when the two differ.
-  store.noteControlBuild(control);
+  store.builds.noteControl(control);
   const viewOpts = {
     staleAfterMs: opts.staleAfterMs,
     offlineAfterMs: opts.offlineAfterMs,
@@ -220,23 +220,25 @@ export function apiContext(
     const rig = c.req.param("rig") ?? "";
     const via = (c.env as { tunnelRig?: unknown } | undefined)?.tunnelRig;
     if (typeof via === "string") {
-      if (via !== rig || !store.tunnelRig(rig)?.enrolled_at || store.rigRetired(rig))
+      if (via !== rig || !store.tunnels.get(rig)?.enrolled_at || store.retired.get(rig))
         return c.json({ error: "unauthorized" }, 401);
     } else {
       const token = bearer(c.req.header("authorization"));
       const expected = tokens.rigs[rig];
       const ok =
-        expected !== undefined ? sameSecret(token, expected) : store.rigTokenMatches(rig, token);
+        expected !== undefined
+          ? sameSecret(token, expected)
+          : store.enrollments.tokenMatches(rig, token);
       if (!ok) return c.json({ error: "unauthorized" }, 401);
       // A retired rig is refused until the owner brings it back, whatever token it holds.
-      if (store.rigRetired(rig)) return c.json({ error: "this rig is retired in control" }, 403);
+      if (store.retired.get(rig)) return c.json({ error: "this rig is retired in control" }, 403);
     }
     // The supervisor's build, from its headers. A supervisor that sends none on the calls every
     // build makes is from before version checks: unknown, and never refused for it.
     const route = c.req.path.slice(`/v1/rigs/${encodeURIComponent(rig)}/`.length);
     const supervisorBuild = buildFromHeaders((h) => c.req.header(h));
     if (supervisorBuild || ["ingest", "supervisor", "commands/pending"].includes(route))
-      store.setRigBuild(rig, "supervisor", supervisorBuild);
+      store.builds.setRig(rig, "supervisor", supervisorBuild);
     // A report brings its harness's build: the ingest route checks that one, once it verifies.
     const refused =
       route === "ingest"
@@ -244,7 +246,7 @@ export function apiContext(
         : checkRig(store, rig, control);
     if (refused) {
       // Counted, so the rig's page can say that it still calls.
-      store.countRefusedCall(rig);
+      store.refusals.countCall(rig);
       return c.json({ error: refused }, 409);
     }
     await next();

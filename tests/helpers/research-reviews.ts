@@ -33,7 +33,7 @@ export async function researchControl() {
   };
   let id = 0;
   const ingest = (events: Ev[]) =>
-    store.ingest({
+    store.rigEvents.ingest({
       rig: "rig-a",
       ledger_id: "ledger-a",
       cursor: id,
@@ -531,7 +531,7 @@ export function researchRunEvents(): Ev[] {
 
 /** The supervisor's Live lines for review 3: a failed try, with a line that holds markup. */
 export function reviewLiveLines(store: ControlStore) {
-  store.addLive(
+  store.liveLines.add(
     "rig-a",
     "sup-log",
     [

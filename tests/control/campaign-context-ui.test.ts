@@ -80,7 +80,7 @@ async function stack() {
     ["rig-b", "cpu", "narrow-model"],
     ["rig-g", "cuda-gpu", "wide-model"],
   ] as const)
-    store.ingest({
+    store.rigEvents.ingest({
       rig,
       ledger_id: `ledger-${rig}`,
       cursor: 0,
@@ -92,20 +92,20 @@ async function stack() {
         hardware: hardware(type),
       },
     });
-  store.putProvider({
+  store.modelProviders.put({
     name: "lab",
     type: "openai",
     base_url: "https://models.example.com/v1",
     key: { sealed: secrets.seal("lab-key-for-tests"), hint: "…ests" },
   });
-  store.setProviderModels("lab", [
+  store.modelProviders.setModels("lab", [
     { id: "wide-model", context_window: 204_800 },
     { id: "narrow-model", context_window: 131_072 },
     { id: "tiny-model", context_window: 100_000 },
   ]);
-  store.assignRigModel("rig-a", { provider: "lab", model: "wide-model", harness: "pi" });
-  store.assignRigModel("rig-b", { provider: "lab", model: "narrow-model", harness: "pi" });
-  store.assignRoleModel("rig-b", "auditor", { provider: "lab", model: "tiny-model" });
+  store.agentModels.assignRig("rig-a", { provider: "lab", model: "wide-model", harness: "pi" });
+  store.agentModels.assignRig("rig-b", { provider: "lab", model: "narrow-model", harness: "pi" });
+  store.agentModels.assignRole("rig-b", "auditor", { provider: "lab", model: "tiny-model" });
   const saved = await startCampaign(
     { store, kits, privateKeyPem: keys.privateKeyPem },
     { draft, rig: "rig-a", target: CPU, start: false, by: "owner:ui" },
@@ -120,7 +120,7 @@ async function stack() {
     return { status: r.status, to: decodeURIComponent(r.headers.get("location") ?? ""), r };
   };
   const contract = (campaign: string) =>
-    store.campaignVersions(campaign)[0]?.contract as
+    store.campaigns.versions(campaign)[0]?.contract as
       | { version: number; agents_context?: Record<string, number> }
       | undefined;
   return { store, page, post, contract };
@@ -438,26 +438,26 @@ describe("a campaign's Agents' context on the screens (goal 070)", () => {
     assert.equal(core.ccShort({ cw: 131_072, at: 70 }), "131,072 tokens at 70%");
     // What applies, and the refusal, as rigContext says it, and as control decides it.
     const s = new ControlStore(":memory:");
-    s.putProvider({
+    s.modelProviders.put({
       name: "lab",
       type: "openai",
       base_url: "https://models.example.com/v1",
       key: { sealed: SecretBox.ephemeral().seal("lab-key-for-tests"), hint: "…ests" },
     });
-    s.setProviderModels("lab", [
+    s.modelProviders.setModels("lab", [
       { id: "wide-model", context_window: 204_800 },
       { id: "tiny-model", context_window: 100_000 },
       { id: "open-model" },
     ]);
-    s.assignRigModel("rig-a", {
+    s.agentModels.assignRig("rig-a", {
       provider: "lab",
       model: "wide-model",
       harness: "pi",
       contextCap: 65_536,
       compactAt: 75,
     });
-    s.assignRigModel("rig-b", { provider: "lab", model: "open-model", harness: "pi" });
-    s.assignRoleModel("rig-b", "auditor", { provider: "lab", model: "tiny-model" });
+    s.agentModels.assignRig("rig-b", { provider: "lab", model: "open-model", harness: "pi" });
+    s.agentModels.assignRole("rig-b", "auditor", { provider: "lab", model: "tiny-model" });
     for (const rig of ["rig-a", "rig-b", "rig-c"])
       for (const c of [
         {},

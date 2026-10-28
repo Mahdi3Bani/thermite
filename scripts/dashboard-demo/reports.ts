@@ -43,7 +43,7 @@ export function reportRigs(
   { g1, g2, g3, c1, g4 }: { g1: Rig; g2: Rig; g3: Rig; c1: Rig; g4: Rig },
 ): void {
   const report = (u: Rig, jobs: Record<string, number>, hw: unknown, lastSeenHoursAgo = 0) => {
-    store.ingest({
+    store.rigEvents.ingest({
       rig: u.id,
       ledger_id: `ledger-${u.id}`,
       cursor: 0,
@@ -68,7 +68,7 @@ export function reportRigs(
     ["gpu-2", 3.1],
     ["gpu-3", 6.8],
   ] as const) {
-    store.setSupervisor(u, {
+    store.reportedRigs.setSupervisor(u, {
       export: { exports: 31, remote: true, last_push_at: iso(0.4) },
       advisors: {
         teacher_runs: 28,
@@ -103,5 +103,5 @@ export function reportRigs(
       },
     });
   }
-  store.setSupervisor("cpu-1", { export: { exports: 10, remote: false } });
+  store.reportedRigs.setSupervisor("cpu-1", { export: { exports: 10, remote: false } });
 }

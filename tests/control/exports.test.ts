@@ -153,7 +153,7 @@ describe("exports sent to control", () => {
     writeExport(s.outbox, full, files(), true);
     const third = await uploadExportsOnce(s.cfg, { ...again, queue: [full] });
     assert.deepEqual(third.uploaded.at(-1), full);
-    assert.ok(s.store.rigExport("rig-a", full)?.files["ledger.sqlite"]);
+    assert.ok(s.store.exports.get("rig-a", full)?.files["ledger.sqlite"]);
   });
 
   test("a broken upload goes on next round where control stopped", async () => {
@@ -166,13 +166,13 @@ describe("exports sent to control", () => {
     assert.deepEqual(first.queue, [NAME], "it waits for the next round");
     assert.deepEqual(first.uploaded, []);
     assert.match(String(first.lastError), /^upload failed: connection reset/);
-    assert.equal(s.store.rigExport("rig-a", NAME)?.complete_at, null);
+    assert.equal(s.store.exports.get("rig-a", NAME)?.complete_at, null);
     s.breakAfter(Number.POSITIVE_INFINITY);
     const second = await uploadExportsOnce(s.cfg, first);
     assert.deepEqual(second.uploaded, [NAME]);
     assert.equal(second.lastError, undefined);
     assert.equal(s.sent().bytes, total - 6 * 64, "only what control did not have yet");
-    assert.ok(s.store.rigExport("rig-a", NAME)?.complete_at);
+    assert.ok(s.store.exports.get("rig-a", NAME)?.complete_at);
   });
 
   test("only the rig's own token sends its exports, and only the owner's reads them", async () => {
@@ -189,7 +189,7 @@ describe("exports sent to control", () => {
     assert.equal((await begin(undefined)).status, 401, "no token");
     assert.equal((await begin(RIG_B)).status, 401, "another rig's token");
     assert.equal((await begin(OWNER)).status, 401, "the owner's token is not a rig's");
-    assert.equal(s.store.rigExport("rig-a", NAME), undefined, "nothing was started");
+    assert.equal(s.store.exports.get("rig-a", NAME), undefined, "nothing was started");
     const piece = (token: string) =>
       s.control.request(`/v1/rigs/rig-a/exports/${NAME}/file?path=events.jsonl&offset=0`, {
         method: "POST",
@@ -210,7 +210,7 @@ describe("exports sent to control", () => {
       assert.equal((await s.control.request(path)).status, 401, path);
     }
     // A retired rig sends nothing more.
-    s.store.retireAnyRig("rig-a", "owner:test");
+    s.store.retired.add("rig-a", "owner:test");
     assert.equal((await begin(RIG_A)).status, 403);
     assert.equal((await piece(RIG_A)).status, 403);
     // Through the tunnel to a rig behind a proxy: its sends only, never the owner's reads.
@@ -283,7 +283,7 @@ describe("exports sent to control", () => {
       /the SHA-256 of attempts\/a-1\.patch is [0-9a-f]{64}, not the manifest's/,
     );
     assert.equal(why.received, 0, "it starts again from the first byte");
-    assert.equal(s.store.rigExport("rig-a", NAME)?.done.length, 0);
+    assert.equal(s.store.exports.get("rig-a", NAME)?.done.length, 0);
     const missing = await s.control.request(
       `/v1/rigs/rig-a/exports/${NAME}/file?path=attempts%2Fa-1.patch`,
       { headers: s.as(OWNER) },
@@ -296,7 +296,7 @@ describe("exports sent to control", () => {
     const ok = await send("attempts/a-1.patch", 0, patch);
     assert.equal(ok.status, 200);
     assert.deepEqual(await ok.json(), { received: patch.length, done: true, complete: false });
-    assert.deepEqual(s.store.rigExport("rig-a", NAME)?.done, ["attempts/a-1.patch"]);
+    assert.deepEqual(s.store.exports.get("rig-a", NAME)?.done, ["attempts/a-1.patch"]);
   });
 });
 
@@ -323,7 +323,7 @@ describe("Export and the Exports page (goal 103)", () => {
     const f = fullFiles();
     writeExport(s.outbox, NAME, f, true);
     await uploadExportsOnce(s.cfg, { queue: [NAME], uploaded: [] });
-    assert.ok(s.store.rigExport("rig-a", NAME)?.complete_at);
+    assert.ok(s.store.exports.get("rig-a", NAME)?.complete_at);
 
     const res = await s.control.request(`/v1/rigs/rig-a/exports/${NAME}/archive`, {
       headers: s.as(OWNER),
@@ -353,7 +353,7 @@ describe("Export and the Exports page (goal 103)", () => {
       assert.equal(sha(got), manifest.files[rel], `${rel}: its SHA-256 is the manifest's`);
     }
     assert.ok(
-      s.store.listAudit(10).some((a) => a.action === "export_downloaded"),
+      s.store.auditLog.list(10).some((a) => a.action === "export_downloaded"),
       "the download is in the audit log",
     );
 
@@ -373,7 +373,7 @@ describe("Export and the Exports page (goal 103)", () => {
     writeExport(s.outbox, PART, files());
     s.breakAfter(3);
     await uploadExportsOnce(s.cfg, { queue: [PART], uploaded: [] });
-    assert.equal(s.store.rigExport("rig-a", PART)?.complete_at, null);
+    assert.equal(s.store.exports.get("rig-a", PART)?.complete_at, null);
     const part = await s.control.request(`/v1/rigs/rig-a/exports/${PART}/archive`, {
       headers: s.as(OWNER),
     });
@@ -430,7 +430,7 @@ describe("Export and the Exports page (goal 103)", () => {
 
   test("Export on a rig's page sends export_now with full as the owner chose, and says where it will show", async () => {
     const s = setup();
-    s.store.ingest({
+    s.store.rigEvents.ingest({
       rig: "rig-a",
       ledger_id: "ledger-a",
       cursor: 0,
@@ -486,7 +486,7 @@ describe("Export and the Exports page (goal 103)", () => {
       },
     });
     const ranAnswer = (await ran.json()) as { said: string; follow: string };
-    const ranCmd = s.store.commandRow(
+    const ranCmd = s.store.commands.row(
       decodeURIComponent(ranAnswer.follow.replace(/^\/ui\/commands\//, "").replace(/\.json$/, "")),
     );
     assert.deepEqual([ranCmd?.kind, ranCmd?.payload], ["export_now", { full: false, run: "r-1" }]);
@@ -527,7 +527,7 @@ describe("Export and the Exports page (goal 103)", () => {
       const id = decodeURIComponent(
         a.follow.replace(/^\/ui\/commands\//, "").replace(/\.json$/, ""),
       );
-      const cmd = s.store.commandRow(id);
+      const cmd = s.store.commands.row(id);
       assert.equal(cmd?.kind, "export_now");
       assert.deepEqual(cmd?.payload, { full: full === "true" });
       assert.match(

@@ -51,7 +51,7 @@ describe("champion patches reach control", () => {
     };
     // Before control has the rig's signed event, the upload waits.
     assert.deepEqual(await uploadChampions(cfg, queue), queue);
-    store.ingest({
+    store.rigEvents.ingest({
       rig: "rig-a",
       ledger_id: "ledger-a",
       cursor: 0,
@@ -119,7 +119,7 @@ describe("champion patches reach control", () => {
     const { store, control } = controlStack();
     const folder = "examples/matmul-cpu/project";
     const at = new Date().toISOString();
-    store.ingest({
+    store.rigEvents.ingest({
       rig: "rig-a",
       ledger_id: "ledger-a",
       cursor: 0,

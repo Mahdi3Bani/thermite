@@ -177,9 +177,9 @@ export function startRunAnswer(
  * keeps, or an earlier assignment's imports), or an earlier assignment to assign again.
  */
 export function startable(store: ControlStore, campaign: string, kits: unknown): boolean {
-  const v = store.campaignVersions(campaign)[0];
+  const v = store.campaigns.versions(campaign)[0];
   if (v && (kits || v.sources.assignment)) return true;
-  return store.latestAssignments().has(campaign);
+  return store.commands.latestAssignments().has(campaign);
 }
 
 /**
@@ -217,9 +217,12 @@ export async function startARun(
     ? `${encodeURIComponent(req.model.provider)}|${encodeURIComponent(req.model.model)}`
     : "";
   const mode =
-    (store.campaignVersions(campaign)[0]?.contract as { mode?: string } | undefined)?.mode ??
-    (store.latestAssignments().get(campaign)?.payload.contract as { mode?: string } | undefined)
-      ?.mode;
+    (store.campaigns.versions(campaign)[0]?.contract as { mode?: string } | undefined)?.mode ??
+    (
+      store.commands.latestAssignments().get(campaign)?.payload.contract as
+        | { mode?: string }
+        | undefined
+    )?.mode;
   const researchModel =
     mode === "research" && agents ? opencodeOnlyModel(store, rig, chosen || undefined) : undefined;
   if (researchModel) return refuse(researchNeedsOpencode(rig.id, researchModel));
@@ -242,7 +245,7 @@ export async function startARun(
       };
   }
   // Control gave the rig a model it has not taken yet: the agents would start with none.
-  const given = store.rigModels()[rig.id];
+  const given = store.agentModels.byRig()[rig.id];
   if (agents && !req.model && given && !sameModel(rig.model?.model, given.model))
     return refuse(
       `${rig.id} has not taken ${given.model} yet (it does within a minute of being given it; Settings › Providers shows it taking the model until then): start the run after that.`,

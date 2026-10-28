@@ -85,7 +85,7 @@ async function stack() {
     tokens: { rigs: {} },
     options: { staleAfterMs: 600_000, kits, secrets, mcpServers: servers },
   });
-  store.ingest({
+  store.rigEvents.ingest({
     rig: "rig-a",
     ledger_id: "ledger-rig-a",
     cursor: 0,
@@ -271,15 +271,17 @@ describe("Copy on a campaign's page (goal 069)", () => {
       decodeURIComponent(to),
       "/ui/campaigns/matmul-speed-b?ok=Copied matmul-speed version 2 as matmul-speed-b.",
     );
-    const [source] = s.store.campaignVersions("matmul-speed");
-    const [copy] = s.store.campaignVersions("matmul-speed-b");
+    const [source] = s.store.campaigns.versions("matmul-speed");
+    const [copy] = s.store.campaigns.versions("matmul-speed-b");
     assert.ok(source && copy);
     assert.deepEqual(copy.copied_from, { campaign: "matmul-speed", version: 2 });
     assert.equal(copy.created_by, "owner:ui");
     assert.deepEqual(copy.sources, source.sources);
     assert.equal((copy.contract as { campaign: string }).campaign, "matmul-speed-b");
     assert.ok(
-      s.store.listAudit(50).some((a) => a.action === "campaign_copied" && a.actor === "owner:ui"),
+      s.store.auditLog
+        .list(50)
+        .some((a) => a.action === "campaign_copied" && a.actor === "owner:ui"),
     );
     const page = await s.page(to);
     assert.match(page, /<b class="ok">Copied matmul-speed version 2 as matmul-speed-b\.<\/b>/);
@@ -359,7 +361,7 @@ describe("Copy on a campaign's page (goal 069)", () => {
     type(form, "name", "web-survey-papers");
     const r = await s.post(form.action, sent(form));
     assert.equal(r.status, 303, await r.clone().text());
-    const [copy] = s.store.campaignVersions("web-survey-papers");
+    const [copy] = s.store.campaigns.versions("web-survey-papers");
     assert.ok(copy);
     // In the panel's order, which is Settings'.
     assert.deepEqual((copy.contract as { mcp_servers: unknown }).mcp_servers, [
@@ -381,8 +383,8 @@ describe("Copy on a campaign's page (goal 069)", () => {
     type(same, "name", "web-survey-again");
     const r2 = await s.post(same.action, sent(same));
     assert.equal(r2.status, 303, await r2.clone().text());
-    const [again] = s.store.campaignVersions("web-survey-again");
-    const [source] = s.store.campaignVersions("web-survey");
+    const [again] = s.store.campaigns.versions("web-survey-again");
+    const [source] = s.store.campaigns.versions("web-survey");
     assert.ok(again && source);
     assert.deepEqual(again.copied_from, { campaign: "web-survey", version: 1 });
     assert.deepEqual(
@@ -391,7 +393,7 @@ describe("Copy on a campaign's page (goal 069)", () => {
     );
 
     // A server with no agent, and a kind of agent with no tool: refused in words, nothing saved.
-    const before = s.store.campaignVersions().length;
+    const before = s.store.campaigns.versions().length;
     const bad = copyForm(await s.page("/ui/campaigns/web-survey?copy=1"));
     tick(bad, "srv", "paper-search");
     tick(bad, "tool:web-search:workers", "search", false);
@@ -407,14 +409,14 @@ describe("Copy on a campaign's page (goal 069)", () => {
     assert.ok(again2.fields.some((x) => x.name === "srv" && x.value === "paper-search" && x.on));
     assert.match(again2.html, /<b class="warn">Not as web-survey\.<\/b>/);
     assert.match(again2.html, /data-c-mcp-reset>Use the servers of web-survey again/);
-    assert.equal(s.store.campaignVersions().length, before);
+    assert.equal(s.store.campaigns.versions().length, before);
   });
 
   test("a taken name and a name that is not valid: refused in words, the panel open again", async () => {
     const s = await stack();
     // A campaign known only by a grant in the knowledge base: its name is taken too.
     s.store.kb().grant("old-sweep", "matmul-speed", "owner:ui");
-    const before = s.store.campaignVersions().length;
+    const before = s.store.campaigns.versions().length;
     const form = copyForm(await s.page("/ui/campaigns/web-survey"));
     assert.ok(form.data.taken.includes("old-sweep"));
     assert.deepEqual(form.data.folderOnly, ["old-sweep"]);
@@ -441,13 +443,13 @@ describe("Copy on a campaign's page (goal 069)", () => {
       "rig-check-mine",
       "A name that starts with rig-check- is for rig checks. Choose another name.",
     );
-    assert.equal(s.store.campaignVersions().length, before, "nothing was saved");
-    assert.ok(!s.store.listAudit(100).some((a) => a.action === "campaign_copied"));
+    assert.equal(s.store.campaigns.versions().length, before, "nothing was saved");
+    assert.ok(!s.store.auditLog.list(100).some((a) => a.action === "campaign_copied"));
   });
 
   test("a campaign control can't copy has no Copy: a rig check, and one control does not know", async () => {
     const s = await stack();
-    s.store.ingest({
+    s.store.rigEvents.ingest({
       rig: "rig-a",
       ledger_id: "ledger-rig-a",
       cursor: 0,

@@ -428,13 +428,13 @@ describe("every button that sends a command (goal 080)", () => {
     const dir = mkdtempSync(join(tmpdir(), "thermite-follow-route-"));
     s.env.service.models = new ModelSource(join(dir, "model-route.json"), undefined);
     await s.relay();
-    s.store.putProvider({
+    s.store.modelProviders.put({
       name: "lab",
       type: "openai",
       base_url: "https://models.example.com/v1",
       key: { sealed: SecretBox.ephemeral().seal("not-a-key"), hint: "…-key" },
     });
-    s.store.setProviderModels("lab", [{ id: "m" }]);
+    s.store.modelProviders.setModels("lab", [{ id: "m" }]);
     const a = JSON.parse(
       (await s.send("/ui/settings/rigs", { rig: "rig-a", choice: "lab|m", harness: "pi" })).text,
     ) as Answer;

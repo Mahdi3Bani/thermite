@@ -1,5 +1,4 @@
 import { logDebug } from "../../common/log.ts";
-import { newestEventSeq } from "../store/events.ts";
 import type { ControlStore } from "../store.ts";
 import { RigFold } from "./fold/index.ts";
 import { eachEvent, type RigRow, readRig, rigInputs, type ViewOptions } from "./rig.ts";
@@ -31,7 +30,7 @@ export class FoldCache {
 
   /** A rig's view, read now; undefined for a rig control does not list. */
   view(rig: string, opts: ViewOptions): RigView | undefined {
-    const row = this.store.rigs().find((x) => x.id === rig);
+    const row = this.store.reportedRigs.list().find((x) => x.id === rig);
     if (!row) {
       this.drop(rig);
       return undefined;
@@ -41,7 +40,7 @@ export class FoldCache {
 
   /** Every rig's view, read now. */
   views(opts: ViewOptions): RigView[] {
-    const rows = this.store.rigs();
+    const rows = this.store.reportedRigs.list();
     const listed = new Set(rows.map((u) => u.id));
     for (const rig of this.kept.keys()) if (!listed.has(rig)) this.drop(rig);
     return rows.map((u) => this.read(u, opts));
@@ -66,7 +65,7 @@ export class FoldCache {
     const k = this.kept.get(row.id);
     if (k && k.ledger === row.ledger_id) {
       // Most reads find nothing new: a look at the newest seq first costs next to nothing.
-      const newest = newestEventSeq(this.store.db, row.id, k.seq);
+      const newest = this.store.rigEvents.newestSeq(row.id, k.seq);
       if (newest !== null) this.foldFrom(row, k, newest);
       return k.fold;
     }

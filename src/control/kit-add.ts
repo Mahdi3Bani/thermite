@@ -62,7 +62,7 @@ export async function addKit(
     if (err instanceof KitRefused) return { ok: false, error: err.message, status: err.status };
     throw err;
   }
-  store.audit(by, "kit_added", {
+  store.auditLog.add(by, "kit_added", {
     name: added.name,
     head: added.head,
     previous: added.previous,

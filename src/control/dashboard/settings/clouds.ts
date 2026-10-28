@@ -13,7 +13,8 @@ export function cloudRoutes(app: Hono, dash: Dashboard): void {
   // ---------------------------------------------------------------- GPU clouds (Providers)
   app.post("/ui/settings/clouds/:name/check", async (c) => {
     const name = c.req.param("name");
-    if (!store.gpuCloud(name)) return c.redirect(settingsUrl("error", "No such GPU cloud."), 303);
+    if (!store.gpuClouds.get(name))
+      return c.redirect(settingsUrl("error", "No such GPU cloud."), 303);
     const why = await checkCloudNow(name);
     return c.redirect(
       why ? settingsUrl("error", `"${name}": ${why}`) : settingsUrl("ok", `Read "${name}" again.`),
@@ -23,12 +24,13 @@ export function cloudRoutes(app: Hono, dash: Dashboard): void {
   app.post("/ui/settings/clouds/:name/key", async (c) => {
     const name = c.req.param("name");
     const key = String((await c.req.parseBody()).runpod_key ?? "").trim();
-    if (!store.gpuCloud(name)) return c.redirect(settingsUrl("error", "No such GPU cloud."), 303);
+    if (!store.gpuClouds.get(name))
+      return c.redirect(settingsUrl("error", "No such GPU cloud."), 303);
     if (!key) return c.redirect(settingsUrl("error", "Paste the new key."), 303);
     try {
       const facts = await readRunpod(key, opts.cloudFetch);
-      store.replaceGpuCloudKey(name, opts.secrets.seal(key), keyHint(key), "owner:ui");
-      store.setGpuCloudFacts(name, { facts });
+      store.gpuClouds.replaceKey(name, opts.secrets.seal(key), keyHint(key), "owner:ui");
+      store.gpuClouds.setFacts(name, { facts });
     } catch (err) {
       return c.redirect(settingsUrl("error", `Kept the old key: ${errorText(err)}.`), 303);
     }
@@ -92,7 +94,7 @@ export function cloudRoutes(app: Hono, dash: Dashboard): void {
         303,
       );
     return c.redirect(
-      store.deleteGpuCloud(name, "owner:ui")
+      store.gpuClouds.delete(name, "owner:ui")
         ? settingsUrl("ok", `"${name}" is deleted: control keeps nothing of its key.`)
         : settingsUrl("error", "No such GPU cloud."),
       303,

@@ -30,7 +30,7 @@ export function runBrief(
     rows.push(
       `<div class="br ${cls}"><span class="br-who">${esc(who)}</span><span class="br-what">${what}</span><span class="br-when">${when}</span></div>`,
     );
-  const trials = store.liveTrials(u.id).filter((t) => t.run === r.id);
+  const trials = store.liveLines.trials(u.id).filter((t) => t.run === r.id);
   const lanes = [
     ...new Set([
       ...Object.keys(r.at_work),
@@ -105,8 +105,8 @@ export function runBrief(
       esc(span(r.paper.requested_at, now)),
     );
   // The planner, only when it waits for something.
-  const planner = store
-    .liveTail(u.id, 40, "planner")
+  const planner = store.liveLines
+    .tail(u.id, 40, "planner")
     .filter((l) => !l.run || l.run === r.id)
     .at(-1);
   if (
@@ -121,7 +121,7 @@ export function runBrief(
   const j = u.judge.now && mine(u.judge.now) ? u.judge.now : null;
   const queued = u.judge.queued.filter(mine).length;
   if (j) {
-    const line = opts.detail ? store.liveTail(u.id, 1, "judge")[0] : undefined;
+    const line = opts.detail ? store.liveLines.tail(u.id, 1, "judge")[0] : undefined;
     row(
       "judge",
       `${jobHtml(u, j)}${queued ? ` <span class="muted">· ${queued} more queued</span>` : ""}${line && j.started_at && line.at >= j.started_at && !/: started$/.test(line.text) ? `<span class="br-more">now: ${esc(clip(line.text, 120))}</span>` : ""}`,

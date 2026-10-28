@@ -67,9 +67,9 @@ describe("a cluster rig's GPUs, CPUs and memory, changed from control (goal 118)
     );
     await sleep(20);
     // Its first report (the fake cluster has no rig to send one) makes it running.
-    s.store.setClusterRigStatus(rig, "running");
+    s.store.clusters.setRigStatus(rig, "running");
     const report = (summary: Record<string, unknown>) =>
-      s.store.ingest({
+      s.store.rigEvents.ingest({
         rig,
         ledger_id: "l-1",
         cursor: 0,
@@ -88,7 +88,7 @@ describe("a cluster rig's GPUs, CPUs and memory, changed from control (goal 118)
       "thermite-slot-1": { "requests.nvidia.com/gpu": "3" },
     };
     const { f, s } = await slotRig("gpu-1", 3, { quota });
-    assert.equal(s.store.clusterRig("gpu-1")?.spec.resources, undefined);
+    assert.equal(s.store.clusters.rig("gpu-1")?.spec.resources, undefined);
     // Edit rig: its GPUs, CPUs and memory, each label with its info icon, and what the slot allows.
     let edit = await s.page("/ui/rigs/gpu-1/edit");
     assert.match(
@@ -143,7 +143,7 @@ describe("a cluster rig's GPUs, CPUs and memory, changed from control (goal 118)
     });
     // The images it runs: a change of size is not an image update.
     assert.equal(harness?.image, "registry.example.com/harness-cuda:1");
-    const spec = s.store.clusterRig("gpu-1")?.spec;
+    const spec = s.store.clusters.rig("gpu-1")?.spec;
     assert.equal(spec?.gpus, 4);
     assert.equal(spec?.judgeGpus, 2);
     assert.deepEqual(spec?.resources, { cpus: 16, memoryGi: 52 });
@@ -160,13 +160,13 @@ describe("a cluster rig's GPUs, CPUs and memory, changed from control (goal 118)
       /4 through NVIDIA(&#39;|')s device plugin: 2 for the judge, 2 for the agents/,
     );
     // While it waits for a report from its new pods, another change is refused.
-    assert.equal(s.store.clusterRig("gpu-1")?.status, "updating");
+    assert.equal(s.store.clusters.rig("gpu-1")?.status, "updating");
     assert.match(
       await s.post("/ui/rigs/gpu-1/edit", { k_gpus: "4", k_cpus: "12", k_mem: "52" }),
       /error=Not saved: gpu-1 is being updated: wait until its page shows it running, or failed\./,
     );
     // Above the quota: refused in words, and nothing is applied.
-    s.store.setClusterRigStatus("gpu-1", "running");
+    s.store.clusters.setRigStatus("gpu-1", "running");
     f.calls.length = 0;
     assert.match(
       await s.post("/ui/rigs/gpu-1/edit", { k_gpus: "5", k_cpus: "16", k_mem: "52" }),
@@ -191,8 +191,8 @@ describe("a cluster rig's GPUs, CPUs and memory, changed from control (goal 118)
       await s.post("/ui/rigs/gpu-1/edit", { k_gpus: "4", k_cpus: "", k_mem: "" }),
       /ok=gpu-1's pods restart with 4 GPUs \(2 for the judge, 2 for the agents\), the namespace's default CPUs and memory\./,
     );
-    assert.equal(s.store.clusterRig("gpu-1")?.spec.resources, undefined);
-    s.store.setClusterRigStatus("gpu-1", "running");
+    assert.equal(s.store.clusters.rig("gpu-1")?.spec.resources, undefined);
+    s.store.clusters.setRigStatus("gpu-1", "running");
     edit = await s.page("/ui/rigs/gpu-1/edit");
     assert.match(edit, /name="k_gpus" type="number" min="1" max="16" step="1" value="4"/);
     page = await s.page("/ui/rigs/gpu-1");
@@ -215,7 +215,7 @@ describe("a cluster rig's GPUs, CPUs and memory, changed from control (goal 118)
       String(refused.body.error),
       /^Only the owner's token changes a rig's GPU split: leave out judge_gpus\./,
     );
-    assert.equal(s.store.clusterRig("gpu-2")?.spec.gpus, 3);
+    assert.equal(s.store.clusters.rig("gpu-2")?.spec.gpus, 3);
     assert.ok(!f.calls.some((c) => c.args[0] === "apply"), "nothing changed");
     f.calls.length = 0;
     assert.deepEqual(
@@ -236,8 +236,8 @@ describe("a cluster rig's GPUs, CPUs and memory, changed from control (goal 118)
     assert.equal(envOf(container(applied(f), "harness")).THERMITE_JUDGE_GPUS, "2");
     // The share it kept (1) would come first in its harness: it follows the new default, sent as
     // the one who asked (the operator acts for the owner).
-    const sent = s.store
-      .pendingCommands("gpu-2")
+    const sent = s.store.commands
+      .pending("gpu-2")
       .map((c) => c.envelope)
       .filter((e) => e.kind === "rig_settings");
     assert.deepEqual(
@@ -245,13 +245,13 @@ describe("a cluster rig's GPUs, CPUs and memory, changed from control (goal 118)
       [[{ judge_gpus: 2 }, "owner:operator"]],
     );
     assert.match(
-      s.store
-        .rigSetupEvents("gpu-2")
+      s.store.rigHistory
+        .list("gpu-2")
         .map((e) => e.detail ?? "")
         .join("\n"),
       /the judge's share it kept, 1, → 2/,
     );
-    s.store.setClusterRigStatus("gpu-2", "running");
+    s.store.clusters.setRigStatus("gpu-2", "running");
     const setup = await op.call("rig_setup", { rig: "gpu-2" });
     assert.equal(setup.body.gpus, 4);
     assert.equal(setup.body.judge_gpus, 2);
@@ -265,7 +265,7 @@ describe("a cluster rig's GPUs, CPUs and memory, changed from control (goal 118)
         .said,
       "gpu-2's pods restart with 6 GPUs (4 for the judge, 2 for the agents), 8 CPUs and 32 GiB of memory.",
     );
-    s.store.setClusterRigStatus("gpu-2", "running");
+    s.store.clusters.setRigStatus("gpu-2", "running");
     assert.match(
       String(
         (await own.call("set_cluster_rig_resources", { rig: "gpu-2", judge_gpus: 3 })).body.error,
@@ -294,7 +294,7 @@ describe("a cluster rig's GPUs, CPUs and memory, changed from control (goal 118)
     r = await rest({ cpus: 8 });
     assert.equal(r.status, 409);
     assert.match(String(((await r.json()) as { error: string }).error), /gpu-2 is being updated/);
-    s.store.setClusterRigStatus("gpu-2", "running");
+    s.store.clusters.setRigStatus("gpu-2", "running");
     r = await rest({ gpus: 0 });
     assert.equal(r.status, 400);
     assert.match(String(((await r.json()) as { error: string }).error), /can't move to none/);
@@ -311,14 +311,14 @@ describe("a cluster rig's GPUs, CPUs and memory, changed from control (goal 118)
       await s.post("/ui/rigs/gpu-3/edit", { k_gpus: "4", k_cpus: "", k_mem: "" }),
       /ok=gpu-3 drains first: it starts nothing new, and its pods restart with 4 GPUs \(2 for the judge, 2 for the agents\), the namespace's default CPUs and memory once 1 trial finishes\./,
     );
-    let r = s.store.clusterRig("gpu-3");
+    let r = s.store.clusters.rig("gpu-3");
     assert.equal(r?.status, "draining");
     assert.deepEqual(r?.pending, { gpus: 4, judgeGpus: 2, by: "owner:ui" });
     assert.equal(r?.spec.gpus, 3);
     assert.ok(!f.calls.some((c) => c.args[0] === "apply"), "no restart yet");
     assert.deepEqual(
-      s.store
-        .pendingCommands("gpu-3")
+      s.store.commands
+        .pending("gpu-3")
         .map((c) => c.envelope)
         .filter((e) => e.kind === "drain_rig")
         .map((e) => e.payload),
@@ -342,26 +342,26 @@ describe("a cluster rig's GPUs, CPUs and memory, changed from control (goal 118)
       await s.post("/ui/rigs/gpu-3/cluster/drain-cancel", {}),
       /ok=gpu-3 goes back to work with its GPUs, CPUs and memory as they were\./,
     );
-    r = s.store.clusterRig("gpu-3");
+    r = s.store.clusters.rig("gpu-3");
     assert.equal(r?.status, "running");
     assert.equal(r?.pending, undefined);
     assert.equal(r?.spec.gpus, 3);
     // Again, then Change now: its pods restart at once, while the trial still runs.
     await s.post("/ui/rigs/gpu-3/edit", { k_gpus: "4", k_cpus: "", k_mem: "" });
-    assert.equal(s.store.clusterRig("gpu-3")?.status, "draining");
+    assert.equal(s.store.clusters.rig("gpu-3")?.status, "draining");
     assert.match(
       await s.post("/ui/rigs/gpu-3/cluster/resources-now", {}),
       /ok=gpu-3's pods restart with 4 GPUs/,
     );
     assert.ok(f.calls.some((c) => c.args[0] === "apply"));
-    r = s.store.clusterRig("gpu-3");
+    r = s.store.clusters.rig("gpu-3");
     assert.equal(r?.spec.gpus, 4);
     assert.equal(r?.status, "updating");
     assert.equal(r?.pending, undefined);
     // Once more, to 5 GPUs: applied by the watcher when its report says nothing runs.
-    s.store.setClusterRigStatus("gpu-3", "running");
+    s.store.clusters.setRigStatus("gpu-3", "running");
     await s.post("/ui/rigs/gpu-3/edit", { k_gpus: "5", k_cpus: "", k_mem: "" });
-    assert.equal(s.store.clusterRig("gpu-3")?.status, "draining");
+    assert.equal(s.store.clusters.rig("gpu-3")?.status, "draining");
     f.calls.length = 0;
     report({ work: { trials: 1, judge_jobs: 0, draining: { since: "x", reason: "r" } } });
     await sleep(100);
@@ -369,11 +369,11 @@ describe("a cluster rig's GPUs, CPUs and memory, changed from control (goal 118)
     report({ work: { trials: 0, judge_jobs: 0, draining: { since: "x", reason: "r" } } });
     for (let i = 0; i < 50 && !f.calls.some((c) => c.args[0] === "apply"); i++) await sleep(20);
     assert.equal(f.calls.filter((c) => c.args[0] === "apply").length, 1, "applied once");
-    assert.equal(s.store.clusterRig("gpu-3")?.spec.gpus, 5);
-    assert.equal(s.store.clusterRig("gpu-3")?.status, "updating");
+    assert.equal(s.store.clusters.rig("gpu-3")?.spec.gpus, 5);
+    assert.equal(s.store.clusters.rig("gpu-3")?.status, "updating");
     assert.match(
-      s.store
-        .rigSetupEvents("gpu-3")
+      s.store.rigHistory
+        .list("gpu-3")
         .map((e) => `${e.step}: ${e.detail ?? ""}`)
         .join("\n"),
       /drain: nothing runs any more: its pods restart now\nresources: GPUs 4 → 5 \(3 for the judge, 2 for the agents\)/,
@@ -400,9 +400,9 @@ describe("a cluster rig's GPUs, CPUs and memory, changed from control (goal 118)
       "/ui/rigs/dra-1",
     );
     await sleep(20);
-    s.store.setClusterRigStatus("dra-1", "running");
+    s.store.clusters.setRigStatus("dra-1", "running");
     const reported = (rig: string) =>
-      s.store.ingest({
+      s.store.rigEvents.ingest({
         rig,
         ledger_id: "l-1",
         cursor: 0,
@@ -445,10 +445,10 @@ describe("a cluster rig's GPUs, CPUs and memory, changed from control (goal 118)
       limits: { cpu: "5500m", memory: "22528Mi" },
       claims: [{ name: "gpus" }],
     });
-    assert.equal(s.store.clusterRig("dra-1")?.status, "stopped");
+    assert.equal(s.store.clusters.rig("dra-1")?.status, "stopped");
     assert.match(
-      s.store
-        .rigSetupEvents("dra-1")
+      s.store.rigHistory
+        .list("dra-1")
         .map((e) => e.detail ?? "")
         .join("\n"),
       /GPUs 2 → 4 \(2 for the judge, 2 for the agents\); CPUs and memory: namespace defaults → 6 CPUs, 24 GiB; at its next start/,
@@ -463,7 +463,7 @@ describe("a cluster rig's GPUs, CPUs and memory, changed from control (goal 118)
       "/ui/rigs/cpu-5",
     );
     await sleep(20);
-    s.store.setClusterRigStatus("cpu-5", "running");
+    s.store.clusters.setRigStatus("cpu-5", "running");
     reported("cpu-5");
     const edit = await s.page("/ui/rigs/cpu-5/edit");
     assert.doesNotMatch(edit, /name="k_gpus"/);

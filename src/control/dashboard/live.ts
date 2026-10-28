@@ -72,7 +72,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
       );
     const { u, r } = sel;
     const research = r.mode === "research";
-    const trials = store.liveTrials(u.id).filter((t) => t.run === r.id);
+    const trials = store.liveLines.trials(u.id).filter((t) => t.run === r.id);
     const lanes = [
       ...new Set([
         ...Object.keys(r.at_work),
@@ -80,7 +80,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
         ...trials.map((t) => t.lane).filter((l): l is string => !!l),
       ]),
     ].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-    const lines = store.liveRunTail(u.id, r.id, 600);
+    const lines = store.liveLines.runTail(u.id, r.id, 600);
     const after = lines.at(-1)?.id ?? 0;
     const w = c.req.query("w") || "all";
     // The filters: everyone, each lane (working or not), the planner, the judge, the advisors, you.
@@ -154,7 +154,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
       `<option value="${esc(v)}" data-hint="${esc(hint(v))}"${v === to ? " selected" : ""}${off ? ` disabled title="${esc(off)}"` : ""}>${esc(label)}</option>`;
     // A message control refused, or the rig refused (its newest one to this run).
     const refused = c.req.query("msgerror");
-    const rigRefused = store.lastMessageToRun(u.id, r.id)?.refused ?? "";
+    const rigRefused = store.commands.lastMessageToRun(u.id, r.id)?.refused ?? "";
     const notice =
       refused || rigRefused
         ? `<div class="lnotice">${icon.warn}<span><b>Not sent.</b> ${esc(refused || `The rig refused your last message: ${rigRefused}`)}</span></div>`
@@ -206,7 +206,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
         flush: true,
       },
       `<div class="lwrap" id="lwrap">${nav}<section class="lcol">${head}<div data-fw-top></div><div class="lchips">${chips}<span class="grow"></span><span data-part="lkept">${keptBox}</span><button class="lchip on lfollow" type="button" aria-pressed="true" title="Follow new lines">↓ Follow</button></div>
-<div class="transcript lstream" id="transcript" data-rig="${esc(u.id)}" data-run="${esc(r.id)}" data-w="${esc(w)}" data-after="${after}">${runLinesHtml(lines, now, store.runMessages(u.id, r.id)) || `<div class="empty">No live lines yet. They appear here as the run's agents and judge work.</div>`}</div>
+<div class="transcript lstream" id="transcript" data-rig="${esc(u.id)}" data-run="${esc(r.id)}" data-w="${esc(w)}" data-after="${after}">${runLinesHtml(lines, now, store.rigEvents.runMessages(u.id, r.id)) || `<div class="empty">No live lines yet. They appear here as the run's agents and judge work.</div>`}</div>
 <div data-part="lnotice">${notice}</div>${box}</section></div>`,
       vs,
     );
@@ -217,8 +217,8 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
     const [rig, run] = String(c.req.query("run") ?? "").split("/");
     if (!rig || !run) return c.json({ entries: [] });
     const now = Date.now();
-    const messages = store.runMessages(rig, run);
-    const entries = store.liveRun(rig, run, after, 500).map((e) => ({
+    const messages = store.rigEvents.runMessages(rig, run);
+    const entries = store.liveLines.ofRun(rig, run, after, 500).map((e) => ({
       id: e.id,
       kind: e.kind,
       src: e.source,
@@ -232,8 +232,8 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
       .filter((n) => Number.isInteger(n) && n > 0)
       .slice(0, 50);
     const redrawn = ids.length
-      ? store
-          .liveRun(rig, run, 0, 50, ids)
+      ? store.liveLines
+          .ofRun(rig, run, 0, 50, ids)
           .map((e) => ({ id: e.id, html: runEntryHtml(e, now, messages) }))
           .filter((x) => !x.html.includes('data-recheck="1"'))
       : [];
@@ -274,7 +274,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
       const why = errorText(err);
       return json ? c.json(notSent(why), 400) : back(`&msgerror=${encodeURIComponent(why)}`);
     }
-    const cmd = json ? store.commandRow(id) : undefined;
+    const cmd = json ? store.commands.row(id) : undefined;
     if (cmd) return c.json({ ...commandProgress(cmd, Date.now()), follow: commandFollowUrl(id) });
     return back();
   });
@@ -308,15 +308,15 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
         `<div class="card"><div class="empty">No such rig.</div></div>`,
         vs,
       );
-    const sources = store.liveSources(u.id);
+    const sources = store.liveLines.sources(u.id);
     const intros = new Map(
-      store
-        .liveTrials(u.id)
+      store.liveLines
+        .trials(u.id)
         .map((x) => [x.source, x.intro.replace(/^(research )?trial on [^:]+: /, "")]),
     );
     const source = c.req.query("source") || "";
     const sel = sources.find((x) => x.source === source);
-    const lines = store.liveTail(u.id, 400, source || undefined);
+    const lines = store.liveLines.tail(u.id, 400, source || undefined);
     const after = lines.at(-1)?.id ?? 0;
     // A trial works while the ledger has it at work; its "trial ended" line may never come (a
     // restart cuts it off, and the harness closes it as interrupted when it starts again).
@@ -342,7 +342,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
           : "no model: the agents wait"
       : "not reported by this rig's harness";
     const trial = source.startsWith("trial:")
-      ? store.liveTrials(u.id).find((x) => x.source === source)
+      ? store.liveLines.trials(u.id).find((x) => x.source === source)
       : undefined;
     const whenAt = (at: string) =>
       `${esc(at.slice(11, 19))} UTC <span class="muted">(${esc(ago(at, now))} ago)</span>`;
@@ -398,7 +398,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
     const source = c.req.query("source") || undefined;
     const now = Date.now();
     // Each line as the page shows it; a result also as the part it adds to its call's row.
-    const entries = store.live(c.req.param("rig"), after, 500, source).map((e) => ({
+    const entries = store.liveLines.after(c.req.param("rig"), after, 500, source).map((e) => ({
       id: e.id,
       kind: e.kind,
       html: liveEntryHtml(e, { showWho: !source, name: sourceName, now }),

@@ -27,17 +27,17 @@ export function inBackground(
     (err: unknown) => {
       const why = errorText(err);
       log("control", "background work failed", { rig, placement, step, error: why }, "error");
-      store.rigSetupEvent(rig, step, false, why);
+      store.rigHistory.add(rig, step, false, why);
       const now =
         placement === "machine"
-          ? store.machineRig(rig)?.status
+          ? store.machines.rig(rig)?.status
           : placement === "cluster"
-            ? store.clusterRig(rig)?.status
-            : store.joinedRig(rig)?.status;
+            ? store.clusters.rig(rig)?.status
+            : store.joinedRigs.get(rig)?.status;
       if (now === undefined || !UNDER_WAY.includes(now)) return;
-      if (placement === "machine") store.setMachineRigStatus(rig, "failed");
-      else if (placement === "cluster") store.setClusterRigStatus(rig, "failed");
-      else store.setJoinedRig(rig, { status: "failed" });
+      if (placement === "machine") store.machines.setRigStatus(rig, "failed");
+      else if (placement === "cluster") store.clusters.setRigStatus(rig, "failed");
+      else store.joinedRigs.set(rig, { status: "failed" });
     },
   );
 }

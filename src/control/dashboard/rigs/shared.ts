@@ -50,17 +50,17 @@ export const updateFollowUrl = (rig: string) => `/ui/rigs/${encodeURIComponent(r
 export function rigHelpers(dash: Dashboard) {
   const { csrf, opts, page, parts, store, updates } = dash;
   const setupSteps = (rig: string) =>
-    store
-      .rigSetupEvents(rig)
+    store.rigHistory
+      .list(rig)
       .map(
         (e) =>
           `<div class="tl-row"><span class="muted small">${esc(ago(e.at, Date.now()))} ago</span><span class="${e.ok ? "ok" : "bad"}">${e.ok ? "✓" : "✕"}</span><span>${esc(STEP_WORDS[e.step] ?? e.step)}${e.detail ? ` <span class="muted small">· ${esc(e.detail)}</span>` : ""}</span></div>`,
       )
       .join("");
   const placeProgress = (rig: string): Progress => {
-    const status = store.clusterRig(rig)?.status ?? store.machineRig(rig)?.status ?? "removed";
+    const status = store.clusters.rig(rig)?.status ?? store.machines.rig(rig)?.status ?? "removed";
     return {
-      state: `${status}:${store.rigSetupEvents(rig).length}`,
+      state: `${status}:${store.rigHistory.list(rig).length}`,
       final: !PLACE_BUSY.has(status),
       said: "",
       tone: "",
@@ -69,8 +69,8 @@ export function rigHelpers(dash: Dashboard) {
   const mintJoin = (rig: string): string => {
     const t = newToken();
     const expires = Date.now() + JOIN_HOURS * 3_600_000;
-    store.setJoinToken(rig, t.sha256, new Date(expires).toISOString(), "owner:ui");
-    store.rigSetupEvent(rig, "join_made", true, `works once, until ${hhmm(expires)} UTC`);
+    store.joinedRigs.setToken(rig, t.sha256, new Date(expires).toISOString(), "owner:ui");
+    store.rigHistory.add(rig, "join_made", true, `works once, until ${hhmm(expires)} UTC`);
     return t.token;
   };
   /** A rig you join yourself: where, the join command, and the commands control can't run. */
@@ -148,9 +148,9 @@ export function rigHelpers(dash: Dashboard) {
   /** Where a rig runs, and what control can do there: update it, check it, restart it. */
   const placeOf = (rig: string): RigPlace => {
     const r = encodeURIComponent(rig);
-    const m = store.machineRig(rig);
+    const m = store.machines.rig(rig);
     if (m && m.status !== "removed") {
-      const known = store.machine(m.machine);
+      const known = store.machines.get(m.machine);
       const images = controlImages(parts, m.gpus.length);
       const noUpdate = !known
         ? `The machine ${m.machine} is no longer in Settings › Providers, so control can't reach it.`
@@ -171,9 +171,9 @@ export function rigHelpers(dash: Dashboard) {
         restart: known ? `/ui/rigs/${r}/machine/restart` : null,
       };
     }
-    const k = store.clusterRig(rig);
+    const k = store.clusters.rig(rig);
     if (k && k.status !== "removed") {
-      const known = store.cluster(k.cluster);
+      const known = store.clusters.get(k.cluster);
       const images = controlImages(parts, k.spec.gpus);
       const noUpdate = !known
         ? `The cluster ${k.cluster} is no longer in Settings › Providers, so control can't reach it.`
@@ -204,7 +204,7 @@ export function rigHelpers(dash: Dashboard) {
         checkWhat: "its pod",
         restart: pod.active && podRuns(pod) ? `/ui/rigs/${r}/runpod/restart` : null,
       };
-    if (store.joinedRig(rig))
+    if (store.joinedRigs.get(rig))
       return {
         kind: "joined",
         words: "a place you set it up on yourself",
@@ -228,7 +228,7 @@ export function rigHelpers(dash: Dashboard) {
    */
   const updateProgress = (rig: string): Progress => {
     const waiting = updates.waiting(rig);
-    const steps = store.rigSetupEvents(rig);
+    const steps = store.rigHistory.list(rig);
     const from = steps.map((s) => s.step).lastIndexOf("update_started");
     const n = from < 0 ? 0 : steps.length - from;
     return { state: `${n}:${waiting ?? "ended"}`, final: !waiting, said: "", tone: "" };

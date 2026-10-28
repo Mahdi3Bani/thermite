@@ -11,15 +11,15 @@ export const exportName = (n: number) => `20261020T12${String(n).padStart(4, "0"
 
 /** The rig's commands that wait for it, oldest first: [id, kind, payload]. */
 export function pendingOf(store: ControlStore, rig: string) {
-  return store
-    .pendingCommands(rig)
+  return store.commands
+    .pending(rig)
     .map((c) => ({ id: c.envelope.id, kind: c.envelope.kind, payload: c.envelope.payload }));
 }
 
 /** The harness applied every command waiting for the rig; an export_now makes the export `name`. */
 export function harnessApplies(store: ControlStore, rig: string, name: string): void {
   for (const c of pendingOf(store, rig))
-    store.ackCommand(rig, c.id, "delivered", {
+    store.commands.ack(rig, c.id, "delivered", {
       source: "harness",
       result: c.kind === "export_now" ? { export: name, through_event: 9 } : {},
     });
@@ -28,7 +28,7 @@ export function harnessApplies(store: ControlStore, rig: string, name: string): 
 /** The harness refused the rig's waiting export_now, in its signed outcome. */
 export function harnessRefusesExport(store: ControlStore, rig: string): void {
   for (const c of pendingOf(store, rig))
-    store.ackCommand(
+    store.commands.ack(
       rig,
       c.id,
       c.kind === "export_now" ? "failed" : "delivered",
@@ -44,7 +44,7 @@ export function supervisorReports(
   rig: string,
   o: { waiting?: number; champions_waiting?: number; to?: "control" | "none" } = {},
 ): void {
-  store.setSupervisor(rig, {
+  store.reportedRigs.setSupervisor(rig, {
     at: new Date().toISOString(),
     export: {
       remote: false,
@@ -63,12 +63,12 @@ export function supervisorReports(
 
 /** Control holds every file of export `name` from the rig, each checked: it has left the rig. */
 export function exportOnControl(store: ControlStore, rig: string, name: string): void {
-  store.beginRigExport(rig, name, {
+  store.exports.begin(rig, name, {
     manifest: { from_event: 0, through_event: 9, files: { a: "a".repeat(64) } },
     files: { a: { size: 1, sha256: "a".repeat(64) } },
     full: true,
     fromEvent: 0,
     throughEvent: 9,
   });
-  store.rigExportFileDone(rig, name, "a");
+  store.exports.fileDone(rig, name, "a");
 }

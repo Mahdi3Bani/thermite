@@ -54,10 +54,10 @@ export const STEP_WORDS: Record<string, string> = {
 /** Whether a new rig can't take this name: a rig has it already, or it is a page's ("add"). */
 export const rigTaken = (parts: ControlParts, rig: string) =>
   rig === "add" ||
-  parts.store.knownRig(rig) ||
-  Boolean(parts.store.machineRig(rig)) ||
-  Boolean(parts.store.clusterRig(rig)) ||
-  Boolean(parts.store.joinedRig(rig)) ||
+  parts.store.enrollments.knownRig(rig) ||
+  Boolean(parts.store.machines.rig(rig)) ||
+  Boolean(parts.store.clusters.rig(rig)) ||
+  Boolean(parts.store.joinedRigs.get(rig)) ||
   parts.views().some((u) => u.id === rig);
 
 // The judge's share as typed in a form, by the one rule of cluster-resources.ts.
@@ -108,14 +108,14 @@ export async function awaitFirstReport(
         .views()
         .some((u) => u.id === rig && (after === undefined || Date.parse(u.last_seen) > after))
     ) {
-      store.rigSetupEvent(rig, step, true);
+      store.rigHistory.add(rig, step, true);
       setStatus("running");
       return;
     }
     await sleep(5000);
   }
   if (o.still && !o.still()) return;
-  store.rigSetupEvent(
+  store.rigHistory.add(
     rig,
     step,
     false,

@@ -46,8 +46,8 @@ describe("control dashboard for an operator", () => {
       attempt: field(form, "attempt"),
     });
     assert.equal(r.status, 303);
-    const cmd = store
-      .pendingCommands(field(form, "rig"))
+    const cmd = store.commands
+      .pending(field(form, "rig"))
       .find((c) => c.envelope.kind === "decline_promotion");
     assert.equal(cmd?.envelope.issued_by, "owner:ui");
     assert.deepEqual(cmd?.envelope.payload, {
@@ -282,7 +282,7 @@ describe("control dashboard for an operator", () => {
   test("agent-written text in decisions, timelines and attempt pages is escaped", async () => {
     const { store, get } = await demo();
     const at = new Date().toISOString();
-    store.ingest({
+    store.rigEvents.ingest({
       rig: "rig-a",
       ledger_id: "ledger-rig-a",
       cursor: 0,

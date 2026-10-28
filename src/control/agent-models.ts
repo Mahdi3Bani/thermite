@@ -38,18 +38,18 @@ export const opencodeOnlyModel = (
   chosen?: string,
   picked = "",
 ): string | undefined => {
-  let provider: ReturnType<typeof store.provider>;
+  let provider: ReturnType<typeof store.modelProviders.get>;
   let model: string | undefined;
   let harness: Harness | undefined;
   if (chosen) {
     const [pRaw, mRaw] = chosen.split("|");
-    provider = store.provider(decodeURIComponent(pRaw ?? ""));
+    provider = store.modelProviders.get(decodeURIComponent(pRaw ?? ""));
     model = decodeURIComponent(mRaw ?? "");
     harness = harnessKept(store, u.id, chosen, picked);
   } else {
-    const given = store.rigModels()[u.id];
+    const given = store.agentModels.byRig()[u.id];
     if (given) {
-      provider = store.provider(given.provider);
+      provider = store.modelProviders.get(given.provider);
       model = given.model;
       harness = given.harness;
     } else if (u.model?.model) {
@@ -70,7 +70,7 @@ export const researchNeedsOpencode = (rig: string, model: string) =>
   `${model} is one of OpenCode's free models, which work only inside OpenCode, and ${rig}'s agents would run in Pi: a research run there could not work. Set the agents' harness to OpenCode, or give the rig a model Pi can use.`;
 /** A rig whose agents have no model: none from control, and the rig reports none. */
 export const agentsModelMissing = (store: ControlStore, u: RigView) =>
-  !store.rigModels()[u.id] && u.model?.source === "none";
+  !store.agentModels.byRig()[u.id] && u.model?.source === "none";
 /**
  * The harness a model needs when the owner leaves it to control: Claude Code for a Claude
  * subscription, OpenCode for OpenCode's free models, else Pi (a ChatGPT sign-in too, unless the
@@ -79,7 +79,7 @@ export const agentsModelMissing = (store: ControlStore, u: RigView) =>
 export const harnessFor = (store: ControlStore, choice: string, picked: string): Harness => {
   if (picked === "opencode" || picked === "pi" || picked === "codex") return picked;
   const [pRaw, mRaw] = choice.split("|");
-  const p = store.provider(decodeURIComponent(pRaw ?? ""));
+  const p = store.modelProviders.get(decodeURIComponent(pRaw ?? ""));
   return p ? neededHarness(p, decodeURIComponent(mRaw ?? "")) : "pi";
 };
 /**
@@ -95,7 +95,7 @@ export const harnessKept = (
 ): Harness => {
   if (picked) return harnessFor(store, choice, picked);
   const [pRaw, mRaw] = choice.split("|");
-  const had = store.rigModels()[rig];
+  const had = store.agentModels.byRig()[rig];
   return had &&
     had.provider === decodeURIComponent(pRaw ?? "") &&
     had.model === decodeURIComponent(mRaw ?? "")
@@ -129,7 +129,7 @@ export const giveRigModel = (
   } catch {
     // A malformed choice lists no model.
   }
-  const p = store.provider(provider);
+  const p = store.modelProviders.get(provider);
   if (!p?.models.some((m) => m.id === model))
     return { error: "That provider does not list that model." };
   // A Claude subscription runs only in Claude Code, and Claude Code only on one.
@@ -156,7 +156,7 @@ export const giveRigModel = (
         "OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig.",
     };
   const listed = p.models.find((m) => m.id === model)?.context_window ?? 0;
-  const had = store.rigModels()[rig];
+  const had = store.agentModels.byRig()[rig];
   const contextCap =
     cap === undefined
       ? had?.provider === provider && had.model === model
@@ -178,8 +178,8 @@ export const giveRigModel = (
     const refused = compactAtRefusal(at);
     if (refused) return { error: refused };
   }
-  store.assignRigModel(rig, { provider, model, harness, effort, contextCap, compactAt });
-  store.audit(by, "rig_model_given", {
+  store.agentModels.assignRig(rig, { provider, model, harness, effort, contextCap, compactAt });
+  store.auditLog.add(by, "rig_model_given", {
     rig,
     provider,
     model,
@@ -197,8 +197,8 @@ export const giveRigModel = (
 };
 /** Returns a rig's workers to the rig's own settings, as Providers and Edit rig both do. */
 export const clearRigModel = (store: ControlStore, rig: string, by = "owner:ui") => {
-  store.assignRigModel(rig, null);
-  store.audit(by, "rig_model_given", { rig, provider: null, model: null });
+  store.agentModels.assignRig(rig, null);
+  store.auditLog.add(by, "rig_model_given", { rig, provider: null, model: null });
 };
 /**
  * Checks a model for one of a rig's other agents (or one of the teachers' models), as its row on
@@ -243,10 +243,10 @@ export const checkAgentModel = (
   } catch {
     // A malformed choice lists no model.
   }
-  const p = store.provider(provider);
+  const p = store.modelProviders.get(provider);
   if (!p?.models.some((m) => m.id === model))
     return { error: `That provider does not list that model (${ROLE_WORDS[role].label}).` };
-  const had = store.roleModels(rig)[role];
+  const had = store.agentModels.byRole(rig)[role];
   const same = had?.provider === provider && had.model === model;
   const harness = picked ?? (had?.harness && same ? had.harness : neededHarness(p, model));
   const refusedHarness = harnessRefusal(p, model, harness, ROLE_WORDS[role].who);
@@ -288,13 +288,20 @@ export const applyAgentModel = (
 ): { ok: string; contextWindow: number; compactAt: number | undefined; words: string } => {
   const role = plan.role;
   if (plan.clear) {
-    store.assignRoleModel(rig, role, null);
-    store.audit(by, "agent_model_given", { rig, role, provider: null, model: null });
+    store.agentModels.assignRole(rig, role, null);
+    store.auditLog.add(by, "agent_model_given", { rig, role, provider: null, model: null });
     return { ok: ROLE_WORDS[role].cleared, contextWindow: 0, compactAt: undefined, words: "" };
   }
   const { provider, model, effort, harness, contextCap, compactAt, listed } = plan;
-  store.assignRoleModel(rig, role, { provider, model, effort, harness, contextCap, compactAt });
-  store.audit(by, "agent_model_given", {
+  store.agentModels.assignRole(rig, role, {
+    provider,
+    model,
+    effort,
+    harness,
+    contextCap,
+    compactAt,
+  });
+  store.auditLog.add(by, "agent_model_given", {
     rig,
     role,
     provider,
@@ -325,7 +332,7 @@ export async function setRigModel(
   r: RigModelRequest,
   by: string,
 ): Promise<RigModelOutcome | { error: string }> {
-  if (!store.rigs().some((u) => u.id === rig)) return { error: `no rig ${rig}` };
+  if (!store.reportedRigs.list().some((u) => u.id === rig)) return { error: `no rig ${rig}` };
   const shape = rigModelShapeRefusal(r);
   if (shape) return { error: shape };
   const agent = r.agent ?? "workers";
@@ -343,7 +350,7 @@ export async function setRigModel(
     }
     // A harness named is refused in words when it cannot run the model (goal 073); none,
     // what the model needs.
-    const wp = store.provider(r.provider ?? "");
+    const wp = store.modelProviders.get(r.provider ?? "");
     if (wp && r.harness) {
       const refused = harnessRefusal(wp, r.model ?? "", r.harness, "the workers");
       if (refused) return { error: refused };
@@ -376,7 +383,7 @@ export async function setRigModel(
   for (const change of rigModelChanges(r)) {
     if (change.role === "workers") continue;
     const c = change.choice;
-    const cp = c ? store.provider(c.provider) : undefined;
+    const cp = c ? store.modelProviders.get(c.provider) : undefined;
     const plan = c
       ? checkAgentModel(
           store,
@@ -396,7 +403,7 @@ export async function setRigModel(
   if (
     plans.some((p) => p.role === "second_teacher" && !p.clear) &&
     !plans.some((p) => p.role === "teachers" && !p.clear) &&
-    !store.roleModels(rig).teachers
+    !store.agentModels.byRole(rig).teachers
   )
     return {
       error:
@@ -421,4 +428,6 @@ export async function setRigModel(
 
 /** Each of a rig's agents' models on control: MCP's rig_models, REST's GET of the same route. */
 export const rigModels = (store: ControlStore, rig: string): AgentModels | { error: string } =>
-  store.rigs().some((u) => u.id === rig) ? agentModelsOf(store, rig) : { error: `no rig ${rig}` };
+  store.reportedRigs.list().some((u) => u.id === rig)
+    ? agentModelsOf(store, rig)
+    : { error: `no rig ${rig}` };

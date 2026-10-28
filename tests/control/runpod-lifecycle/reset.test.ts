@@ -29,20 +29,20 @@ describe("RunPod rigs: the full reset", () => {
     const r = await s.call(`/v1/rigs/${rig}/reset`, { confirm: `reset ${rig}` });
     assert.equal(r.status, 201);
     const { reset } = await json<{ reset: number }>(r);
-    assert.equal(String(s.store.openReset(rig)?.state), "quiescing");
+    assert.equal(String(s.store.fullResets.open(rig)?.state), "quiescing");
     harnessApplies(s.store, rig, exportName(1));
     await step();
-    assert.equal(String(s.store.openReset(rig)?.state), "exporting");
+    assert.equal(String(s.store.fullResets.open(rig)?.state), "exporting");
     harnessApplies(s.store, rig, exportName(2));
     await step();
     // Control holds the export, but another export still waits on the pod: not yet.
     exportOnControl(s.store, rig, exportName(2));
     supervisorReports(s.store, rig, { waiting: 1 });
     await step();
-    assert.equal(String(s.store.openReset(rig)?.state), "verifying");
+    assert.equal(String(s.store.fullResets.open(rig)?.state), "verifying");
     supervisorReports(s.store, rig);
     await step();
-    assert.equal(String(s.store.openReset(rig)?.state), "awaiting_owner");
+    assert.equal(String(s.store.fullResets.open(rig)?.state), "awaiting_owner");
     // While it runs, the owner's stop waits.
     await assert.rejects(s.rigs.stop(rig, "owner:api"), /a full reset of .* is under way/);
     confirmReset(s.store, reset, "owner:api");
@@ -54,7 +54,7 @@ describe("RunPod rigs: the full reset", () => {
     );
     harnessApplies(s.store, rig, exportName(3));
     await step();
-    const done = s.store.resets(1)[0];
+    const done = s.store.fullResets.list(1)[0];
     assert.equal(done?.state, "done");
     assert.match(String(done?.detail), /the pod and its GPU stay/);
     assert.deepEqual(s.cloud.actions(), [], "the pod was never stopped");
@@ -72,14 +72,14 @@ describe("RunPod rigs: the full reset", () => {
     assert.equal(r.status, 409);
     assert.match((await json<{ error: string }>(r)).error, /pod is stopped: start it first/);
     // One made elsewhere (the dashboard) fails at its first step, in the same words.
-    s.store.createReset(v.rig, "owner:ui");
+    s.store.fullResets.create(v.rig, "owner:ui");
     await advanceResets({
       store: s.store,
       privateKeyPem: s.control.privateKeyPem,
       driver: undefined,
       staleAfterMs: 180_000,
     });
-    assert.equal(s.store.resets(1)[0]?.state, "failed");
+    assert.equal(s.store.fullResets.list(1)[0]?.state, "failed");
     assert.deepEqual(s.steps(v.rig).at(-1), ["reset_failed", false]);
   });
 });

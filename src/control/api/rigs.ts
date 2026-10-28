@@ -19,13 +19,13 @@ export function rigRoutes(app: Hono, api: ApiContext): void {
   app.get(RIGS.path, admin, (c) =>
     c.json({
       control,
-      rigs: store.rigs().map((u) => ({
+      rigs: store.reportedRigs.list().map((u) => ({
         ...u,
         state: reportingState(u.last_seen, viewOpts),
         version: rigVersions(store, u.id, control),
       })),
-      enrolled: store.enrolledRigs(),
-      pull: store.tunnelRigs(),
+      enrolled: store.enrollments.rigs(),
+      pull: store.tunnels.list(),
       runpod: runpodRigs.list(),
     }),
   );
@@ -42,10 +42,10 @@ export function rigRoutes(app: Hono, api: ApiContext): void {
   app.post(ENROLL.path, admin, async (c) => {
     const { rig } = ENROLL.body.parse(await jsonBody(c.req));
     const taken =
-      inFile(rig) ?? (store.enrolledRig(rig) ? `rig ${rig} is already enrolled` : undefined);
+      inFile(rig) ?? (store.enrollments.rig(rig) ? `rig ${rig} is already enrolled` : undefined);
     if (taken) return c.json({ error: taken }, 409);
     const t = newToken();
-    store.enrollRig(rig, t.sha256, "owner:api");
+    store.enrollments.enroll(rig, t.sha256, "owner:api");
     return c.json(
       {
         rig,
@@ -60,18 +60,21 @@ export function rigRoutes(app: Hono, api: ApiContext): void {
     const rig = c.req.param("rig");
     const fixed = inFile(rig);
     if (fixed) return c.json({ error: fixed }, 409);
-    if (!store.enrolledRig(rig)) return c.json({ error: `rig ${rig} is not enrolled` }, 404);
+    if (!store.enrollments.rig(rig)) return c.json({ error: `rig ${rig} is not enrolled` }, 404);
     const t = newToken();
-    store.rotateRigToken(rig, t.sha256, "owner:api");
+    store.enrollments.rotateToken(rig, t.sha256, "owner:api");
     return c.json({ rig, token: t.token });
   });
   // Any rig: one control enrolled (its token ends), one in the rig tokens file (its token is
   // refused while retired; take it out of the file too), or one that only ever reported.
   app.post(RETIRE.path, admin, (c) => {
     const rig = c.req.param("rig");
-    if (!store.rigs({ withRetired: true }).some((u) => u.id === rig) && !store.knownRig(rig))
+    if (
+      !store.reportedRigs.list({ withRetired: true }).some((u) => u.id === rig) &&
+      !store.enrollments.knownRig(rig)
+    )
       return c.json({ error: `no rig ${rig}` }, 404);
-    store.retireAnyRig(rig, "owner:api");
+    store.retired.add(rig, "owner:api");
     return c.json({
       rig,
       retired: true,
@@ -82,7 +85,7 @@ export function rigRoutes(app: Hono, api: ApiContext): void {
   });
   app.post("/v1/rigs/:rig/bring-back", admin, (c) => {
     const rig = c.req.param("rig");
-    return store.bringBackRig(rig, "owner:api")
+    return store.retired.bringBack(rig, "owner:api")
       ? c.json({ rig, retired: false })
       : c.json({ error: `rig ${rig} is not retired` }, 404);
   });

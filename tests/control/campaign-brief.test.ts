@@ -46,7 +46,7 @@ async function stack() {
       probeRepo: async () => ({ commit: C, files: 3, suggest: ["src/**"] }),
     },
   });
-  store.ingest({
+  store.rigEvents.ingest({
     rig: "rig-a",
     ledger_id: "ledger-rig-a",
     cursor: 0,
@@ -67,7 +67,7 @@ async function stack() {
         errors: [],
       },
     },
-  } as Parameters<typeof store.ingest>[0]);
+  } as Parameters<typeof store.rigEvents.ingest>[0]);
   const { page: get, csrfOf, post } = await signIn(control);
   const csrf = csrfOf(await get("/ui/campaigns/new"));
   /** New campaign's form, posted as the browser posts it: the draft as JSON, and the rig. */
@@ -80,7 +80,7 @@ async function stack() {
     });
   const rest = (from: string, body: unknown) => api("POST", `/v1/campaigns/${from}/copy`, body);
   const contract = (campaign: string) =>
-    store.campaignVersions(campaign)[0]?.contract as Record<string, unknown> | undefined;
+    store.campaigns.versions(campaign)[0]?.contract as Record<string, unknown> | undefined;
   return { store, control, get, submit, rest, contract };
 }
 

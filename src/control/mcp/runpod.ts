@@ -246,7 +246,7 @@ export function registerRunpod(tools: ToolContext): void {
                   staleAfterMs: opts.staleAfterMs,
                 });
               const open = () => {
-                const r = store.openReset(a.rig);
+                const r = store.fullResets.open(a.rig);
                 if (!r) throw new Error(`no full reset of ${a.rig} is under way`);
                 return Number(r.id);
               };
@@ -265,20 +265,29 @@ export function registerRunpod(tools: ToolContext): void {
                     throw new Error(`confirm with "reset ${a.rig}"`);
                   const refused = runpodResetRefusal(store, a.rig);
                   if (refused) throw new Error(refused);
-                  const id = store.createReset(a.rig, actor);
+                  const id = store.fullResets.create(a.rig, actor);
                   await step();
-                  return { rig: a.rig, reset: store.resets(50).find((r) => Number(r.id) === id) };
+                  return {
+                    rig: a.rig,
+                    reset: store.fullResets.list(50).find((r) => Number(r.id) === id),
+                  };
                 }
                 case "confirm_wipe": {
                   const id = open();
                   confirmReset(store, id, actor);
                   await step();
-                  return { rig: a.rig, reset: store.resets(50).find((r) => Number(r.id) === id) };
+                  return {
+                    rig: a.rig,
+                    reset: store.fullResets.list(50).find((r) => Number(r.id) === id),
+                  };
                 }
                 case "cancel_reset": {
                   const id = open();
                   cancelReset(store, id, actor);
-                  return { rig: a.rig, reset: store.resets(50).find((r) => Number(r.id) === id) };
+                  return {
+                    rig: a.rig,
+                    reset: store.fullResets.list(50).find((r) => Number(r.id) === id),
+                  };
                 }
               }
             },

@@ -13,7 +13,7 @@ import { cleanMcpError } from "../../common/mcp-client.ts";
 import { sha256Hex } from "../../core/canonical.ts";
 import type { McpServers } from "../mcp-servers.ts";
 import type { ControlStore } from "../store.ts";
-import { type Row, type ServerTable, str } from "./table.ts";
+import { type ServerTable, str } from "./table.ts";
 
 /**
  * An OAuth sign-in on the server's own page (authorization code with PKCE): started, cancelled by
@@ -116,40 +116,32 @@ export class OAuthSignIns {
       },
     );
     const now = Date.now();
-    this.table.db
-      .prepare("delete from mcp_sign_in where expires_at < ?")
-      .run(new Date(now).toISOString());
-    this.table.db
-      .prepare(
-        "insert into mcp_sign_in (state_hash, name, verifier_sealed, redirect_uri, expires_at, started_by) values (?, ?, ?, ?, ?, ?)",
-      )
-      .run(
-        sha256Hex(state),
-        name,
-        this.table.secrets.seal(
-          JSON.stringify({
-            verifier: codeVerifier,
-            client,
-            auth_server: info.authorizationServerUrl,
-            ...(resource ? { resource: resource.href } : {}),
-          }),
-        ),
-        redirectUri,
-        new Date(now + SIGN_IN_MS).toISOString(),
-        by,
-      );
-    this.store.audit(by, "mcp_server_sign_in_started", { name });
+    this.table.rows.dropEndedSignIns(new Date(now).toISOString());
+    this.table.rows.addSignIn({
+      stateHash: sha256Hex(state),
+      name,
+      verifierSealed: this.table.secrets.seal(
+        JSON.stringify({
+          verifier: codeVerifier,
+          client,
+          auth_server: info.authorizationServerUrl,
+          ...(resource ? { resource: resource.href } : {}),
+        }),
+      ),
+      redirectUri,
+      expiresAt: new Date(now + SIGN_IN_MS).toISOString(),
+      by,
+    });
+    this.store.auditLog.add(by, "mcp_server_sign_in_started", { name });
     return { url: authorizationUrl.href };
   }
 
   /** The browser came back without a code (the owner said no): the sign-in is forgotten. */
   cancelSignIn(state: string, why: string): string | undefined {
     const h = sha256Hex(state);
-    const s = this.table.db.prepare("select name from mcp_sign_in where state_hash = ?").get(h) as
-      | Row
-      | undefined;
+    const s = this.table.rows.signInName(h);
     if (!s) return undefined;
-    this.table.db.prepare("delete from mcp_sign_in where state_hash = ?").run(h);
+    this.table.rows.deleteSignIn(h);
     const r = this.table.row(str(s.name));
     if (r && !r.login_sealed) this.table.setState(str(s.name), "needs_sign_in", why);
     return str(s.name);
@@ -161,11 +153,9 @@ export class OAuthSignIns {
    */
   async finishSignIn(state: string, code: string): Promise<SignInDone> {
     const h = sha256Hex(state);
-    const s = this.table.db.prepare("select * from mcp_sign_in where state_hash = ?").get(h) as
-      | Row
-      | undefined;
+    const s = this.table.rows.signIn(h);
     if (!s) return { error: "This sign-in is not known, or was used already. Start it again." };
-    this.table.db.prepare("delete from mcp_sign_in where state_hash = ?").run(h);
+    this.table.rows.deleteSignIn(h);
     const name = str(s.name);
     if (Date.parse(str(s.expires_at)) < Date.now())
       return { name, error: "This sign-in took more than 15 minutes. Start it again." };
@@ -213,7 +203,7 @@ export class OAuthSignIns {
       return { name, error: `The server did not take the sign-in: ${why}` };
     }
     this.table.setState(name, "unchecked", null);
-    this.store.audit(str(s.started_by), "mcp_server_signed_in", { name });
+    this.store.auditLog.add(str(s.started_by), "mcp_server_signed_in", { name });
     const why = await this.servers.check(name);
     return why
       ? { name, error: `Signed in, but ${why}` }

@@ -46,7 +46,7 @@ export function copiedFromRecords(
     const id = from?.id;
     const found =
       typeof run === "string" && typeof id === "string"
-        ? store.experimentRecord(run, id)
+        ? store.rigEvents.experimentRecord(run, id)
         : undefined;
     // Only from a run of a campaign the new run's campaign may read (its own, or granted).
     const source = found && typeof run === "string" ? kb.runCampaign(found.rig, run) : undefined;

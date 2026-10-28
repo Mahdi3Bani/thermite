@@ -135,7 +135,7 @@ function fakeCloud(o: { refuseStart?: boolean; noCapacity?: boolean } = {}) {
 function setup(o: Parameters<typeof fakeCloud>[0] = {}) {
   const store = new ControlStore(":memory:");
   const secrets = SecretBox.ephemeral();
-  store.addGpuCloud({
+  store.gpuClouds.add({
     name: "runpod",
     kind: "runpod",
     key_sealed: secrets.seal(KEY),
@@ -206,7 +206,7 @@ describe("RunPod test pods", () => {
       assert.ok(done?.findings.includes(f), `${f}\n${JSON.stringify(done?.findings, null, 1)}`);
     assert.ok((done?.cost_usd ?? 0) > 0, "billed while it ran");
     assert.ok(done?.report_after_restart, "the second report is kept");
-    const audit = s.store.listAudit(20).map((a) => a.action);
+    const audit = s.store.auditLog.list(20).map((a) => a.action);
     assert.ok(audit.includes("runpod_test_started") && audit.includes("runpod_test_done"));
   });
 
@@ -240,7 +240,7 @@ describe("RunPod test pods", () => {
       full.tests.start("runpod", {}, "o"),
       /RunPod answered 400 for POST \/v2\/pods \(Bad Request: no capacity for that GPU\)/,
     );
-    assert.equal(full.store.runpodTests().length, 0);
+    assert.equal(full.store.runpod.tests().length, 0);
     await assert.rejects(setup().tests.start("runpod", { gpu: "B200" }, "o"), /no GPU type "B200"/);
   });
 
@@ -248,7 +248,7 @@ describe("RunPod test pods", () => {
     const cloud = fakeCloud();
     const store = new ControlStore(":memory:");
     const secrets = SecretBox.ephemeral();
-    store.addGpuCloud({
+    store.gpuClouds.add({
       name: "runpod",
       kind: "runpod",
       key_sealed: secrets.seal(KEY),

@@ -24,7 +24,7 @@ const tokens = {
 async function setup(o: Parameters<typeof fakeRunpod>[0] = {}) {
   const store = new ControlStore(":memory:");
   const secrets = SecretBox.ephemeral();
-  store.addGpuCloud({
+  store.gpuClouds.add({
     name: "runpod",
     kind: "runpod",
     key_sealed: secrets.seal(FAKE_RUNPOD_KEY),
@@ -225,7 +225,7 @@ describe("a RunPod rig's pod log over REST and MCP", () => {
       assert.equal((await s.rest(`/v1/rigs/rp-log-1/runpod/logs?${q}`)).status, 400, q);
     for (const t of [tokens.operator, tokens.agent, tokens.read])
       assert.equal((await s.rest("/v1/rigs/rp-log-1/runpod/logs", t)).status, 401);
-    s.store.ingest({
+    s.store.rigEvents.ingest({
       rig: "plain-1",
       ledger_id: "l1",
       cursor: 0,
@@ -337,7 +337,7 @@ describe("a RunPod rig's pod log on its page", () => {
 
   test("once it reports, the block is lower on its page and waits for Read the log", async () => {
     const s = await setup();
-    s.store.ingest({
+    s.store.rigEvents.ingest({
       rig: "rp-log-1",
       ledger_id: "l1",
       cursor: 0,

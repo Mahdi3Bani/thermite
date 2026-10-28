@@ -15,8 +15,8 @@ export function recordRoutes(app: Hono, dash: Dashboard): void {
   // ---------------------------------------------------------------- commands, audit, leaderboard, reports
   app.get("/ui/commands", (c) => {
     const now = Date.now();
-    const rows = store
-      .listCommands(200)
+    const rows = store.commands
+      .list(200)
       .map((x) => commandRow(x, now))
       .join("");
     return page(
@@ -34,7 +34,7 @@ export function recordRoutes(app: Hono, dash: Dashboard): void {
     const now = Date.now();
     // 300 entries a page, newest first; Older and Newer page through every entry (goal 015).
     const before = cursorOf(c.req.query("before"));
-    const p = store.auditPage(
+    const p = store.auditLog.page(
       300,
       {},
       before !== undefined ? { before } : { after: cursorOf(c.req.query("after")) },
@@ -87,7 +87,7 @@ export function recordRoutes(app: Hono, dash: Dashboard): void {
   // .tar.gz. Owner only, as the whole dashboard is (its session is the owner's).
   app.get("/ui/exports", (c) => {
     const vs = views();
-    const all = store.allRigExports(1000);
+    const all = store.exports.all(1000);
     const rig = c.req.query("rig") || undefined;
     const rigs = [...new Set([...all.map((e) => e.rig), ...vs.map((u) => u.id)])].sort();
     if (rig && !rigs.includes(rig)) rigs.push(rig);
@@ -124,16 +124,16 @@ export function recordRoutes(app: Hono, dash: Dashboard): void {
     const t = csrf(c);
     const act = (id: unknown, what: string, label2: string, primary = false) =>
       `<form class="inline" method="post" action="/ui/resets/${esc(id)}/${what}"><input type="hidden" name="csrf" value="${t}"><button class="sm${primary ? " primary" : ""}">${label2}</button></form>`;
-    const resets = store
-      .resets(20)
+    const resets = store.fullResets
+      .list(20)
       .map(
         (r) =>
           `<tr><td><b>${esc(r.rig)}</b></td><td><span class="chip ${String(r.state) === "done" ? "ok" : String(r.state) === "failed" ? "bad" : "warn"}">${esc(r.state)}</span></td><td class="clip">${esc(r.detail ?? "")}</td><td class="muted nowrap">${esc(ago(String(r.updated_at), now))} ago</td>
 <td class="num">${String(r.state) === "awaiting_owner" ? act(r.id, "confirm", "Confirm the wipe", true) : ""} ${["start", "quiescing", "exporting", "verifying", "awaiting_owner"].includes(String(r.state)) ? act(r.id, "cancel", "Cancel") : ""}</td></tr>`,
       )
       .join("");
-    const rows = store
-      .reports(30)
+    const rows = store.rigReports
+      .list(30)
       .map(
         (r) =>
           `<div class="card"><div class="card-head">${avatar(r.rig)}<span class="title">${esc(r.rig)}</span><span class="sub">${esc(r.kind)} report</span><span class="right muted small">${esc(ago(r.at, now))} ago</span></div><pre class="report" style="margin-top:10px">${esc(r.body)}</pre></div>`,

@@ -59,7 +59,7 @@ describe("a kept fold, with events ingested between reads, gives a fresh fold's 
     test(set.name, () => {
       const source = new ControlStore(":memory:");
       set.fill(source);
-      const summaries = new Map(source.rigs().map((u) => [u.id, u.summary]));
+      const summaries = new Map(source.reportedRigs.list().map((u) => [u.id, u.summary]));
       const events = sent(source);
       for (const seed of [1, 2]) {
         const store = new ControlStore(":memory:");
@@ -79,7 +79,7 @@ describe("a kept fold, with events ingested between reads, gives a fresh fold's 
           )
             n++;
           const piece = events.slice(at, at + n).map((x) => x.event);
-          store.ingest({
+          store.rigEvents.ingest({
             rig: first.rig,
             ledger_id: first.ledger,
             cursor: (piece[0]?.id ?? 1) - 1,
@@ -92,7 +92,7 @@ describe("a kept fold, with events ingested between reads, gives a fresh fold's 
             assert.deepStrictEqual(v, fresh(store, v.id), `seed ${seed}, ${v.id} at ${at}`);
         }
         // The same views as the set's own store gives, from the folds of the same events.
-        for (const u of source.rigs()) {
+        for (const u of source.reportedRigs.list()) {
           const kept = rigView(store, u.id, OPTS);
           const theirs = rigView(source, u.id, OPTS);
           for (const part of ["ledger_id", "runs", "judge", "checks", "recent"] as const)
@@ -103,7 +103,7 @@ describe("a kept fold, with events ingested between reads, gives a fresh fold's 
             .held()
             .map((h) => [h.rig, h.ledger])
             .sort(),
-          source.rigs().map((u) => [u.id, u.ledger_id]),
+          source.reportedRigs.list().map((u) => [u.id, u.ledger_id]),
         );
       }
     });
@@ -134,14 +134,14 @@ test("a rig's new ledger starts a new fold, and a retired rig loses its fold", (
   );
   // The other rig's fold is its own: unchanged by rig-a's events.
   assert.deepStrictEqual(rigView(store, "rig-b", OPTS), fresh(store, "rig-b"));
-  store.retireAnyRig("rig-b", "owner:ui");
+  store.retired.add("rig-b", "owner:ui");
   assert.equal(rigView(store, "rig-b", OPTS), undefined);
   assert.deepEqual(
     folds.held().map((h) => h.rig),
     ["rig-a"],
   );
   // Brought back, its fold is built again from its events.
-  store.bringBackRig("rig-b", "owner:ui");
+  store.retired.bringBack("rig-b", "owner:ui");
   assert.deepStrictEqual(rigView(store, "rig-b", OPTS), fresh(store, "rig-b"));
 });
 
@@ -188,13 +188,13 @@ test("a read that fails leaves no half-done fold: the next read builds it again"
   rigView(store, "rig-h", OPTS);
   report(store, "rig-h", "ledger-h", events.slice(40), {}, 40);
   // The store fails while the fold reads the new events.
-  const read = store.events.bind(store);
-  store.events = () => {
+  const read = store.rigEvents.after.bind(store.rigEvents);
+  store.rigEvents.after = () => {
     throw new Error("disk I/O error");
   };
   assert.throws(() => rigView(store, "rig-h", OPTS), /disk I\/O error/);
   assert.deepEqual(folds.held(), []);
-  store.events = read;
+  store.rigEvents.after = read;
   assert.deepStrictEqual(rigView(store, "rig-h", OPTS), fresh(store, "rig-h"));
 });
 

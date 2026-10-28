@@ -31,7 +31,7 @@ export async function setup(over: Record<string, unknown> = {}) {
 /** The run's queue as control builds it from the rig's events (src/control/views.ts). */
 export function controlQueue(events: LedgerEvent[]) {
   const store = new ControlStore(":memory:");
-  store.ingest({
+  store.rigEvents.ingest({
     rig: "rig-a",
     ledger_id: "ledger-a",
     cursor: 0,

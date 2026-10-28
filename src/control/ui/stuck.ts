@@ -89,9 +89,9 @@ export function stuckNeeds(
   back: string,
 ): Need[] {
   const open = workOf(u.summary)?.open ?? [];
-  const stops = store.latestCommands(u.id, "stop_trial", 20);
+  const stops = store.commands.latest(u.id, "stop_trial", 20);
   return stuckTrials(u, r, now).flatMap((s): Need[] => {
-    if (store.trialLeft(u.id, s.trial, s.kind) === s.since) return [];
+    if (store.liveLines.trialLeft(u.id, s.trial, s.kind) === s.since) return [];
     // A stop sent for it: the card leaves at once, and comes back with the reason if refused.
     const stop = stops.find((c) => c.payload.trial === s.trial);
     const progress = stop ? commandProgress(stop, now) : undefined;

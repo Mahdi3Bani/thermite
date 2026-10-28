@@ -209,7 +209,7 @@ export function mcpSettingsBlocks(
       ? `<div class="card" style="margin-bottom:10px"><b>Now sign in to ${esc(signIn)}.</b> <span class="small">The server's sign-in page opens in a new tab. Allow Thermite there, and the tab comes back here.</span><div class="act" style="margin-top:8px"><a class="btn sm primary" href="/ui/settings/mcp/${encodeURIComponent(signIn)}/sign-in" target="_blank" rel="noopener">Sign in to ${esc(signIn)} ↗</a></div></div>`
       : "";
   const migrated = list.filter((s) => s.migrated_from === "outside_kb");
-  const movedRead = store.lastAudit("owner:ui", "mcp_moved_note_read") !== undefined;
+  const movedRead = store.auditLog.last("owner:ui", "mcp_moved_note_read") !== undefined;
   const moved =
     migrated.length && !movedRead
       ? `<div class="card" id="moved" style="margin-bottom:10px"><div class="card-head">${icon.book}<span class="title">The outside knowledge base is now an MCP server</span><span class="right"><form class="inline" method="post" action="/ui/settings/mcp-moved"><input type="hidden" name="csrf" value="${t}"><button class="sm ghost">Got it</button></form></span></div><p class="small" style="margin:6px 0 0">${esc(migrated.map((s) => s.name).join(", "))} ${migrated.length === 1 ? "was your outside knowledge base" : "were your outside knowledge bases"}. At the update to 0.1.0, control kept ${migrated.length === 1 ? "it" : "them"} here as ordinary MCP servers, with ${migrated.length === 1 ? "its token" : "their tokens"}. Control no longer copies campaign folders to ${migrated.length === 1 ? "it" : "them"}; the pages it wrote there stay. Advisors no longer search ${migrated.length === 1 ? "it" : "them"} through a grant on the campaign's page. A kit names ${migrated.length === 1 ? "it" : "them"} instead, and the agents that kit names get the tools. Thermite's own knowledge base is as before.</p></div>`
@@ -366,7 +366,7 @@ export function mountMcpUi(
   });
 
   app.post("/ui/settings/mcp-moved", (c) => {
-    o.store.audit("owner:ui", "mcp_moved_note_read", {});
+    o.store.auditLog.add("owner:ui", "mcp_moved_note_read", {});
     return c.redirect("/ui/settings#mcp", 303);
   });
 }

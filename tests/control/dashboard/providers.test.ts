@@ -76,8 +76,8 @@ describe("control dashboard", () => {
       type: "openai",
       base_url: "https://models.example/v1",
     });
-    assert.equal(s.store.provider("opencode")?.version, 2);
-    assert.equal(s.store.provider("opencode")?.models.length, 2);
+    assert.equal(s.store.modelProviders.get("opencode")?.version, 2);
+    assert.equal(s.store.modelProviders.get("opencode")?.models.length, 2);
     page = await (await s.get("/ui/settings")).text();
     assert.match(page, /key …0001/);
     assert.match(page, /deepseek-v4\.1-flash-free <span class="muted">· 262k<\/span>/);
@@ -117,7 +117,11 @@ describe("control dashboard", () => {
     assert.equal(given.route.context_window, 262144);
     // A model the provider does not list can be added by its name.
     await s.post("/ui/settings/providers/opencode/models", { csrf, model: "custom-model" });
-    assert.ok(s.store.provider("opencode")?.models.some((m) => m.id === "custom-model" && m.added));
+    assert.ok(
+      s.store.modelProviders
+        .get("opencode")
+        ?.models.some((m) => m.id === "custom-model" && m.added),
+    );
     // The supervisor hands it to its harness once; its agents use it from then on.
     const sync = s.cfg;
     assert.equal(await syncModelRoute(sync), "set");
@@ -149,7 +153,7 @@ describe("control dashboard", () => {
       api_key: "sk-ant-x",
     });
     assert.match(where(ant), /lists 1 model/);
-    assert.equal(s.store.provider("anthropic")?.base_url, "https://api.anthropic.com");
+    assert.equal(s.store.modelProviders.get("anthropic")?.base_url, "https://api.anthropic.com");
     await s.post("/ui/settings/rigs", { csrf, rig: "rig-a", choice: "anthropic|claude-test" });
     assert.equal(await syncModelRoute(sync), "set");
     assert.equal(s.env.service.models.current()?.api, "anthropic");
@@ -162,7 +166,7 @@ describe("control dashboard", () => {
       base_url: "",
     });
     assert.match(where(oc), /lists 2 models/);
-    assert.equal(s.store.provider("zen")?.key_sealed, "");
+    assert.equal(s.store.modelProviders.get("zen")?.key_sealed, "");
     const underPi = await s.post("/ui/settings/rigs", {
       csrf,
       rig: "rig-a",
@@ -185,11 +189,14 @@ describe("control dashboard", () => {
     page = await (await s.get("/ui/settings")).text();
     assert.match(page, /Its agents run under OpenCode v2 with free-model-free from zen\./);
     // A planner given OpenCode's own models runs through OpenCode too; cleared, it follows the workers.
-    s.store.assignRoleModel("rig-a", "planner", { provider: "zen", model: "free-model-free" });
+    s.store.agentModels.assignRole("rig-a", "planner", {
+      provider: "zen",
+      model: "free-model-free",
+    });
     assert.equal(await syncModelRoute(sync), "set");
     assert.equal(s.env.service.models.planner()?.api, "opencode");
     assert.equal(s.env.service.models.planner()?.harness, "opencode");
-    s.store.assignRoleModel("rig-a", "planner", null);
+    s.store.agentModels.assignRole("rig-a", "planner", null);
     assert.equal(await syncModelRoute(sync), "set");
     assert.equal(s.env.service.models.planner(), undefined);
     // A provider added as OpenAI-compatible at OpenCode's own endpoint, with its key, is OpenCode's
@@ -202,7 +209,7 @@ describe("control dashboard", () => {
       base_url: "https://opencode.ai/zen/v1/models",
       api_key: "test-oc-key-0002",
     });
-    assert.equal(s.store.provider("oc-key")?.base_url, "https://opencode.ai/zen/v1");
+    assert.equal(s.store.modelProviders.get("oc-key")?.base_url, "https://opencode.ai/zen/v1");
     const freeUnderPi = await s.post("/ui/settings/rigs", {
       csrf,
       rig: "rig-a",
@@ -258,6 +265,6 @@ describe("control dashboard", () => {
     assert.equal(await syncModelRoute(sync), "cleared");
     assert.equal(s.env.service.models.current(), undefined);
     await s.post("/ui/settings/providers/anthropic/delete", { csrf });
-    assert.equal(s.store.provider("anthropic"), undefined);
+    assert.equal(s.store.modelProviders.get("anthropic"), undefined);
   });
 });

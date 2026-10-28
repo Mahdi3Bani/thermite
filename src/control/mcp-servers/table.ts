@@ -1,10 +1,11 @@
-import type { DatabaseSync } from "node:sqlite";
 import type { OAuthClientInformationMixed } from "@modelcontextprotocol/sdk/shared/auth.js";
 import type { SecretBox } from "../secrets.ts";
+import type { McpServerRows } from "../store/mcp-servers.ts";
 
 /**
- * The servers' table (goal 068): a server as control shows it, the table and the sign-ins started,
- * and the rows with their sealed secrets, which every part of McpServers reads and writes.
+ * The servers' table (goal 068): a server as control shows it, and the rows with their sealed
+ * secrets, which every part of McpServers reads and writes. The rows and the sign-ins started are
+ * kept by the store (store/mcp-servers.ts).
  */
 
 export type McpAuth = "oauth" | "key" | "client" | "none";
@@ -74,57 +75,10 @@ export interface Login {
   resource?: string | undefined;
 }
 
-const SCHEMA = `
--- MCP servers (goal 068): the server, how it signs Thermite in (its secrets sealed with control's
--- secret box), its state, its last error and its tools as last read.
-create table if not exists mcp_server (
-  name text primary key,
-  url text not null,
-  auth text not null,
-  header text,
-  client_id text,
-  scope text,
-  secret_sealed text,
-  secret_hint text,
-  login_sealed text,
-  status text not null default 'unchecked',
-  last_error text,
-  tools text,
-  tools_at text,
-  checked_at text,
-  migrated_from text,
-  created_at text not null,
-  created_by text not null,
-  updated_at text not null
-);
--- OAuth sign-ins started and not finished yet: their state (hashed), the PKCE verifier (sealed).
-create table if not exists mcp_sign_in (
-  state_hash text primary key,
-  name text not null,
-  verifier_sealed text not null,
-  redirect_uri text not null,
-  expires_at text not null,
-  started_by text not null
-);
-`;
-
 export type Row = Record<string, unknown>;
 export const str = (v: unknown) =>
   typeof v === "string" ? v : v === undefined || v === null ? "" : String(v);
 export const orNull = (v: unknown) => (v === null || v === undefined || v === "" ? null : str(v));
-
-/** The servers' table, made when missing: control's checks read it before anything else made it. */
-export function ensureMcpTables(db: DatabaseSync): void {
-  db.exec(SCHEMA);
-}
-
-/** The names of the servers in Settings. */
-export function mcpServerNames(db: DatabaseSync): Set<string> {
-  ensureMcpTables(db);
-  return new Set(
-    (db.prepare("select name from mcp_server").all() as Row[]).map((r) => str(r.name)),
-  );
-}
 
 /** A server's row as control shows it: never a secret, only its last four characters. */
 export function viewOf(r: Row): McpServer {
@@ -157,17 +111,17 @@ export function viewOf(r: Row): McpServer {
 
 /** The servers' rows, and the secret box that seals and opens their secrets. */
 export class ServerTable {
-  readonly db: DatabaseSync;
+  readonly rows: McpServerRows;
   readonly secrets: SecretBox;
 
-  constructor(db: DatabaseSync, secrets: SecretBox) {
-    this.db = db;
+  constructor(rows: McpServerRows, secrets: SecretBox) {
+    this.rows = rows;
     this.secrets = secrets;
   }
 
   /** A server's row, by its name. */
   row(name: string): Row | undefined {
-    return this.db.prepare("select * from mcp_server where name = ?").get(name) as Row | undefined;
+    return this.rows.row(name);
   }
 
   /** A sealed secret, opened; undefined when none is sealed. */
@@ -178,16 +132,12 @@ export class ServerTable {
 
   /** A server's state and its last error. */
   setState(name: string, status: McpStatus, error: string | null): void {
-    this.db
-      .prepare("update mcp_server set status = ?, last_error = ? where name = ?")
-      .run(status, error, name);
+    this.rows.setState(name, status, error);
   }
 
   /** A server's sign-in, sealed. */
   saveLogin(name: string, login: Login): void {
-    this.db
-      .prepare("update mcp_server set login_sealed = ? where name = ?")
-      .run(this.secrets.seal(JSON.stringify(login)), name);
+    this.rows.setLogin(name, this.secrets.seal(JSON.stringify(login)));
   }
 
   /** A row's sign-in, opened; undefined when it has none, or it can't be opened. */

@@ -23,16 +23,16 @@ export function rigListRoutes(app: Hono, dash: Dashboard): void {
     const f = await c.req.parseBody();
     if (String(f.confirm ?? "").trim() !== `retire ${rig}`)
       return back("error", `Type "retire ${rig}" to retire it.`);
-    if (!store.rigs().some((u) => u.id === rig)) return back("error", "No such rig.");
-    store.retireAnyRig(rig, "owner:ui");
+    if (!store.reportedRigs.list().some((u) => u.id === rig)) return back("error", "No such rig.");
+    store.retired.add(rig, "owner:ui");
     return back(
       "ok",
-      `${rig} is retired. ${store.enrolledRig(rig) ? "" : "If its token is in control's settings, take it out there too."}`.trim(),
+      `${rig} is retired. ${store.enrollments.rig(rig) ? "" : "If its token is in control's settings, take it out there too."}`.trim(),
     );
   });
   app.post("/ui/rigs/:rig/bring-back", (c) => {
     const rig = c.req.param("rig");
-    const ok = store.bringBackRig(rig, "owner:ui");
+    const ok = store.retired.bringBack(rig, "owner:ui");
     return c.redirect(
       `/ui/rigs/${encodeURIComponent(rig)}?${ok ? "ok" : "error"}=${encodeURIComponent(ok ? `${rig} is back.` : `${rig} is not retired.`)}`,
       303,
@@ -42,19 +42,19 @@ export function rigListRoutes(app: Hono, dash: Dashboard): void {
   /** Where a rig runs, for its row on the Rigs list: the kind of place and its name. */
   const whereOf = (rig: string, pod: RunpodRigView | undefined): RigWhere => {
     const gone = (status: string) => (status === "removed" ? ", removed" : "");
-    const m = store.machineRig(rig);
+    const m = store.machines.rig(rig);
     if (m) return { kind: "Machine", name: `${m.machine}${gone(m.status)}` };
-    const k = store.clusterRig(rig);
+    const k = store.clusters.rig(rig);
     if (k) return { kind: "Cluster", name: `${k.cluster}${gone(k.status)}` };
     if (pod) return { kind: "RunPod", name: pod.datacenter ?? "" };
-    const j = store.joinedRig(rig);
+    const j = store.joinedRigs.get(rig);
     if (j) return { kind: "Joined", name: j.form === "namespace" ? "a namespace" : "a machine" };
     return { kind: "Set up by you", name: "" };
   };
   app.get("/ui/rigs", (c) => {
     const now = Date.now();
     const vs = views();
-    const gone = store.retiredRigs();
+    const gone = store.retired.list();
     const listed = new Set([...vs.map((u) => u.id), ...gone.map((r) => r.rig)]);
     const rows: RigsListRow[] = [
       ...vs.map((u) => ({
@@ -62,7 +62,7 @@ export function rigListRoutes(app: Hono, dash: Dashboard): void {
         u,
         where: whereOf(u.id, u.runpod),
         pod: u.runpod,
-        keyPending: Boolean(store.rigKey(u.id).pending),
+        keyPending: Boolean(store.reportedRigs.key(u.id).pending),
       })),
       // A pod costs from its launch: it is listed before its first report too.
       ...(opts.runpodRigs?.list() ?? [])
@@ -70,7 +70,7 @@ export function rigListRoutes(app: Hono, dash: Dashboard): void {
         .map((p) => ({ id: p.rig, where: whereOf(p.rig, p), pod: p, keyPending: false })),
     ];
     const launch =
-      opts.runpodRigs && store.gpuClouds().length
+      opts.runpodRigs && store.gpuClouds.list().length
         ? `<a class="btn" href="/ui/rigs/add/runpod">Launch on RunPod</a>`
         : "";
     return page(

@@ -38,7 +38,7 @@ export function folderNameRefusal(store: ControlStore, name: string, self?: numb
     return `A folder's name is at most ${FOLDER_NAME_MAX} characters.`;
   // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it refuses
   if (/[\u0000-\u001f\u007f]/.test(n)) return "A folder's name is one line of text.";
-  const taken = store.campaignFolder(n);
+  const taken = store.folders.get(n);
   if (taken && taken.id !== self) return `There is a folder named ${taken.name} already.`;
   return "";
 }
@@ -56,7 +56,7 @@ export function archiveRefusal(store: ControlStore, vs: RigView[], campaign: str
       run: x.run.id,
       words: `${x.run.id} is at work on ${x.rig.id}.`,
     }));
-  for (const p of store.pendingStarts(campaign))
+  for (const p of store.commands.pendingStarts(campaign))
     if (!lines.some((l) => l.rig === p.rig && l.run === p.run))
       lines.push({ ...p, words: `${p.run} waits to start on ${p.rig}.` });
   if (!lines.length) return "";
@@ -67,7 +67,7 @@ export function archiveRefusal(store: ControlStore, vs: RigView[], campaign: str
 
 /** Whether control knows a campaign by this name: from a rig's report, a saved version, an assignment or the knowledge base. */
 const knows = (store: ControlStore, vs: RigView[], campaign: string) =>
-  campaignModes(store, vs).has(campaign) || store.campaignArchived(campaign) !== undefined;
+  campaignModes(store, vs).has(campaign) || store.archive.get(campaign) !== undefined;
 
 export interface ArchiveAnswer {
   campaign: string;
@@ -90,14 +90,14 @@ export function archiveCampaign(
 ): ShelfOutcome<ArchiveAnswer> {
   if (!knows(store, vs, campaign))
     return refused(`Control has no campaign named ${campaign}.`, 404);
-  const folder = store.campaignFolderOf(campaign)?.name ?? null;
-  const was = store.campaignArchived(campaign);
+  const folder = store.folders.of(campaign)?.name ?? null;
+  const was = store.archive.get(campaign);
   if (was)
     return { ok: true, answer: { campaign, archived: true, ...was, folder, changed: false } };
   const why = archiveRefusal(store, vs, campaign);
   if (why) return refused(why, 409);
-  const now = store.archiveCampaign(campaign, by);
-  store.audit(by, "campaign_archived", { campaign, folder });
+  const now = store.archive.add(campaign, by);
+  store.auditLog.add(by, "campaign_archived", { campaign, folder });
   return { ok: true, answer: { campaign, archived: true, ...now, folder, changed: true } };
 }
 
@@ -110,9 +110,9 @@ export function unarchiveCampaign(
 ): ShelfOutcome<ArchiveAnswer> {
   if (!knows(store, vs, campaign))
     return refused(`Control has no campaign named ${campaign}.`, 404);
-  const folder = store.campaignFolderOf(campaign)?.name ?? null;
-  const changed = store.unarchiveCampaign(campaign);
-  if (changed) store.audit(by, "campaign_unarchived", { campaign, folder });
+  const folder = store.folders.of(campaign)?.name ?? null;
+  const changed = store.archive.remove(campaign);
+  if (changed) store.auditLog.add(by, "campaign_unarchived", { campaign, folder });
   return { ok: true, answer: { campaign, archived: false, at: null, by: null, folder, changed } };
 }
 
@@ -123,7 +123,7 @@ export interface FolderView {
   created_by: string;
 }
 
-const folderView = (f: ReturnType<ControlStore["campaignFolders"]>[number]): FolderView => ({
+const folderView = (f: ReturnType<ControlStore["folders"]["list"]>[number]): FolderView => ({
   name: f.name,
   campaigns: f.campaigns,
   created_at: f.created_at,
@@ -138,11 +138,11 @@ export function campaignFoldersAnswer(store: ControlStore): {
   folders: FolderView[];
   archived: { campaign: string; at: string; by: string; folder: string | null }[];
 } {
-  const folders = store.campaignFolders();
+  const folders = store.folders.list();
   const of = (c: string) => folders.find((f) => f.campaigns.includes(c))?.name ?? null;
   return {
     folders: folders.map(folderView),
-    archived: store.archivedCampaigns().map((a) => ({ ...a, folder: of(a.campaign) })),
+    archived: store.archive.list().map((a) => ({ ...a, folder: of(a.campaign) })),
   };
 }
 
@@ -155,9 +155,9 @@ export function createFolder(
   const n = name.trim();
   const why = folderNameRefusal(store, n);
   if (why) return refused(why, why.startsWith("There is") ? 409 : 400);
-  store.addCampaignFolder(n, by);
-  store.audit(by, "campaign_folder_created", { folder: n });
-  const f = store.campaignFolders().find((x) => x.name === n);
+  store.folders.add(n, by);
+  store.auditLog.add(by, "campaign_folder_created", { folder: n });
+  const f = store.folders.list().find((x) => x.name === n);
   return {
     ok: true,
     answer: {
@@ -173,17 +173,17 @@ export function renameFolder(
   name: string,
   by: string,
 ): ShelfOutcome<{ folder: FolderView; was: string; changed: boolean }> {
-  const f = store.campaignFolder(folder);
+  const f = store.folders.get(folder);
   if (!f) return refused(`There is no folder named ${folder}.`, 404);
   const n = name.trim();
   const why = folderNameRefusal(store, n, f.id);
   if (why) return refused(why, why.startsWith("There is") ? 409 : 400);
   const changed = n !== f.name;
   if (changed) {
-    store.renameCampaignFolder(f.id, n);
-    store.audit(by, "campaign_folder_renamed", { folder: f.name, name: n });
+    store.folders.rename(f.id, n);
+    store.auditLog.add(by, "campaign_folder_renamed", { folder: f.name, name: n });
   }
-  const now = store.campaignFolders().find((x) => x.id === f.id);
+  const now = store.folders.list().find((x) => x.id === f.id);
   return {
     ok: true,
     answer: {
@@ -203,19 +203,19 @@ export function deleteFolder(
   folder: string,
   by: string,
 ): ShelfOutcome<{ deleted: string }> {
-  const f = store.campaignFolders().find((x) => x.name.toLowerCase() === folder.toLowerCase());
+  const f = store.folders.list().find((x) => x.name.toLowerCase() === folder.toLowerCase());
   if (!f) return refused(`There is no folder named ${folder}.`, 404);
   const n = f.campaigns.length;
   if (n) {
-    const named = f.campaigns.map((c) => (store.campaignArchived(c) ? `${c} (archived)` : c));
+    const named = f.campaigns.map((c) => (store.archive.get(c) ? `${c} (archived)` : c));
     const list = named.slice(0, 5).join(", ") + (n > 5 ? ` and ${n - 5} more` : "");
     return refused(
       `${f.name} is not empty. Move its ${n === 1 ? "campaign" : `${n} campaigns`} out first: ${list}.`,
       409,
     );
   }
-  store.deleteCampaignFolder(f.id);
-  store.audit(by, "campaign_folder_deleted", { folder: f.name });
+  store.folders.delete(f.id);
+  store.auditLog.add(by, "campaign_folder_deleted", { folder: f.name });
   return { ok: true, answer: { deleted: f.name } };
 }
 
@@ -232,13 +232,13 @@ export function moveCampaign(
 ): ShelfOutcome<{ campaign: string; folder: string | null; changed: boolean }> {
   if (!knows(store, vs, campaign))
     return refused(`Control has no campaign named ${campaign}.`, 404);
-  const want = folder?.trim() ? store.campaignFolder(folder.trim()) : null;
+  const want = folder?.trim() ? store.folders.get(folder.trim()) : null;
   if (want === undefined) return refused(`There is no folder named ${folder}.`, 404);
-  const was = store.campaignFolderOf(campaign) ?? null;
+  const was = store.folders.of(campaign) ?? null;
   if ((was?.id ?? null) === (want?.id ?? null))
     return { ok: true, answer: { campaign, folder: want?.name ?? null, changed: false } };
-  store.setCampaignFolder(campaign, want?.id ?? null);
-  store.audit(by, "campaign_moved", {
+  store.folders.place(campaign, want?.id ?? null);
+  store.auditLog.add(by, "campaign_moved", {
     campaign,
     folder: want?.name ?? null,
     from: was?.name ?? null,

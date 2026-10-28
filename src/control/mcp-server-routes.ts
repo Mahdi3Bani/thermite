@@ -186,7 +186,7 @@ export function mountMcpServerRoutes(
     const r = await servers.forRig(rig);
     const what = JSON.stringify([r.servers.map((s) => s.name), r.unavailable.map((u) => u.name)]);
     if (!handed.has(rig)) {
-      const last = store.lastAudit(`rig:${rig}`, "mcp_servers_handed") as
+      const last = store.auditLog.last(`rig:${rig}`, "mcp_servers_handed") as
         | { servers?: unknown; unavailable?: unknown }
         | undefined;
       handed.set(
@@ -198,7 +198,7 @@ export function mountMcpServerRoutes(
     }
     if (handed.get(rig) !== what) {
       handed.set(rig, what);
-      store.audit(`rig:${rig}`, "mcp_servers_handed", {
+      store.auditLog.add(`rig:${rig}`, "mcp_servers_handed", {
         servers: r.servers.map((s) => s.name),
         unavailable: r.unavailable.map((u) => u.name),
       });

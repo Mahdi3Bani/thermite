@@ -307,7 +307,7 @@ describe("pull mode: control connects to a rig through a proxy", () => {
         !JSON.stringify(s.minted.env).includes("PRIVATE"),
         "no private key in RunPod's settings",
       );
-      assert.equal(s.store.tunnelRig(s.rig)?.code_expires_at, null);
+      assert.equal(s.store.tunnels.get(s.rig)?.code_expires_at, null);
       // Control's database holds the code, the path and its own box key only sealed.
       const dump = JSON.stringify(s.store.db.prepare("select * from tunnel_rig").all());
       assert.ok(!dump.includes(s.minted.env.THERMITE_TUNNEL_ENROLL_CODE));
@@ -323,7 +323,7 @@ describe("pull mode: control connects to a rig through a proxy", () => {
       // A rig minted for a pod not launched yet waits, and says so.
       assert.equal(await s.tunnels.step("rp-timed"), "its pod is not launched yet");
       s.tunnels.attach("rp-timed", "abc123");
-      assert.equal(s.store.tunnelRig("rp-timed")?.url, "https://abc123-8790.proxy.runpod.net");
+      assert.equal(s.store.tunnels.get("rp-timed")?.url, "https://abc123-8790.proxy.runpod.net");
     } finally {
       await s.stop();
     }
@@ -337,11 +337,11 @@ describe("pull mode: control connects to a rig through a proxy", () => {
       const [xp, xi] = s.signed("exchange", Buffer.from("{}"));
       await isEmpty404(await raw(`${s.pod.url}${xp}`, xi), "an exchange before enrollment");
       assert.equal(await s.tunnels.step(s.rig), "enrolled");
-      const t = s.store.tunnelRig(s.rig);
+      const t = s.store.tunnels.get(s.rig);
       assert.equal(t?.pod_sign_public, s.pod.tunnel.publicKeys().sign);
       assert.equal(t?.pod_box_public, s.pod.tunnel.publicKeys().box);
-      assert.equal(s.store.tunnelRig(s.rig)?.code_sealed, "", "spent at control");
-      assert.equal(s.store.pinTunnelRig(s.rig, "x", "y"), false, "a second pin");
+      assert.equal(s.store.tunnels.get(s.rig)?.code_sealed, "", "spent at control");
+      assert.equal(s.store.tunnels.pin(s.rig, "x", "y"), false, "a second pin");
       assert.ok(!existsSync(enrolled), "nothing for the harness before control's first exchange");
       // An enrollment answer lost on the way may be asked for again until the first exchange.
       const n1 = newNonce();
@@ -398,11 +398,11 @@ describe("pull mode: control connects to a rig through a proxy", () => {
         await s.tunnels.step(s.rig),
         /did not enroll \(an empty 404\)\. Most often nothing listens on the pod.s port yet/,
       );
-      assert.equal(s.store.tunnelRig(s.rig)?.enrolled_at, null);
-      assert.equal(s.store.tunnelRig(s.rig)?.pod_sign_public, null);
+      assert.equal(s.store.tunnels.get(s.rig)?.enrolled_at, null);
+      assert.equal(s.store.tunnels.get(s.rig)?.pod_sign_public, null);
       assert.ok(!s.pod.tunnel.enrolled());
       assert.deepEqual(s.podState(), ["", ""], "the pod recorded nothing");
-      assert.match(s.store.tunnelRig(s.rig)?.error ?? "", /wrong or expired code/);
+      assert.match(s.store.tunnels.get(s.rig)?.error ?? "", /wrong or expired code/);
       // The rig's page says so, before the rig ever reported.
       const page = await s.rigPage();
       assert.match(page, /Control connects to rp-[0-9a-f]{8} through RunPod's proxy/);
@@ -421,7 +421,7 @@ describe("pull mode: control connects to a rig through a proxy", () => {
     try {
       now += 31 * 60_000;
       assert.match(await timed.tunnels.step(timed.rig), /enrollment code expired/);
-      assert.equal(timed.store.tunnelRig(timed.rig)?.enrolled_at, null);
+      assert.equal(timed.store.tunnels.get(timed.rig)?.enrolled_at, null);
       // The pod refuses it too, whoever asks.
       const n = newNonce();
       const [p, i] = timed.signed("enroll", timed.enrollBody(n), { nonce: n });
@@ -497,8 +497,8 @@ describe("pull mode: control connects to a rig through a proxy", () => {
       assert.equal(readFileSync(join(s.opts.enrolledDir, "rig.json"), "utf8"), files);
       // The next exchange reports the refusals; control keeps the count and logs it.
       assert.match(await s.tunnels.step(s.rig), /^exchanged/);
-      assert.ok((s.store.tunnelRig(s.rig)?.refused_total ?? 0) >= tries.length + 3);
-      assert.ok(s.store.listAudit(20).some((a) => a.action === "tunnel_refusals"));
+      assert.ok((s.store.tunnels.get(s.rig)?.refused_total ?? 0) >= tries.length + 3);
+      assert.ok(s.store.auditLog.list(20).some((a) => a.action === "tunnel_refusals"));
       const page = await s.rigPage();
       assert.match(page, /Refused requests<\/dt><dd>[1-9]/);
       assert.match(page, /Enrolled .* ago/);
@@ -563,11 +563,11 @@ describe("pull mode: control connects to a rig through a proxy", () => {
       appendOther(henv.service.ledger, "t", "first", null, { note: MARKER });
       const state = await s.pump(relayOnce({ ...cfg, skipCommands: true }, { cursor: 0 }));
       assert.ok(state.cursor > 0);
-      const kinds = (s.store.events(s.rig, 0, 100) as { kind: string; body: unknown }[]).map(
-        (e) => e.kind,
-      );
+      const kinds = (
+        s.store.rigEvents.after(s.rig, 0, 100) as { kind: string; body: unknown }[]
+      ).map((e) => e.kind);
       assert.ok(kinds.includes("first"));
-      assert.ok(s.store.rigKey(s.rig).pubkey, "the harness's report key is pinned");
+      assert.ok(s.store.reportedRigs.key(s.rig).pubkey, "the harness's report key is pinned");
       // A command: issued at control, delivered to the harness, its outcome back at control.
       const { id } = issueCommand(s.store, henv.keys.privateKeyPem, {
         rig: s.rig,
@@ -576,15 +576,15 @@ describe("pull mode: control connects to a rig through a proxy", () => {
         issuedBy: "owner:ui",
       });
       await s.pump(relayCommandsOnce(cfg));
-      assert.equal(s.store.command(id)?.status, "delivered");
+      assert.equal(s.store.commands.get(id)?.status, "delivered");
       // A model route with its key reaches the supervisor.
-      s.store.putProvider({
+      s.store.modelProviders.put({
         name: "models",
         type: "openai",
         base_url: "https://models.example.com/v1",
         key: { sealed: s.secrets.seal(MODEL_KEY), hint: "…0001" },
       });
-      s.store.assignRigModel(s.rig, { provider: "models", model: "m-1" });
+      s.store.agentModels.assignRig(s.rig, { provider: "models", model: "m-1" });
       const route = await s.pump(s.call(`/v1/rigs/${s.rig}/model-route`));
       assert.equal(route.status, 200);
       assert.ok(JSON.stringify(await route.json()).includes(MODEL_KEY));

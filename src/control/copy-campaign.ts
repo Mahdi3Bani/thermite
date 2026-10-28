@@ -157,8 +157,8 @@ export function copyCampaign(
   const { from, name } = req;
   if (isRigCheck(from))
     return refuse(`${from} is a rig check's campaign. A rig check cannot be copied.`, 400);
-  const saved = store.campaignVersions(from)[0];
-  const assigned = saved ? undefined : store.latestAssignments().get(from);
+  const saved = store.campaigns.versions(from)[0];
+  const assigned = saved ? undefined : store.commands.latestAssignments().get(from);
   if (!saved && !assigned)
     return refuse(
       `Control has no saved version or earlier assignment of ${from}. There is nothing to copy.`,
@@ -173,7 +173,7 @@ export function copyCampaign(
   const kb = store.kb();
   if (known.has(name) || kb.reads(name).length || kb.readBy(name).length)
     return refuse(`There is a campaign named ${name} already. Choose another name.`, 409);
-  const version = store.nextCampaignVersion(name);
+  const version = store.campaigns.nextVersion(name);
   const source = (saved?.contract ?? assigned?.payload.contract) as Record<string, unknown>;
   // The contract names its campaign once: the copy's name, and its first version, there.
   let contract: Record<string, unknown> = { ...source, campaign: name, version };
@@ -185,7 +185,7 @@ export function copyCampaign(
         "This campaign's MCP servers are in its kit's kit.json: change them on the New campaign page.",
         400,
       );
-    const why = researchMcpRefusal(store.db, uses);
+    const why = researchMcpRefusal(store, uses);
     if (why) return refuse(why, 400);
     const { mcp_servers: before, ...rest } = contract;
     contract = uses.length ? { ...rest, mcp_servers: uses } : rest;
@@ -236,7 +236,7 @@ export function copyCampaign(
     copiedFrom = { campaign: from, rig: a.rig, run: a.run };
   }
   if (otherMcp) copiedFrom.other_mcp_servers = true;
-  store.putCampaign({
+  store.campaigns.put({
     campaign: name,
     version,
     contract: parsed.contract,
@@ -245,7 +245,7 @@ export function copyCampaign(
     copiedFrom,
     by,
   });
-  store.audit(by, "campaign_copied", {
+  store.auditLog.add(by, "campaign_copied", {
     campaign: name,
     from: copiedFrom,
     sha: parsed.sha,

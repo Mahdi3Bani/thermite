@@ -90,7 +90,7 @@ const isStopped = (status: string) => status === "EXITED";
 
 /** The harness of this rig has sent control a signed report: only then can it hold results. */
 export function harnessReported(store: ControlStore, rig: string): boolean {
-  const u = store.rigs({ withRetired: true }).find((x) => x.id === rig);
+  const u = store.reportedRigs.list({ withRetired: true }).find((x) => x.id === rig);
   return Boolean(u && Date.parse(u.last_seen) > 0);
 }
 
@@ -99,7 +99,7 @@ export function harnessReported(store: ControlStore, rig: string): boolean {
  * is not on RunPod). The reset needs the pod running, to send its results out and take the wipe.
  */
 export function runpodResetRefusal(store: ControlStore, rig: string): string | undefined {
-  const r = store.runpodRig(rig);
+  const r = store.runpod.rig(rig);
   if (!r) return undefined;
   const s = r.state as RigState;
   if (!r.active) return `${rig}'s pod is gone: there is nothing to reset`;
@@ -146,7 +146,7 @@ export class RunpodLifecycle {
   }
 
   private history(rig: string, step: string, ok: boolean, detail?: string): void {
-    this.store.rigSetupEvent(rig, step, ok, detail);
+    this.store.rigHistory.add(rig, step, ok, detail);
   }
 
   /** A signed command to the rig, as `by`. Throws, in words, when control can't sign here. */
@@ -182,7 +182,7 @@ export class RunpodLifecycle {
     if (!r.active) return `${r.rig}'s pod is gone: RunPod no longer has it`;
     if (s.op) return `${OP_WORDS[s.op.kind]} of ${r.rig} is under way: wait until it ends`;
     if (duringReset) return undefined;
-    const reset = this.store.openReset(r.rig);
+    const reset = this.store.fullResets.open(r.rig);
     if (reset)
       return `a full reset of ${r.rig} is under way (${String(reset.state)}): cancel it, or wait until it ends`;
     return undefined;
@@ -227,7 +227,7 @@ export class RunpodLifecycle {
         : why === "spend_limit"
           ? `it had cost ${money(spentBy(s, this.now()))}, which reached the spend limit you set (${money(s.spend_limit_usd ?? 0)})`
           : `no run was at work on it for ${s.idle_stop_minutes} minutes, the idle stop you set`;
-    if (why === "owner") this.store.audit(by, "runpod_rig_stop", { rig: r.rig, pod: r.pod });
+    if (why === "owner") this.store.auditLog.add(by, "runpod_rig_stop", { rig: r.rig, pod: r.pod });
     if (!harnessReported(this.store, r.rig)) {
       this.history(
         r.rig,
@@ -276,7 +276,11 @@ export class RunpodLifecycle {
         `${r.rig} has cost ${money(spent)}, which is at its spend limit (${money(s.spend_limit_usd)}): raise or clear the limit first`,
       );
     this.begin(s);
-    this.store.audit(by, "runpod_rig_start", { rig: r.rig, pod: r.pod, ...(note ? { note } : {}) });
+    this.store.auditLog.add(by, "runpod_rig_start", {
+      rig: r.rig,
+      pod: r.pod,
+      ...(note ? { note } : {}),
+    });
     const op = this.newOp("start", by, null, "starting");
     if (note) op.note = note;
     await this.startPod(r, s, key, op);
@@ -289,7 +293,7 @@ export class RunpodLifecycle {
     if (isStopped(s.status))
       throw new Error(`${r.rig}'s pod is stopped: start it instead of restarting it`);
     this.begin(s);
-    this.store.audit(by, "runpod_rig_restart", { rig: r.rig, pod: r.pod });
+    this.store.auditLog.add(by, "runpod_rig_restart", { rig: r.rig, pod: r.pod });
     await podAction(key, r.pod, "stop", this.fetchImpl);
     this.billStop(s);
     s.status = "EXITED";
@@ -306,7 +310,7 @@ export class RunpodLifecycle {
     const refused = this.busy(r, s);
     if (refused) throw new Error(refused);
     this.begin(s);
-    this.store.audit(by, "runpod_rig_terminate", { rig: r.rig, pod: r.pod });
+    this.store.auditLog.add(by, "runpod_rig_terminate", { rig: r.rig, pod: r.pod });
     if (!harnessReported(this.store, r.rig)) {
       this.history(
         r.rig,
@@ -368,7 +372,7 @@ export class RunpodLifecycle {
             false,
             `RunPod says the pod is ${pod.status} after the start`,
           );
-          this.store.audit("control", "runpod_rig_start_refused", {
+          this.store.auditLog.add("control", "runpod_rig_start_refused", {
             rig: r.rig,
             pod: r.pod,
             why: `the pod is ${pod.status}`,
@@ -379,7 +383,7 @@ export class RunpodLifecycle {
       case "quiescing": {
         const v = rigView(this.store, r.rig, { staleAfterMs: this.staleAfterMs, now: nowMs });
         const busy = Number(v?.jobs.queued ?? 0) + Number(v?.jobs.leased ?? 0);
-        const pending = this.store.pendingCommands(r.rig).length;
+        const pending = this.store.commands.pending(r.rig).length;
         if (busy > 0 || pending > 0) {
           if (waited > (TERMINATE_WAIT_MS.quiescing ?? 0))
             this.refuseTerminate(
@@ -394,7 +398,7 @@ export class RunpodLifecycle {
         return true;
       }
       case "exporting": {
-        const c = op.command ? this.store.command(op.command) : undefined;
+        const c = op.command ? this.store.commands.get(op.command) : undefined;
         const done = c && c.status !== "pending" && harnessConfirmed(c.outcome);
         const name = done
           ? (c.outcome as { result?: { export?: string } } | null)?.result?.export
@@ -493,7 +497,7 @@ export class RunpodLifecycle {
         `Stopped by control: no run was at work on it for ${s.idle_stop_minutes} minutes, the idle stop you set. Its volume stays.`,
       );
     this.history(r.rig, "runpod_stopped", true, results);
-    this.store.audit(why === "owner" ? by : "control", "runpod_rig_stopped", {
+    this.store.auditLog.add(why === "owner" ? by : "control", "runpod_rig_stopped", {
       rig: r.rig,
       pod: r.pod,
       why,
@@ -516,7 +520,11 @@ export class RunpodLifecycle {
         s.stopped_by = "owner";
       }
       this.history(r.rig, "runpod_start_refused", false, why);
-      this.store.audit("control", "runpod_rig_start_refused", { rig: r.rig, pod: r.pod, why });
+      this.store.auditLog.add("control", "runpod_rig_start_refused", {
+        rig: r.rig,
+        pod: r.pod,
+        why,
+      });
       if (op.kind === "start") throw new Error(why);
       return;
     }
@@ -576,7 +584,7 @@ export class RunpodLifecycle {
         `not the ${s.gpu_count} it was launched with: RunPod had no more free for it. Stop it and start it again later, or terminate it`,
       );
     this.history(r.rig, "runpod_running", !short && !failed.length, said.join("; "));
-    this.store.audit("control", "runpod_rig_started", {
+    this.store.auditLog.add("control", "runpod_rig_started", {
       rig: r.rig,
       pod: r.pod,
       gpus: pod.gpus,
@@ -601,13 +609,13 @@ export class RunpodLifecycle {
     s.op = null;
     s.notes.push(`Terminated by ${by}: ${results}.`);
     this.history(r.rig, "runpod_terminated", true, results);
-    this.store.audit(by, "runpod_rig_terminated", {
+    this.store.auditLog.add(by, "runpod_rig_terminated", {
       rig: r.rig,
       pod: r.pod,
       spend_usd: Math.round(spent * 100) / 100,
     });
     // Nothing reaches the pod any more: control stops connecting to it, and its records stay.
-    if (!this.store.rigRetired(r.rig)) this.store.retireAnyRig(r.rig, by);
+    if (!this.store.retired.get(r.rig)) this.store.retired.add(r.rig, by);
     return false;
   }
 
@@ -621,9 +629,13 @@ export class RunpodLifecycle {
     this.history(r.rig, "runpod_terminate_refused", false, words);
     s.refusal = {
       words: `Not terminated: ${words}`,
-      steps: this.store.rigSetupEvents(r.rig).length,
+      steps: this.store.rigHistory.list(r.rig).length,
     };
-    this.store.audit("control", "runpod_rig_terminate_refused", { rig: r.rig, pod: r.pod, why });
+    this.store.auditLog.add("control", "runpod_rig_terminate_refused", {
+      rig: r.rig,
+      pod: r.pod,
+      why,
+    });
   }
 
   /** The pod stops costing now: what it cost so far is kept. No run works on a stopped pod. */

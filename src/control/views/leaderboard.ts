@@ -26,7 +26,7 @@ export function leaderboard(
   store: ControlStore,
   opts: { staleAfterMs: number },
 ): Record<string, LeaderEntry[]> {
-  const views = store.rigs().flatMap((u) => rigView(store, u.id, opts) ?? []);
+  const views = store.reportedRigs.list().flatMap((u) => rigView(store, u.id, opts) ?? []);
   // An acceptance counts only for the tree it accepted: the key includes the tree, which must be
   // the one the source rig itself published (signed) for that seq.
   const verified = new Map<string, Set<string>>();

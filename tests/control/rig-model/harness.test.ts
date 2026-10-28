@@ -34,7 +34,7 @@ describe("each agent's model over REST and MCP", () => {
       merged_by: { provider: "lab", model: "strong-model", harness: "codex" },
     });
     assert.equal(merged.status, 200, JSON.stringify(merged.body));
-    const audit = s.store.listAudit(10, { action: "agent_model_given" });
+    const audit = s.store.auditLog.list(10, { action: "agent_model_given" });
     assert.deepEqual(
       audit.slice(0, 2).map((e) => {
         const b = e.body as { role?: string; harness?: string };
@@ -134,6 +134,6 @@ describe("each agent's model over REST and MCP", () => {
     // A Claude subscription named with claude-code for the workers runs there.
     const w = await s.give({ provider: "claude-sub", model: "opus-5.5", harness: "claude-code" });
     assert.equal(w.status, 200, JSON.stringify(w.body));
-    assert.equal(s.store.rigModels()["rig-a"]?.harness, "claude-code");
+    assert.equal(s.store.agentModels.byRig()["rig-a"]?.harness, "claude-code");
   });
 });

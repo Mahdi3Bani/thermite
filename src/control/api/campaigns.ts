@@ -51,7 +51,7 @@ export function campaignRoutes(app: Hono, api: ApiContext): void {
       : ({ state: "refused", error: bodyRefusal(body.error), status: 400 } as const);
     if (out.state === "refused") {
       // In the audit log, as the dashboard's and MCP's refusals are.
-      store.audit("owner:api", "refused", {
+      store.auditLog.add("owner:api", "refused", {
         path: `/v1/campaigns/${campaign}/runs`,
         why: redact(out.error),
       });
@@ -71,7 +71,7 @@ export function campaignRoutes(app: Hono, api: ApiContext): void {
       ? copyACampaign(parts, { from, ...body.data }, "owner:api")
       : ({ state: "refused", error: bodyRefusal(body.error), status: 400 } as const);
     if (out.state === "refused") {
-      store.audit("owner:api", "refused", {
+      store.auditLog.add("owner:api", "refused", {
         path: `/v1/campaigns/${from}/copy`,
         why: redact(out.error),
       });
@@ -99,7 +99,7 @@ export function campaignRoutes(app: Hono, api: ApiContext): void {
         )
       : ({ state: "refused", error: bodyRefusal(body.error), status: 400 } as const);
     if (out.state === "refused") {
-      store.audit("owner:api", "refused", {
+      store.auditLog.add("owner:api", "refused", {
         path: `/v1/campaigns/${campaign}/context`,
         why: redact(out.error),
       });
@@ -111,14 +111,14 @@ export function campaignRoutes(app: Hono, api: ApiContext): void {
   // Archive a campaign, and the left navigation's folders (goal 077): the same functions as the
   // dashboard and MCP, with their refusals in words. The owner's token.
   const allViews = () =>
-    store
-      .rigs()
+    store.reportedRigs
+      .list()
       .map((u) => rigView(store, u.id, viewOpts))
       .filter((v): v is NonNullable<typeof v> => v !== undefined);
   /** A shelf outcome as the answer, a refusal in the audit log as the other routes' are. */
   const shelf = <T>(c: Context, path: string, out: ShelfOutcome<T>, created = false) => {
     if (out.ok) return c.json(out.answer, created ? 201 : 200);
-    store.audit("owner:api", "refused", { path, why: redact(out.error) });
+    store.auditLog.add("owner:api", "refused", { path, why: redact(out.error) });
     return c.json({ error: out.error }, out.status);
   };
   const refusedBody = (e: z.ZodError) =>

@@ -22,7 +22,7 @@ for (const set of VIEW_SETS) {
   describe(set.name, () => {
     const store = new ControlStore(":memory:");
     set.fill(store);
-    for (const u of store.rigs()) {
+    for (const u of store.reportedRigs.list()) {
       const events = rigEvents(store, u.id, u.ledger_id);
       const inputs = rigInputs(store, u, OPTS);
       const whole = rigView(store, u.id, OPTS);

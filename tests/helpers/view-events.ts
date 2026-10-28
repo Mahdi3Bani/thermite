@@ -45,7 +45,7 @@ export function report(
   summary: Record<string, unknown> = {},
   from = 0,
 ): void {
-  store.ingest({
+  store.rigEvents.ingest({
     rig,
     ledger_id: ledger,
     cursor: from,

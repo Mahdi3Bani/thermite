@@ -71,8 +71,9 @@ export function registerRetire(tools: ToolContext): void {
       audited("retire_rig", (a: { rig: string; confirm: string }) => {
         if (a.confirm.trim() !== `retire ${a.rig}`)
           throw new Error(`confirm with "retire ${a.rig}"`);
-        if (!store.rigs().some((u) => u.id === a.rig)) throw new Error(`no rig ${a.rig}`);
-        store.retireAnyRig(a.rig, actor);
+        if (!store.reportedRigs.list().some((u) => u.id === a.rig))
+          throw new Error(`no rig ${a.rig}`);
+        store.retired.add(a.rig, actor);
         return { rig: a.rig, retired: true };
       }),
     );
@@ -85,7 +86,7 @@ export function registerRetire(tools: ToolContext): void {
         inputSchema: { rig: z.string().min(1) },
       },
       audited("bring_back_rig", (a: { rig: string }) => {
-        if (!store.bringBackRig(a.rig, actor)) throw new Error(`${a.rig} is not retired`);
+        if (!store.retired.bringBack(a.rig, actor)) throw new Error(`${a.rig} is not retired`);
         return { rig: a.rig, retired: false };
       }),
     );

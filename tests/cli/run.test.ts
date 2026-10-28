@@ -40,7 +40,7 @@ function report(
   events: [string, string, Record<string, unknown>][],
   summary: object = {},
 ) {
-  store.ingest({
+  store.rigEvents.ingest({
     rig,
     ledger_id: `ledger-${rig}`,
     cursor: 0,
@@ -61,7 +61,7 @@ function report(
 describe("thermite run start (goal 029)", () => {
   test("starts a run as the campaign page's Start a run does, and says its refusals", async () => {
     const { keys, store, control: api } = controlOnly({ tokens: TOKENS });
-    store.setConfiguredRigs(["rig-a"]);
+    store.enrollments.setConfiguredRigs(["rig-a"]);
     // sort-speed was assigned over the API before: Start a run assigns it again.
     issueCommand(store, keys.privateKeyPem, {
       rig: "rig-a",
@@ -86,8 +86,12 @@ describe("thermite run start (goal 029)", () => {
     report(store, "rig-b", [["notes-1", "run_created", { campaign: "notes", mode: "research" }]], {
       model: { source: "none", harness: "pi" },
     });
-    store.putProvider({ name: "zen", type: "opencode", base_url: "https://opencode.ai/zen/v1" });
-    store.setProviderModels("zen", [{ id: "glm-5.3-flash-free" }]);
+    store.modelProviders.put({
+      name: "zen",
+      type: "opencode",
+      base_url: "https://opencode.ai/zen/v1",
+    });
+    store.modelProviders.setModels("zen", [{ id: "glm-5.3-flash-free" }]);
     const server = serve({ fetch: api.fetch, hostname: "127.0.0.1", port: 0 });
     await new Promise((r) => server.once("listening", r));
     const control = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -191,7 +195,7 @@ describe("thermite run start (goal 029)", () => {
       assert.equal(usage.code, 2);
       assert.match(usage.stderr, /^usage: thermite/);
       // Nothing more was signed than the one run.
-      assert.equal(store.listCommands(50).filter((c) => c.kind === "assign_campaign").length, 2);
+      assert.equal(store.commands.list(50).filter((c) => c.kind === "assign_campaign").length, 2);
     } finally {
       server.close();
     }

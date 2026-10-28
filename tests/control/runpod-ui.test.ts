@@ -29,7 +29,7 @@ const IMAGE = "ghcr.io/example/thermite-rig:test-cuda";
 async function setup(o: Parameters<typeof fakeRunpod>[0] = {}) {
   const store = new ControlStore(":memory:");
   const secrets = SecretBox.ephemeral();
-  store.addGpuCloud({
+  store.gpuClouds.add({
     name: "runpod",
     kind: "runpod",
     key_sealed: secrets.seal(FAKE_RUNPOD_KEY),
@@ -111,8 +111,8 @@ async function working(s: Awaited<ReturnType<typeof setup>>, form: Partial<typeo
     /^\/ui\/rigs\/rp-test-1\?ok=Launched/,
   );
   await s.advance();
-  assert.ok(s.store.pinTunnelRig("rp-test-1", "sign", "box"));
-  s.store.ingest({
+  assert.ok(s.store.tunnels.pin("rp-test-1", "sign", "box"));
+  s.store.rigEvents.ingest({
     rig: "rp-test-1",
     ledger_id: "l1",
     cursor: 0,
@@ -244,7 +244,7 @@ describe("Launch on RunPod", () => {
     assert.equal(body.gpu.count, 2);
     assert.equal(body.cloud, "SECURE");
     assert.equal(body.mounts.persistent.size, 60);
-    assert.equal(s.store.tunnelRig("rp-test-1")?.config.env.THERMITE_JUDGE_GPUS, "1");
+    assert.equal(s.store.tunnels.get("rp-test-1")?.config.env.THERMITE_JUDGE_GPUS, "1");
     const v = s.rigs.view("rp-test-1");
     assert.equal(v?.spend_limit_usd, 20);
     assert.equal(v?.idle_stop_minutes, null, "cleared: none");
@@ -462,7 +462,7 @@ describe("a RunPod rig's page", () => {
     await s.advance();
     assert.match(String(s.rigs.view("rp-test-1")?.refusal), /^Not terminated/);
     // The step a full reset records when it starts (lifecycle.ts).
-    s.store.rigSetupEvent("rp-test-1", "reset_requested", true, "asked by owner:ui");
+    s.store.rigHistory.add("rp-test-1", "reset_requested", true, "asked by owner:ui");
     await s.advance();
     assert.equal(s.rigs.view("rp-test-1")?.refusal, null);
     assert.equal(s.rigs.view("rp-test-1")?.error, null);
@@ -478,7 +478,7 @@ describe("a RunPod rig's page", () => {
     /** The harness's next signed events, after working()'s first. */
     let cursor = 1;
     const report = (...events: [kind: string, body: object][]) => {
-      s.store.ingest({
+      s.store.rigEvents.ingest({
         rig: "rp-test-1",
         ledger_id: "l1",
         cursor,
@@ -573,7 +573,7 @@ describe("a stopped RunPod pod elsewhere on the dashboard", () => {
     await s.post("/ui/rigs/rp-test-1/runpod/stop");
     harnessApplies(s.store, "rp-test-1", exportName(1));
     // The harness reports the run the stop paused.
-    s.store.ingest({
+    s.store.rigEvents.ingest({
       rig: "rp-test-1",
       ledger_id: "l1",
       cursor: 1,
@@ -641,7 +641,7 @@ describe("a stopped RunPod pod elsewhere on the dashboard", () => {
   test("a new campaign started on it starts the pod first, and the page says so", async () => {
     const s = await stopped();
     // The rig's last report named its hardware, as a CPU rig's does.
-    s.store.ingest({
+    s.store.rigEvents.ingest({
       rig: "rp-test-1",
       ledger_id: "l1",
       cursor: 2,

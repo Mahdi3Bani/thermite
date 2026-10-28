@@ -53,13 +53,13 @@ describe("thermite rig", () => {
         readFileSync(join(out, "rig.env"), "utf8"),
         /^THERMITE_RIG_ID=gpu-1\nCONTROL_URL=http/,
       );
-      assert.ok(store.rigTokenMatches("gpu-1", token));
+      assert.ok(store.enrollments.tokenMatches("gpu-1", token));
       // A second add into the same directory is refused before control is asked.
       await assert.rejects(
         cli("rig", "add", "gpu-2", "--control", control, "--token-file", ownerFile, "--out", out),
         /not empty/,
       );
-      assert.equal(store.enrolledRig("gpu-2"), undefined);
+      assert.equal(store.enrollments.rig("gpu-2"), undefined);
       const newFile = join(dir, "gpu-1.token");
       await cli(
         "rig",
@@ -73,10 +73,10 @@ describe("thermite rig", () => {
         newFile,
       );
       const rotated = readFileSync(newFile, "utf8").trim();
-      assert.ok(!store.rigTokenMatches("gpu-1", token));
-      assert.ok(store.rigTokenMatches("gpu-1", rotated));
+      assert.ok(!store.enrollments.tokenMatches("gpu-1", token));
+      assert.ok(store.enrollments.tokenMatches("gpu-1", rotated));
       await cli("rig", "retire", "gpu-1", "--control", control, "--token-file", ownerFile);
-      assert.ok(!store.rigTokenMatches("gpu-1", rotated));
+      assert.ok(!store.enrollments.tokenMatches("gpu-1", rotated));
     } finally {
       server.close();
     }
@@ -91,13 +91,13 @@ describe("thermite rig", () => {
     });
     // rig-old reports from an older, compatible build; rig-new never reported; rig-x is refused.
     const report = { cursor: 0, next: 0, events: [], summary: {}, ledger_id: "l1" };
-    store.ingest({ rig: "rig-old", ...report, generated_at: new Date().toISOString() });
+    store.rigEvents.ingest({ rig: "rig-old", ...report, generated_at: new Date().toISOString() });
     const old = { version: "0.1.0", commit: "abcdef0123456789", protocol: 1, oldest_protocol: 1 };
-    store.setRigBuild("rig-old", "harness", old);
-    store.setRigBuild("rig-old", "supervisor", old);
-    store.enrollRig("rig-new", "0".repeat(64), "owner:test");
-    store.setRigBuild("rig-x", "supervisor", { ...old, protocol: 0, oldest_protocol: 0 });
-    store.setRigRefusal(
+    store.builds.setRig("rig-old", "harness", old);
+    store.builds.setRig("rig-old", "supervisor", old);
+    store.enrollments.enroll("rig-new", "0".repeat(64), "owner:test");
+    store.builds.setRig("rig-x", "supervisor", { ...old, protocol: 0, oldest_protocol: 0 });
+    store.refusals.set(
       "rig-x",
       "Control cannot work with this rig: its supervisor speaks protocol 0.",
     );

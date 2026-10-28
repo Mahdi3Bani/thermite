@@ -73,7 +73,7 @@ export async function startCampaign(deps: Deps, input: StartInput): Promise<Star
     mode: string;
     project: { repo: string; kit?: { repo: string; commit: string } };
   };
-  const version = deps.store.nextCampaignVersion(contract.campaign);
+  const version = deps.store.campaigns.nextVersion(contract.campaign);
   contract.version = version;
   if (built.kit && contract.project.kit) {
     contract.project.kit.commit = deps.kits.commit(
@@ -107,7 +107,7 @@ export async function startCampaign(deps: Deps, input: StartInput): Promise<Star
           // The kit's MCP servers (goal 068): what its runs' assignments name.
           ...(built.mcp_servers?.length ? { mcp_servers: built.mcp_servers } : {}),
         };
-  deps.store.putCampaign({
+  deps.store.campaigns.put({
     campaign: contract.campaign,
     version,
     contract: parsed.contract,
@@ -195,7 +195,7 @@ export interface QueueSeed {
  * newest assignment again, with the same contract, starting point and imports, as a new run.
  */
 async function againLikeBefore(deps: Deps, input: RunInput): Promise<RunStarted> {
-  const past = deps.store.latestAssignments().get(input.campaign);
+  const past = deps.store.commands.latestAssignments().get(input.campaign);
   if (!past)
     return {
       ok: false,
@@ -242,7 +242,7 @@ async function againLikeBefore(deps: Deps, input: RunInput): Promise<RunStarted>
 
 /** Starts a run of a stored campaign version on a rig: its own run, or a try with no agents. */
 export async function startRun(deps: Deps, input: RunInput): Promise<RunStarted> {
-  const versions = deps.store.campaignVersions(input.campaign);
+  const versions = deps.store.campaigns.versions(input.campaign);
   const v =
     input.version === undefined ? versions[0] : versions.find((x) => x.version === input.version);
   if (!v && input.version === undefined) return againLikeBefore(deps, input);

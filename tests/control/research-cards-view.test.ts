@@ -16,7 +16,7 @@ function store() {
   let id = 0;
   const t0 = Date.now() - 3_600_000;
   const ingest = (...events: { kind: string; subject: string; body: Record<string, unknown> }[]) =>
-    s.ingest({
+    s.rigEvents.ingest({
       rig: "rig-a",
       ledger_id: "ledger-a",
       cursor: id,

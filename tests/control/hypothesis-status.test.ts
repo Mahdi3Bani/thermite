@@ -19,7 +19,7 @@ describe("hypothesis_status at control (goal 117)", () => {
       subject: run,
       body: { campaign: `c-${mode}`, mode, version: 1, agents: true },
     });
-    store.ingest({
+    store.rigEvents.ingest({
       rig: "rig-r",
       ledger_id: "ledger-r",
       cursor: 0,
@@ -44,11 +44,11 @@ describe("hypothesis_status at control (goal 117)", () => {
       ((await bad.json()) as { error: string }).error,
       "Run h-1 is not a research run: only a research run has hypotheses to promote or retire.",
     );
-    assert.equal(store.listCommands(10).length, 0, "nothing was signed");
+    assert.equal(store.commands.list(10).length, 0, "nothing was signed");
     assert.equal((await post("r-1")).status, 201);
     assert.equal((await post("r-2")).status, 201, "a run not reported yet: the rig checks it");
     assert.deepEqual(
-      store.listCommands(10).map((c) => c.kind),
+      store.commands.list(10).map((c) => c.kind),
       ["hypothesis_status", "hypothesis_status"],
     );
   });

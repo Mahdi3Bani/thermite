@@ -38,8 +38,8 @@ export function addRigRoutes(app: Hono, dash: Dashboard): void {
   /** GPUs of a machine that rigs control set up there use, by index. */
   const gpusInUse = (machine: string) =>
     new Map(
-      store
-        .machineRigs(machine)
+      store.machines
+        .rigs(machine)
         .filter((r) => r.status !== "removed")
         .flatMap((r) => r.gpus.map((g) => [g, r.rig] as const)),
     );
@@ -87,14 +87,14 @@ export function addRigRoutes(app: Hono, dash: Dashboard): void {
         30 * 60_000,
       );
       if (out.code !== 0) throw new Error(tail(out.stderr) || `the deploy exited ${out.code}`);
-      store.rigSetupEvent(r.rig, "deployed", true);
-      store.setMachineRigStatus(r.rig, "starting");
+      store.rigHistory.add(r.rig, "deployed", true);
+      store.machines.setRigStatus(r.rig, "starting");
     } catch (err) {
-      store.rigSetupEvent(r.rig, "deploy", false, errorText(err));
-      store.setMachineRigStatus(r.rig, "failed");
+      store.rigHistory.add(r.rig, "deploy", false, errorText(err));
+      store.machines.setRigStatus(r.rig, "failed");
       return;
     }
-    await awaitFirstReport(parts, r.rig, (s) => store.setMachineRigStatus(r.rig, s));
+    await awaitFirstReport(parts, r.rig, (s) => store.machines.setRigStatus(r.rig, s));
   };
   app.get("/ui/assets/add-rig.js", (c) =>
     c.body(ADD_RIG_JS, 200, {
@@ -105,14 +105,14 @@ export function addRigRoutes(app: Hono, dash: Dashboard): void {
   app.get("/ui/rigs/add", (c) => {
     const t = csrf(c);
     const error = c.req.query("error");
-    const machines = store.machines();
+    const machines = store.machines.list();
     const cards = machines
       .map((m, i) => {
         const why = notReady(m);
         const f = m.facts as MachineFacts | null;
         const used = gpusInUse(m.name);
         const free = (f?.gpus ?? []).filter((g) => !used.has(g.index)).length;
-        const rigsHere = store.machineRigs(m.name).filter((r) => r.status !== "removed");
+        const rigsHere = store.machines.rigs(m.name).filter((r) => r.status !== "removed");
         const sub = why
           ? `Not ready: ${why}. Fix it under Settings › Providers.`
           : `${factsLine(f as MachineFacts)}${rigsHere.length ? ` · runs ${rigsHere.map((r) => r.rig).join(", ")}` : ""}${f?.gpus.length ? ` · ${free} GPU${free === 1 ? "" : "s"} free` : ""}`;
@@ -133,7 +133,7 @@ export function addRigRoutes(app: Hono, dash: Dashboard): void {
       })
       .join("");
     // Clusters: how many GPUs and how, which node, which storage, and (for slots) which slot.
-    const clusters = store.clusters();
+    const clusters = store.clusters.list();
     const clusterReady = (k: Cluster) => {
       const f = k.facts as ClusterFacts | null;
       if (!f) return "it has not been checked yet";
@@ -242,8 +242,8 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
 <div class="stack">${cards}${clusterCards}${cards || clusterCards ? "" : `<div class="card"><div class="empty">No machine or cluster yet.</div></div>`}<a class="ch" href="/ui/settings"><span><b>+ A new machine or cluster</b><br><span class="muted small">A Linux machine control can reach with an SSH key, or a Kubernetes cluster through a kubeconfig. Add it in Providers, then come back.</span></span></a></div>
 <p class="lead" style="margin-top:14px">Or run it yourself, where control can't connect:</p><div class="stack">${joinCards}</div>
 <p class="lead" style="margin-top:14px">Or launch it on a GPU you rent by the hour:</p><div class="stack">${
-        store
-          .gpuClouds()
+        store.gpuClouds
+          .list()
           .map(
             (g) =>
               `<a class="ch" href="/ui/rigs/add/runpod?cloud=${encodeURIComponent(g.name)}"><span><b>${esc(g.name)} · RunPod</b><br><span class="muted small">Control starts a pod with Thermite's rig image, enrolls it and follows its price. RunPod bills it by the second while it runs. Opens Launch on RunPod.</span></span></a>`,
@@ -268,7 +268,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     const place = String(f.place ?? (f.machine ? `machine:${String(f.machine)}` : ""));
     if (place.startsWith("cluster:")) return addClusterRigFrom(c, f, rig, place.slice(8), fail);
     if (place.startsWith("join:")) return addJoinedRigFrom(c, f, rig, place.slice(5), fail);
-    const m = store.machine(place.startsWith("machine:") ? place.slice(8) : "");
+    const m = store.machines.get(place.startsWith("machine:") ? place.slice(8) : "");
     const gpus = [f.gpus ?? []]
       .flat()
       .map((x) => Number(x))
@@ -301,7 +301,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       supervisor: parts.rigImages.supervisor,
     };
     const token = newToken();
-    store.enrollRig(rig, token.sha256, "owner:ui");
+    store.enrollments.enroll(rig, token.sha256, "owner:ui");
     const placed = {
       rig,
       machine: m.name,
@@ -311,9 +311,9 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       root: facts.root,
       created_by: "owner:ui",
     };
-    store.addMachineRig(placed);
-    store.rigSetupEvent(rig, "enrolled", true);
-    const r = store.machineRig(rig) as MachineRig;
+    store.machines.addRig(placed);
+    store.rigHistory.add(rig, "enrolled", true);
+    const r = store.machines.rig(rig) as MachineRig;
     void inBackground(store, "machine", rig, "deploy", deployRig(r, m, token.token));
     return c.redirect(`/ui/rigs/${encodeURIComponent(rig)}`, 303);
   });
@@ -421,8 +421,8 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         storageGi,
       };
     }
-    store.addJoinedRig({ rig, form: form as JoinForm, spec, by: "owner:ui" });
+    store.joinedRigs.add({ rig, form: form as JoinForm, spec, by: "owner:ui" });
     const token = mintJoin(rig);
-    return joinedPage(c, store.joinedRig(rig) as JoinedRig, "", token);
+    return joinedPage(c, store.joinedRigs.get(rig) as JoinedRig, "", token);
   };
 }

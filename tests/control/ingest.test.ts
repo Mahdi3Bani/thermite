@@ -11,7 +11,7 @@ import { appendOther } from "../helpers/kinds.ts";
 /** Control's store and what taking reports needs, with rig-a and rig-b given tokens. */
 function intake(): Intake {
   const store = new ControlStore(":memory:");
-  store.setConfiguredRigs(["rig-a", "rig-b"]);
+  store.enrollments.setConfiguredRigs(["rig-a", "rig-b"]);
   return { store, control: buildInfo(), requireKeyAcceptance: false };
 }
 
@@ -43,10 +43,10 @@ function harness(n: number) {
 }
 
 const kinds = (t: Intake, rig = "rig-a") =>
-  (t.store.events(rig, 0, 1000) as { kind: string }[]).map((e) => e.kind);
+  (t.store.rigEvents.after(rig, 0, 1000) as { kind: string }[]).map((e) => e.kind);
 const refusals = (t: Intake) =>
-  t.store
-    .listAudit(50)
+  t.store.auditLog
+    .list(50)
     .filter((a) => a.action === "report_refused")
     .map((a) => (a.body as { reason: string }).reason);
 
@@ -74,10 +74,10 @@ describe("control folds rigs' reports from the message bus", () => {
     assert.equal(acked.length, 3);
     assert.equal(kinds(t).length, 25);
     // The first report pinned the rig's key, and the supervisor's build came with the message.
-    assert.ok(t.store.rigKey("rig-a").pubkey);
-    assert.equal(t.store.rigBuild("rig-a", "supervisor")?.version, buildInfo().version);
-    assert.equal(t.store.rigBuild("rig-a", "harness")?.version, buildInfo().version);
-    assert.equal(t.store.rigs()[0]?.last_cursor, 25);
+    assert.ok(t.store.reportedRigs.key("rig-a").pubkey);
+    assert.equal(t.store.builds.ofRig("rig-a", "supervisor")?.version, buildInfo().version);
+    assert.equal(t.store.builds.ofRig("rig-a", "harness")?.version, buildInfo().version);
+    assert.equal(t.store.reportedRigs.list()[0]?.last_cursor, 25);
   });
 
   test("a page the bus hands twice is skipped, and so is an older one", async () => {
@@ -122,7 +122,7 @@ describe("control folds rigs' reports from the message bus", () => {
     assert.deepEqual(refused, { refused: "rig mismatch" });
     assert.deepEqual(kinds(t, "rig-a"), []);
     assert.deepEqual(kinds(t, "rig-b"), []);
-    assert.equal(t.store.rigKey("rig-b").pubkey, null, "no key is pinned for rig-b");
+    assert.equal(t.store.reportedRigs.key("rig-b").pubkey, null, "no key is pinned for rig-b");
     // Its own subject takes it.
     assert.deepEqual(foldReport(t, message(forRigA)), { folded: 3 });
   });
@@ -147,7 +147,7 @@ describe("control folds rigs' reports from the message bus", () => {
     assert.equal(refusedFor(message(forged)), "bad report signature");
     const { signature: _s, ...unsigned } = report as typeof report & { signature: string };
     assert.equal(refusedFor(message(unsigned)), "unsigned report");
-    t.store.retireAnyRig("rig-a", "owner:test");
+    t.store.retired.add("rig-a", "owner:test");
     assert.equal(refusedFor(message(report)), "this rig is retired in control");
     assert.deepEqual(kinds(t), []);
   });
@@ -157,10 +157,10 @@ describe("control folds rigs' reports from the message bus", () => {
     const { page } = harness(2);
     // Its supervisor said so on a call over HTTP: it works with protocol 99 or later only.
     const newer = { version: "9.0.0", commit: null, protocol: 99, oldest_protocol: 99 };
-    t.store.setRigBuild("rig-a", "supervisor", newer);
+    t.store.builds.setRig("rig-a", "supervisor", newer);
     const refused = (foldReport(t, message(page(0, 10))) as { refused?: string }).refused;
     assert.match(refused ?? "", /^Control cannot work with this rig: its supervisor works with/);
-    assert.equal(t.store.rigRefusal("rig-a")?.calls, 1);
+    assert.equal(t.store.refusals.get("rig-a")?.calls, 1);
     assert.deepEqual(kinds(t), []);
   });
 });

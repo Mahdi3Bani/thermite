@@ -30,7 +30,7 @@ export async function updateRigImages(
   o: { wait?: boolean | undefined } = {},
 ): Promise<{ ok: string } | { error: string }> {
   const { store } = parts;
-  const r = store.clusterRig(rig);
+  const r = store.clusters.rig(rig);
   if (!r || r.status === "removed") return { error: `Control didn't set ${rig} up on a cluster.` };
   if (r.status === "deploying") return { error: `${rig} is still being set up.` };
   // The supervisor's CONTROL_URL comes from here: without it the rig would lose its way back.
@@ -42,7 +42,7 @@ export async function updateRigImages(
   const images = controlImages(parts, r.spec.gpus);
   if (typeof images === "string") return { error: images };
   const old = r.spec.images;
-  const k = store.cluster(r.cluster);
+  const k = store.clusters.get(r.cluster);
   if (!k) return { error: `The cluster ${r.cluster} is no longer in Providers.` };
   // A drain for a change to its GPUs, CPUs or memory (goal 118) is that change's.
   if (r.status === "draining" && r.pending)
@@ -99,9 +99,9 @@ export async function updateRigImages(
       payload: { drain: true, reason: IMAGES_REASON },
       issuedBy: by,
     });
-    store.setClusterRigStatus(rig, "draining");
-    store.rigSetupEvent(rig, "drain", true, `waiting for ${workWords(work)} to finish`);
-    store.audit(by, "cluster_rig_drain", { rig, to: images });
+    store.clusters.setRigStatus(rig, "draining");
+    store.rigHistory.add(rig, "drain", true, `waiting for ${workWords(work)} to finish`);
+    store.auditLog.add(by, "cluster_rig_drain", { rig, to: images });
     return {
       ok: `${rig} drains first: it starts nothing new, and its pods restart on the new images once ${workWords(work)} ${work.trials + work.judge_jobs === 1 ? "finishes" : "finish"}. Update now, on its page or with update_rig_images and wait false, skips the wait.`,
     };
@@ -113,15 +113,15 @@ export async function updateRigImages(
     120_000,
   );
   if (out.code !== 0) {
-    store.rigSetupEvent(rig, "images", false, kubeError(out));
+    store.rigHistory.add(rig, "images", false, kubeError(out));
     // A rig that drained for it goes back to work: the update did not happen.
     if (r.status === "draining") {
       undrain(parts, rig, by);
-      store.setClusterRigStatus(rig, "failed");
+      store.clusters.setRigStatus(rig, "failed");
     }
     return { error: kubeError(out) };
   }
-  store.setClusterRigImages(rig, images, controlAddress(parts));
+  store.clusters.setRigImages(rig, images, controlAddress(parts));
   const changed =
     [
       old.harness !== images.harness ? `harness ${old.harness} → ${images.harness}` : "",
@@ -134,15 +134,15 @@ export async function updateRigImages(
     (retry
       ? "the same images again, after a failed change"
       : `control's address for rigs → ${parts.publicUrl}`);
-  store.rigSetupEvent(rig, "images", true, stopped ? `${changed}; at its next start` : changed);
-  store.audit(by, "cluster_rig_images", { rig, from: old, to: images });
+  store.rigHistory.add(rig, "images", true, stopped ? `${changed}; at its next start` : changed);
+  store.auditLog.add(by, "cluster_rig_images", { rig, from: old, to: images });
   if (stopped)
     return {
       ok: addressOnly
         ? `${rig} gets control's new address when it starts again.`
         : `${rig} runs the new images when it starts again.`,
     };
-  store.setClusterRigStatus(rig, "updating");
+  store.clusters.setRigStatus(rig, "updating");
   void inBackground(store, "cluster", r.rig, "images_running", awaitNewPods(parts, r, k));
   return {
     ok: retry

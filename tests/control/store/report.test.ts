@@ -14,7 +14,7 @@ test("a reported event's run is kept and read back; an event that names none has
     body: {},
     ...(run === undefined ? {} : { run }),
   });
-  store.ingest({
+  store.rigEvents.ingest({
     rig: "rig-a",
     ledger_id: "ledger-a",
     cursor: 0,
@@ -26,10 +26,9 @@ test("a reported event's run is kept and read back; an event that names none has
     ],
     summary: {},
   });
-  const runs = (store.events("rig-a", 0, 10) as { kind: string; run: string | null }[]).map((e) => [
-    e.kind,
-    e.run,
-  ]);
+  const runs = (
+    store.rigEvents.after("rig-a", 0, 10) as { kind: string; run: string | null }[]
+  ).map((e) => [e.kind, e.run]);
   assert.deepEqual(runs, [
     ["verdict", "r-1"],
     ["command", null],

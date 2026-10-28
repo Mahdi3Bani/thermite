@@ -25,7 +25,7 @@ describe("control dashboard", () => {
       assert.equal(r.status, 303);
       await s.relay(); // the signed command to the harness
       await s.relay(); // its events back to control
-      const [cmd] = s.store.listCommands(1);
+      const [cmd] = s.store.commands.list(1);
       assert.equal(cmd?.kind, form.kind);
       assert.notEqual(cmd?.status, "failed", JSON.stringify(cmd?.outcome));
     };

@@ -18,8 +18,8 @@ export function registerKnowledgeBase(tools: ToolContext): void {
   const campaigns = () =>
     campaignModes(
       store,
-      store
-        .rigs()
+      store.reportedRigs
+        .list()
         .map((u) => rigView(store, u.id, { staleAfterMs: opts.staleAfterMs }))
         .filter((v): v is NonNullable<typeof v> => v !== undefined),
     );
@@ -86,7 +86,7 @@ export function registerKnowledgeBase(tools: ToolContext): void {
         },
       },
       audited("exports", (a: { rig?: string; limit: number }) =>
-        (a.rig ? store.rigExports(a.rig, a.limit) : store.allRigExports(a.limit)).map((e) => ({
+        (a.rig ? store.exports.ofRig(a.rig, a.limit) : store.exports.all(a.limit)).map((e) => ({
           rig: e.rig,
           ...exportSummary(undefined, e),
         })),
@@ -113,7 +113,8 @@ export function registerKnowledgeBase(tools: ToolContext): void {
         if (a.campaign === a.reads)
           throw new Error("a campaign always reads its own folder: name another campaign");
         const granted = store.kb().grant(a.campaign, a.reads, actor);
-        if (granted) store.audit(actor, "kb_grant", { campaign: a.campaign, reads: a.reads });
+        if (granted)
+          store.auditLog.add(actor, "kb_grant", { campaign: a.campaign, reads: a.reads });
         return { granted, reads: store.kb().reads(a.campaign) };
       }),
     );
@@ -128,7 +129,7 @@ export function registerKnowledgeBase(tools: ToolContext): void {
       audited("kb_revoke", (a: { campaign: string; reads: string }) => {
         if (!store.kb().revoke(a.campaign, a.reads))
           throw new Error(`${a.campaign} does not read ${a.reads}`);
-        store.audit(actor, "kb_revoke", { campaign: a.campaign, reads: a.reads });
+        store.auditLog.add(actor, "kb_revoke", { campaign: a.campaign, reads: a.reads });
         return { revoked: true, reads: store.kb().reads(a.campaign) };
       }),
     );

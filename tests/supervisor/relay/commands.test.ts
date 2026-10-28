@@ -64,7 +64,7 @@ async function rig() {
     failAcks: (n: number) => {
       failAcks = n;
     },
-    status: (id: string) => s.store.command(id)?.status,
+    status: (id: string) => s.store.commands.get(id)?.status,
   };
 }
 

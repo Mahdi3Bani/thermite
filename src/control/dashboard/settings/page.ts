@@ -92,18 +92,18 @@ export function settingsPageRoutes(app: Hono, dash: Dashboard): void {
     const now = Date.now();
     const vs = views();
     const t = csrf(c);
-    const providers = store.providers();
+    const providers = store.modelProviders.list();
     const usage = new Map(
       await Promise.all(
         providers.map(async (p) => [p.name, await opts.parts.planUsage.of(p)] as const),
       ),
     );
     const gitCount =
-      store.gitAccessList().length +
-      store.machines().length +
-      store.clusters().length +
-      store.gpuClouds().length;
-    const given = store.rigModels();
+      store.gitAccess.list().length +
+      store.machines.list().length +
+      store.clusters.list().length +
+      store.gpuClouds.list().length;
+    const given = store.agentModels.byRig();
     /** The rigs whose workers or other agents use one of the provider's models. */
     const usersOf = (name: string) =>
       vs
@@ -111,7 +111,7 @@ export function settingsPageRoutes(app: Hono, dash: Dashboard): void {
         .filter(
           (rig) =>
             given[rig]?.provider === name ||
-            Object.values(store.roleModels(rig)).some((r) => r?.provider === name),
+            Object.values(store.agentModels.byRole(rig)).some((r) => r?.provider === name),
         );
     // What an MCP server's form did is said in its own block (at=mcp), where the page opens.
     const atMcp = c.req.query("at") === "mcp";
@@ -122,7 +122,7 @@ export function settingsPageRoutes(app: Hono, dash: Dashboard): void {
     // Model prices (goal 075): one table under the providers, for every model not on a plan.
     const prices = modelPricesBlock({
       providers,
-      owner: store.modelPrices(),
+      owner: store.usage.prices(),
       csrf: t,
       flash: !atPrices
         ? undefined
@@ -263,7 +263,7 @@ ${
         const capped =
           want?.contextCap && m?.name === want.provider && m.model === want.model
             ? capWords(
-                store.provider(want.provider)?.models.find((x) => x.id === want.model)
+                store.modelProviders.get(want.provider)?.models.find((x) => x.id === want.model)
                   ?.context_window ?? 0,
                 want.contextCap,
               )
@@ -322,10 +322,10 @@ ${mcpSettingsBlocks(store, mcpServers, t, now, (k) => c.req.query(k))}
 
   // ---------------------------------------------------------------- Git access (Settings)
   const gitRows = (t: string) =>
-    store
-      .gitAccessList()
+    store.gitAccess
+      .list()
       .map((g) => {
-        const users = store.campaignsUsingGitAccess(g.name);
+        const users = store.campaigns.usingGitAccess(g.name);
         const gName = encodeURIComponent(g.name);
         const ssh = g.kind === "ssh";
         return `<details class="dq" data-k="git-${esc(g.name)}"><summary>
@@ -357,7 +357,7 @@ ${
     const f = m.facts as MachineFacts | null;
     if (!f) return "";
     const need = missing(f);
-    const installs = store.machineInstalls(m.name);
+    const installs = store.machines.installs(m.name);
     const running = installs.find((i) => i.started_at && !i.finished_at);
     const last = installs.find((i) => i.finished_at);
     const mName = encodeURIComponent(m.name);
@@ -395,8 +395,8 @@ ${
 </dl>${need.length ? `<div class="muted" style="margin-top:10px"><b>Missing for a rig:</b> ${need.map((x) => esc(RECIPES[x].title)).join("; ")}.</div>` : ""}${asks}${lastRun}`;
   };
   const machineRows = (t: string) =>
-    store
-      .machines()
+    store.machines
+      .list()
       .map((m) => {
         const mName = encodeURIComponent(m.name);
         const trusted = m.host_keys.length > 0;
@@ -449,12 +449,12 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
   // A Kubernetes cluster control sets rigs up on, with its kubeconfig sealed. Its facts come from
   // a read-only check (clusters/facts.ts).
   const clusterRows = (t: string) =>
-    store
-      .clusters()
+    store.clusters
+      .list()
       .map((k) => {
         const f = k.facts as ClusterFacts | null;
         const kName = encodeURIComponent(k.name);
-        const rigsHere = store.clusterRigs(k.name).filter((r) => r.status !== "removed");
+        const rigsHere = store.clusters.rigs(k.name).filter((r) => r.status !== "removed");
         const status = k.check_error
           ? `<span class="dq-why bad">${esc(k.check_error)}${f ? " (showing the last check)" : ""}</span>`
           : f
@@ -548,8 +548,8 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
     return `<h4 style="margin:14px 0 4px">Test pods</h4><div class="muted small">A test pod checks that a rig can run on RunPod. One at a time.</div>${tests.map((x) => testCard(x, gName, t)).join("")}${busy ? "" : testPodForm(gName, f, t)}`;
   };
   const cloudRows = (t: string) =>
-    store
-      .gpuClouds()
+    store.gpuClouds
+      .list()
       .map((g) => {
         const f = g.facts as RunpodFacts | null;
         const gName = encodeURIComponent(g.name);

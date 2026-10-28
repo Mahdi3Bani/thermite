@@ -80,7 +80,7 @@ function setup(build?: BuildInfo) {
       body: JSON.stringify({ rig: "rig-a", kind: "assign_campaign", payload: env.assignPayload() }),
     });
   const audits = (action: string) =>
-    store.listAudit(1000).filter((a) => a.action === action) as { body: unknown }[];
+    store.auditLog.list(1000).filter((a) => a.action === action) as { body: unknown }[];
   return { env, store, api: control, rig, cfg, listed, issue, audits };
 }
 
@@ -104,8 +104,8 @@ describe("versions between control and its rigs", () => {
     const { id } = (await issued.json()) as { id: string };
     let state = await relayOnce(s.cfg, { cursor: 0 });
     state = await relayOnce(s.cfg, state);
-    assert.equal(s.store.command(id)?.status, "delivered");
-    assert.ok(s.store.events("rig-a", 0, 100).length > 0);
+    assert.equal(s.store.commands.get(id)?.status, "delivered");
+    assert.ok(s.store.rigEvents.after("rig-a", 0, 100).length > 0);
     const r = (await s.listed()).rigs.find((x) => x.id === "rig-a");
     assert.equal(r?.state, "reporting");
     assert.equal(r?.version.state, "unknown");
@@ -134,7 +134,7 @@ describe("versions between control and its rigs", () => {
     const { id } = (await issued.json()) as { id: string };
     let state = await relayOnce(s.cfg, { cursor: 0 });
     state = await relayOnce(s.cfg, state);
-    assert.equal(s.store.command(id)?.status, "delivered");
+    assert.equal(s.store.commands.get(id)?.status, "delivered");
     assert.ok(s.rig.seen.length >= 3);
     for (const h of s.rig.seen) {
       assert.equal(h.get(BUILD_HEADERS.version), own.version);
@@ -187,7 +187,7 @@ describe("versions between control and its rigs", () => {
     });
     assert.equal(pending.status, 409);
     assert.deepEqual(await pending.json(), { error: why });
-    assert.equal(s.store.events("rig-a", 0, 100).length, 0);
+    assert.equal(s.store.rigEvents.after("rig-a", 0, 100).length, 0);
     // Listed, though it never reported: offline, refused, and why.
     const r = (await s.listed()).rigs.find((x) => x.id === "rig-a");
     assert.equal(r?.state, "offline");
@@ -211,7 +211,7 @@ describe("versions between control and its rigs", () => {
     s.rig.supervisor = hdrs({ version: "0.9.0", protocol: 3, oldest_protocol: 2 });
     s.env.service.build = { version: "0.9.0", commit: null, protocol: 3, oldest_protocol: 2 };
     await relayOnce(s.cfg, { cursor: 0 });
-    assert.ok(s.store.events("rig-a", 0, 100).length > 0);
+    assert.ok(s.store.rigEvents.after("rig-a", 0, 100).length > 0);
     const after = (await s.listed()).rigs.find((x) => x.id === "rig-a");
     assert.equal(after?.version.state, "current");
     assert.equal(after?.version.refused, null);
@@ -227,8 +227,8 @@ describe("versions between control and its rigs", () => {
     s.env.service.build = { version: "9.0.0", commit: null, protocol: 70, oldest_protocol: 70 };
     const why = `Control cannot work with this rig: its harness works with protocol 70 or later, and control speaks protocol ${own.protocol}. Update control.`;
     await assert.rejects(relayOnce({ ...s.cfg, skipCommands: true }, { cursor: 0 }), RelayError);
-    assert.equal(s.store.rigRefusal("rig-a")?.reason, why);
-    assert.equal(s.store.rigBuild("rig-a", "harness")?.protocol, 70);
+    assert.equal(s.store.refusals.get("rig-a")?.reason, why);
+    assert.equal(s.store.builds.ofRig("rig-a", "harness")?.protocol, 70);
     // Its commands wait on the harness too: the supervisor's own build is not enough.
     const pending = await s.api.request("/v1/rigs/rig-a/commands/pending", {
       headers: { authorization: "Bearer rig-token-abcdef", ...buildHeaders() },
@@ -236,8 +236,8 @@ describe("versions between control and its rigs", () => {
     assert.equal(pending.status, 409);
     s.env.service.build = own;
     await relayOnce(s.cfg, { cursor: 0 });
-    assert.equal(s.store.rigRefusal("rig-a"), undefined);
-    assert.ok(s.store.events("rig-a", 0, 100).length > 0);
+    assert.equal(s.store.refusals.get("rig-a"), undefined);
+    assert.ok(s.store.rigEvents.after("rig-a", 0, 100).length > 0);
   });
 
   test("a protocol control does not know is never a reason to refuse", async () => {
@@ -262,21 +262,24 @@ describe("versions between control and its rigs", () => {
   test("a new control checks refused rigs again: one it can work with is no longer refused", () => {
     const store = new ControlStore(":memory:");
     const env = makeHarnessEnv("rig-a");
-    store.setRigBuild("rig-a", "supervisor", {
+    store.builds.setRig("rig-a", "supervisor", {
       version: "0.1.0",
       commit: null,
       protocol: 1,
       oldest_protocol: 1,
     });
-    store.setRigRefusal("rig-a", "an older control's reason");
+    store.refusals.set("rig-a", "an older control's reason");
     controlOnly({
       store,
       keys: env.keys,
       tokens,
       options: { build: { version: "0.2.0", commit: null, protocol: 2, oldest_protocol: 1 } },
     });
-    assert.equal(store.rigRefusal("rig-a"), undefined);
-    assert.equal(store.listAudit(100).filter((a) => a.action === "rig_refusal_ended").length, 1);
+    assert.equal(store.refusals.get("rig-a"), undefined);
+    assert.equal(
+      store.auditLog.list(100).filter((a) => a.action === "rig_refusal_ended").length,
+      1,
+    );
   });
 
   test("a rig that stops reporting is stale, then offline; one that never reported is offline", async () => {
@@ -298,7 +301,7 @@ describe("versions between control and its rigs", () => {
     // The rig view says it, with stale kept for both.
     const s = setup();
     await relayOnce(s.cfg, { cursor: 0 });
-    const last = Date.parse(String(s.store.rigs()[0]?.last_seen));
+    const last = Date.parse(String(s.store.reportedRigs.list()[0]?.last_seen));
     const view = (now: number) => rigView(s.store, "rig-a", { ...opts, now });
     assert.deepEqual([view(last)?.state, view(last)?.stale], ["reporting", false]);
     assert.deepEqual([view(last + 200_000)?.state, view(last + 200_000)?.stale], ["stale", true]);
@@ -399,7 +402,7 @@ describe("a newer rig's fields that control does not know", () => {
     });
     assert.equal(r.status, 200, await r.clone().text());
     // Stored as this control knows them: nothing it does not know is kept or shown.
-    const sup = s.store.supervisor("rig-a") as Record<string, unknown>;
+    const sup = s.store.reportedRigs.supervisor("rig-a") as Record<string, unknown>;
     assert.deepEqual(sup.relay, { cursor: 3 });
     assert.equal("uptime_s" in sup, false);
     assert.equal("bandwidth" in (sup.export as object), false);
@@ -413,7 +416,7 @@ describe("a newer rig's fields that control does not know", () => {
       review_panel: 0,
     });
     // The rest is used: the download is a step in the rig's history.
-    assert.ok(s.store.rigSetupEvents("rig-a").some((e) => e.step === "model_started"));
+    assert.ok(s.store.rigHistory.list("rig-a").some((e) => e.step === "model_started"));
     // A field control knows keeps its check.
     const bad = await s.api.request("/v1/rigs/rig-a/supervisor", {
       method: "POST",
@@ -489,7 +492,7 @@ describe("a newer rig's fields that control does not know", () => {
     // and what control does not know is not kept.
     const taken = await ingest({ ...snap, events: withField, relayed_by: "a later supervisor" });
     assert.equal(taken.status, 200, await taken.clone().text());
-    const stored = s.store.events("rig-a", 0, 100);
+    const stored = s.store.rigEvents.after("rig-a", 0, 100);
     assert.ok(stored.length > 0);
     assert.doesNotMatch(JSON.stringify(stored), /t-1|relayed_by/);
   });

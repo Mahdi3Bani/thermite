@@ -39,7 +39,7 @@ async function rig(o: { requireKeyAcceptance?: boolean; clock?: () => Date } = {
   const events = (n: number, kind = "step") => {
     for (let i = 0; i < n; i++) appendOther(s.env.service.ledger, "t", kind, null, { i });
   };
-  const taken = () => (s.store.events("rig-a", 0, 10_000) as { kind: string }[]).length;
+  const taken = () => (s.store.rigEvents.after("rig-a", 0, 10_000) as { kind: string }[]).length;
   return { ...s, bus, fold, figures, events, taken, cfg: { ...s.cfg, bus, skipCommands: true } };
 }
 
@@ -76,7 +76,7 @@ describe("a report page refused on the bus heals", () => {
     assert.deepEqual(r.fold(), [{ refused: "the rig's key waits for the owner's acceptance" }]);
     state = healCursor(state, await r.figures(state.cursor));
     assert.deepEqual([state.cursor, state.healing], [0, true]);
-    const pending = r.store.rigKey("rig-a").pending ?? "";
+    const pending = r.store.reportedRigs.key("rig-a").pending ?? "";
     const accepted = await r.api(
       "POST",
       `/v1/rigs/rig-a/key/accept?fingerprint=${fingerprint(pending)}`,

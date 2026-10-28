@@ -35,7 +35,7 @@ export async function clusterRigAction(
   action: "stop" | "start" | "restart",
   by: string,
 ): Promise<{ ok: string } | { error: string }> {
-  const r = parts.store.clusterRig(rig);
+  const r = parts.store.clusters.rig(rig);
   if (!r || r.status === "removed") return { error: `Control didn't set ${rig} up on a cluster.` };
   return actOnClusterRig(parts, r, action, by);
 }
@@ -58,14 +58,14 @@ export async function actOnClusterRig(
     (r.status === "updating" || r.status === "starting" || r.status === "deploying")
   )
     return { error: `${r.rig} is ${r.status}: wait until its page shows it running, or failed.` };
-  const k = store.cluster(r.cluster);
+  const k = store.clusters.get(r.cluster);
   if (!k) return { error: `The cluster ${r.cluster} is no longer in Providers.` };
   const runs = clusterActionCalls(r, action);
   for (const [i, args] of runs.entries()) {
     const out = await parts.kube.kubectl(clusterTarget(parts, k), args, undefined, 120_000);
     // A cluster without DRA has no resourceclaimtemplates: that last delete may fail harmlessly.
     if (out.code !== 0 && !(action === "remove" && i === 1)) {
-      store.rigSetupEvent(
+      store.rigHistory.add(
         r.rig,
         action === "remove" ? "remove_cluster" : action,
         false,
@@ -75,13 +75,13 @@ export async function actOnClusterRig(
     }
   }
   const step = action === "remove" ? "remove_cluster" : action;
-  store.rigSetupEvent(r.rig, step, true);
+  store.rigHistory.add(r.rig, step, true);
   if (action === "start" || action === "restart") {
     // Running once its pods are and it has reported, as after an update.
-    store.setClusterRigStatus(r.rig, "starting");
+    store.clusters.setRigStatus(r.rig, "starting");
     void inBackground(store, "cluster", r.rig, "pods_running", awaitNewPods(parts, r, k, "start"));
-  } else store.setClusterRigStatus(r.rig, action === "stop" ? "stopped" : "removed");
-  if (action === "remove") store.retireRig(r.rig, by);
-  store.audit(by, `cluster_rig_${action}`, { rig: r.rig, cluster: r.cluster, ...said });
+  } else store.clusters.setRigStatus(r.rig, action === "stop" ? "stopped" : "removed");
+  if (action === "remove") store.enrollments.retire(r.rig, by);
+  store.auditLog.add(by, `cluster_rig_${action}`, { rig: r.rig, cluster: r.cluster, ...said });
   return { ok: `${STEP_WORDS[step]}.` };
 }

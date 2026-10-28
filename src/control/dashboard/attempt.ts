@@ -17,7 +17,7 @@ export function attemptRoutes(app: Hono, dash: Dashboard): void {
   app.get("/ui/rigs/:rig/runs/:run/champions/:file", (c) => {
     const m = /^(\d+)\.patch$/.exec(c.req.param("file"));
     const p = m
-      ? store.championPatch(c.req.param("rig"), c.req.param("run"), Number(m[1]))
+      ? store.championPatches.get(c.req.param("rig"), c.req.param("run"), Number(m[1]))
       : undefined;
     if (!m || !p) return c.text("No patch for that champion yet.", 404);
     // A project in a folder: named after the repository's commit, the one its owner has.
@@ -48,8 +48,8 @@ export function attemptRoutes(app: Hono, dash: Dashboard): void {
 
   /** The follow of the owner's newest decision on a change, while the rig has not done it. */
   const followDecision = (rig: string, attempt: string, now: number) => {
-    const d = store.decisions().find((x) => x.rig === rig && x.attempt === attempt);
-    const cmd = d ? store.commandRow(d.id) : undefined;
+    const d = store.commands.decisions().find((x) => x.rig === rig && x.attempt === attempt);
+    const cmd = d ? store.commands.row(d.id) : undefined;
     const p = cmd ? commandProgress(cmd, now) : undefined;
     return cmd && p && !p.final
       ? ` data-follow="${esc(commandFollowUrl(cmd.id))}" data-follow-state="${esc(p.state)}"`
@@ -75,7 +75,7 @@ export function attemptRoutes(app: Hono, dash: Dashboard): void {
     // A champion's patch, once the rig has published it.
     const champ = r.champion.find((x) => x.attempt === a.id && !x.reopened);
     const patch =
-      champ && store.championPatch(u.id, r.id, champ.seq)
+      champ && store.championPatches.get(u.id, r.id, champ.seq)
         ? `<a href="/ui/rigs/${encodeURIComponent(u.id)}/runs/${encodeURIComponent(r.id)}/champions/${champ.seq}.patch">Download champion #${champ.seq} as a patch</a>`
         : undefined;
     return page(
@@ -99,7 +99,11 @@ export function attemptRoutes(app: Hono, dash: Dashboard): void {
   app.post("/ui/rigs/:rig/key/accept", async (c) => {
     const f = await c.req.parseBody();
     // Only the key whose fingerprint the owner saw: a key swapped in meanwhile is not accepted.
-    store.acceptPendingKey(c.req.param("rig"), "owner:ui", String(f.fingerprint ?? ""));
+    store.reportedRigs.acceptPendingKey(
+      c.req.param("rig"),
+      "owner:ui",
+      String(f.fingerprint ?? ""),
+    );
     return c.redirect(`/ui/rigs/${encodeURIComponent(c.req.param("rig"))}`, 303);
   });
 }

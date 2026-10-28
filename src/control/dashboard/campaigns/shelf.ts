@@ -35,7 +35,10 @@ export function shelfRoutes(app: Hono, dash: Dashboard): void {
     if (c.req.header("accept")?.includes("application/json")) {
       if (out.ok) return c.json({ ...out.answer, said: done(out.answer) });
       // A redirect's refusal is audited from its address; this answer says it itself.
-      store.audit("owner:ui", "refused", { path: new URL(c.req.url).pathname, why: out.error });
+      store.auditLog.add("owner:ui", "refused", {
+        path: new URL(c.req.url).pathname,
+        why: out.error,
+      });
       return c.json({ error: `${not} ${out.error}` });
     }
     const to = backTo(f, fallback);
@@ -46,7 +49,7 @@ export function shelfRoutes(app: Hono, dash: Dashboard): void {
     return c.redirect(`${path}${path.includes("?") ? "&" : "?"}${q}${hash ? `#${hash}` : ""}`, 303);
   };
   /** A folder of the navigation by the id its forms carry. */
-  const folderById = (id: string) => store.campaignFolders().find((x) => String(x.id) === id);
+  const folderById = (id: string) => store.folders.list().find((x) => String(x.id) === id);
   const goneFolder = {
     ok: false,
     error: "That folder is not there any more.",
@@ -161,7 +164,7 @@ export function shelfRoutes(app: Hono, dash: Dashboard): void {
       return grantBack(c, campaign, "error", `Control has no campaign named ${reads}.`);
     if (!store.kb().grant(campaign, reads, "owner:ui"))
       return grantBack(c, campaign, "ok", `${campaign} reads ${reads} already.`);
-    store.audit("owner:ui", "kb_grant", { campaign, reads });
+    store.auditLog.add("owner:ui", "kb_grant", { campaign, reads });
     return grantBack(
       c,
       campaign,
@@ -174,7 +177,7 @@ export function shelfRoutes(app: Hono, dash: Dashboard): void {
     const reads = String((await c.req.parseBody()).reads ?? "").trim();
     if (!store.kb().revoke(campaign, reads))
       return grantBack(c, campaign, "error", `${campaign} does not read ${reads}.`);
-    store.audit("owner:ui", "kb_revoke", { campaign, reads });
+    store.auditLog.add("owner:ui", "kb_revoke", { campaign, reads });
     return grantBack(
       c,
       campaign,

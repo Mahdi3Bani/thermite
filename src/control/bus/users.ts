@@ -2,17 +2,9 @@ import { createUser, fromSeed } from "@nats-io/nkeys";
 import { log, redact } from "../../common/env.ts";
 import { errorText } from "../../common/errors.ts";
 import { writeAtomic } from "../../common/fs.ts";
-import { transaction } from "../../common/sqlite.ts";
 import { isUserKey, userKeyFingerprint, usersFile } from "../../core/link/users.ts";
 import type { SecretBox } from "../secrets.ts";
-import {
-  addBusIdentity,
-  type BusIdentityName,
-  busIdentity,
-  rigBusKey,
-  rigBusKeys,
-  setRigBusKey,
-} from "../store/bus.ts";
+import type { BusIdentityName } from "../store/bus.ts";
 import type { ControlStore } from "../store.ts";
 
 /**
@@ -55,19 +47,19 @@ export function takeRigBusKey(
   rig: string,
   key: string,
 ): "new" | "changed" | "same" {
-  const before = rigBusKey(store.db, rig);
+  const before = store.busKeys.rigKey(rig);
   if (before === key) return "same";
   const fingerprint = userKeyFingerprint(key);
   const previous = before === undefined ? undefined : userKeyFingerprint(before);
-  transaction(store.db, () => {
-    setRigBusKey(store.db, rig, key);
+  store.tx(() => {
+    store.busKeys.setRigKey(rig, key);
     if (previous === undefined) {
-      store.audit(`rig:${rig}`, "rig_bus_key_registered", { fingerprint });
-      store.rigSetupEvent(rig, "bus_key", true, `fingerprint ${fingerprint}`);
+      store.auditLog.add(`rig:${rig}`, "rig_bus_key_registered", { fingerprint });
+      store.rigHistory.add(rig, "bus_key", true, `fingerprint ${fingerprint}`);
     } else {
-      store.audit(`rig:${rig}`, "rig_bus_key_changed", { fingerprint, previous });
+      store.auditLog.add(`rig:${rig}`, "rig_bus_key_changed", { fingerprint, previous });
       const detail = `fingerprint ${previous} → ${fingerprint}`;
-      store.rigSetupEvent(rig, "bus_key_changed", true, detail);
+      store.rigHistory.add(rig, "bus_key_changed", true, detail);
     }
   });
   if (previous === undefined) {
@@ -123,9 +115,9 @@ export class BusUsers {
   /** The users file's text now. */
   text(): string {
     const { store } = this.o;
-    const rigs = rigBusKeys(store.db).filter(
-      (r) => store.knownRig(r.rig) && !store.rigRetired(r.rig),
-    );
+    const rigs = store.busKeys
+      .rigKeys()
+      .filter((r) => store.enrollments.knownRig(r.rig) && !store.retired.get(r.rig));
     return usersFile({ control: this.control.publicKey, system: this.system.publicKey, rigs });
   }
 
@@ -176,17 +168,17 @@ const usersIn = (text: string) => (text.match(/"nkey":/g) ?? []).length;
  * to look at, when the seed does not open, as after control's secrets key was replaced.
  */
 function identity(o: BusUsersOptions, name: BusIdentityName): Identity {
-  const db = o.store.db;
-  if (!busIdentity(db, name)) {
+  const keys = o.store.busKeys;
+  if (!keys.identity(name)) {
     const made = createUser();
     const seed = new TextDecoder().decode(made.getSeed());
-    addBusIdentity(db, name, made.getPublicKey(), o.secrets.seal(seed));
+    keys.addIdentity(name, made.getPublicKey(), o.secrets.seal(seed));
     log("control", "made control's key on the bus", {
       user: name,
       fingerprint: userKeyFingerprint(made.getPublicKey()),
     });
   }
-  const kept = busIdentity(db, name);
+  const kept = keys.identity(name);
   let seed: Uint8Array | undefined;
   try {
     seed = new TextEncoder().encode(o.secrets.open(kept?.sealedSeed ?? ""));

@@ -58,7 +58,7 @@ function ingest(
   events: [string, string, Record<string, unknown>][],
   first = 1,
 ) {
-  store.ingest({
+  store.rigEvents.ingest({
     rig,
     ledger_id: ledger,
     cursor: first - 1,
@@ -214,13 +214,14 @@ describe("model usage on control (goal 075)", () => {
     assert.ok(v);
     assert.ok(v.recent.every((e) => e.kind !== "model_call"));
     assert.equal(
-      s.store.events("rig-a", 0, 100).filter((e) => (e as { kind: string }).kind === "model_call")
-        .length,
+      s.store.rigEvents
+        .after("rig-a", 0, 100)
+        .filter((e) => (e as { kind: string }).kind === "model_call").length,
       4,
     );
     assert.equal(
-      s.store
-        .events("rig-a", 0, 100, null, { lean: true })
+      s.store.rigEvents
+        .after("rig-a", 0, 100, null, { lean: true })
         .filter((e) => (e as { kind: string }).kind === "model_call").length,
       0,
     );
@@ -283,17 +284,17 @@ describe("model usage cost on control (goal 075)", () => {
       ["lab", "openai"],
       ["sub", "claude"],
     ] as const)
-      s.store.putProvider({
+      s.store.modelProviders.put({
         name,
         type,
         base_url: "https://models.example.com/v1",
         key: { sealed: "sealed-for-tests", hint: "…ests" },
       });
-    s.store.setProviderModels("lab", [
+    s.store.modelProviders.setModels("lab", [
       { id: "wide-model", price: { input: 3, cached_input: 0.3, output: 15 } },
       { id: "small-model" },
     ]);
-    s.store.setProviderModels("sub", [{ id: "opus-5.5" }]);
+    s.store.modelProviders.setModels("sub", [{ id: "opus-5.5" }]);
     const post = (body: unknown, token = TOKENS.admin) =>
       s.api.request("/v1/model-prices", {
         method: "POST",
@@ -391,7 +392,7 @@ describe("model usage cost on control (goal 075)", () => {
 
   test("a pod's spend goes to the run its rig was running when control counted it; idle spend to the system only", () => {
     const s = priced();
-    s.store.addRunpodRig({
+    s.store.runpod.addRig({
       rig: "rig-a",
       cloud: "rp",
       pod: "p-1",
@@ -399,10 +400,10 @@ describe("model usage cost on control (goal 075)", () => {
       by: "t",
     });
     // r-1 is the run at work on rig-a.
-    s.store.saveRunpodRig("rig-a", { spent_usd: 0.5 }, true);
+    s.store.runpod.saveRig("rig-a", { spent_usd: 0.5 }, true);
     // Paused (the stack gave rig-a five events): the pod's spend belongs to no run.
     ingest(s.store, "rig-a", "ledger-a", [["run_status", "r-1", { status: "paused" }]], 6);
-    s.store.saveRunpodRig("rig-a", { spent_usd: 0.8 }, true);
+    s.store.runpod.saveRig("rig-a", { spent_usd: 0.8 }, true);
     // Two runs running: the spend is split between them.
     ingest(
       s.store,
@@ -414,9 +415,9 @@ describe("model usage cost on control (goal 075)", () => {
       ],
       7,
     );
-    s.store.saveRunpodRig("rig-a", { spent_usd: 1.0 }, true);
+    s.store.runpod.saveRig("rig-a", { spent_usd: 1.0 }, true);
     // A save that adds nothing counts nothing.
-    s.store.saveRunpodRig("rig-a", { spent_usd: 1.0 }, true);
+    s.store.runpod.saveRig("rig-a", { spent_usd: 1.0 }, true);
     assert.equal(modelUsage(s.store, { run: "r-1" }).total.cost.pod_usd, 0.6);
     const c = modelUsage(s.store, { campaign: "matmul" });
     assert.equal(c.total.cost.pod_usd, 0.7);

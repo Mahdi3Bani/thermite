@@ -60,7 +60,7 @@ export async function prepareResize(
   o: { wait?: boolean | undefined; owner: boolean },
 ): Promise<Resize | { go: () => Promise<Resize> }> {
   const { store } = parts;
-  const r = store.clusterRig(rig);
+  const r = store.clusters.rig(rig);
   if (!r || r.status === "removed")
     return { error: `Control didn't set ${rig} up on a cluster.`, status: 404 };
   if (r.status === "deploying") return { error: `${rig} is still being set up.`, status: 409 };
@@ -71,7 +71,7 @@ export async function prepareResize(
         "Control's address for rigs is not set (THERMITE_CONTROL_PUBLIC_URL): the rig would no longer know where to report.",
       status: 409,
     };
-  const k = store.cluster(r.cluster);
+  const k = store.clusters.get(r.cluster);
   if (!k) return { error: `The cluster ${r.cluster} is no longer in Providers.`, status: 409 };
   if (r.status === "updating" || r.status === "starting")
     return {
@@ -102,7 +102,7 @@ export async function prepareResize(
   const next: ClusterRigResize = { ...plan.size, by };
   return {
     go: async () => {
-      const now = store.clusterRig(rig);
+      const now = store.clusters.rig(rig);
       if (!now || now.status === "removed")
         return { error: `Control didn't set ${rig} up on a cluster.`, status: 404 };
       const work = rigWork(parts, rig);
@@ -114,9 +114,9 @@ export async function prepareResize(
         return applyResize(parts, rig, next, by);
       // Drain first (goal 079): the rig starts nothing new, and the drain watch (drain.ts)
       // applies the change once nothing runs. A drain under way takes the new size instead.
-      store.setClusterRigPending(rig, next);
+      store.clusters.setRigPending(rig, next);
       if (now.status === "draining" || !work) {
-        store.rigSetupEvent(rig, "drain", true, `now for ${sizeChangeWords(sizeOf(now), next)}`);
+        store.rigHistory.add(rig, "drain", true, `now for ${sizeChangeWords(sizeOf(now), next)}`);
         return {
           ok: `${rig} is draining: its pods restart with ${sizeWords(next)} once its trials and the judge's job end. Change now skips the wait.`,
         };
@@ -127,9 +127,9 @@ export async function prepareResize(
         payload: { drain: true, reason: RESIZE_REASON },
         issuedBy: by,
       });
-      store.setClusterRigStatus(rig, "draining");
-      store.rigSetupEvent(rig, "drain", true, `waiting for ${workWords(work)} to finish`);
-      store.audit(by, "cluster_rig_drain", { rig, to: sizeChangeWords(sizeOf(now), next) });
+      store.clusters.setRigStatus(rig, "draining");
+      store.rigHistory.add(rig, "drain", true, `waiting for ${workWords(work)} to finish`);
+      store.auditLog.add(by, "cluster_rig_drain", { rig, to: sizeChangeWords(sizeOf(now), next) });
       return {
         ok: `${rig} drains first: it starts nothing new, and its pods restart with ${sizeWords(next)} once ${workWords(work)} ${work.trials + work.judge_jobs === 1 ? "finishes" : "finish"}. Change now, on its page or with set_cluster_rig_resources and wait false, skips the wait.`,
       };
@@ -150,10 +150,10 @@ export async function applyResize(
   by: string,
 ): Promise<Resize> {
   const { store } = parts;
-  const r = store.clusterRig(rig);
+  const r = store.clusters.rig(rig);
   if (!r || r.status === "removed")
     return { error: `Control didn't set ${rig} up on a cluster.`, status: 404 };
-  const k = store.cluster(r.cluster);
+  const k = store.clusters.get(r.cluster);
   if (!k) return { error: `The cluster ${r.cluster} is no longer in Providers.`, status: 409 };
   const from = sizeOf(r);
   const to: ClusterRigSize = {
@@ -165,11 +165,11 @@ export async function applyResize(
   const draining = r.status === "draining";
   const target = clusterTarget(parts, k);
   const failed = (why: string): ResizeRefusal => {
-    store.rigSetupEvent(rig, "resources", false, why);
+    store.rigHistory.add(rig, "resources", false, why);
     // A rig that drained for it goes back to work: the change did not happen.
     if (draining) {
       undrain(parts, rig, by);
-      store.setClusterRigStatus(rig, "failed");
+      store.clusters.setRigStatus(rig, "failed");
     }
     return { error: why, status: 409 };
   };
@@ -219,7 +219,7 @@ export async function applyResize(
     }
     return failed(kubeError(out));
   }
-  store.setClusterRigSize(rig, to, controlAddress(parts));
+  store.clusters.setRigSize(rig, to, controlAddress(parts));
   let words = sizeChangeWords(from, to);
   // The judge's share a rig keeps from Edit rig comes before its deployment's, so it follows the
   // new size. Its harness takes it only from an owner: issuer: the one who asked.
@@ -243,10 +243,10 @@ export async function applyResize(
       words += `; the judge's share it keeps, ${kept}, did not change: ${errorText(err)}`;
     }
   }
-  store.rigSetupEvent(rig, "resources", true, stopped ? `${words}; at its next start` : words);
-  store.audit(by, "cluster_rig_resources", { rig, from, to });
+  store.rigHistory.add(rig, "resources", true, stopped ? `${words}; at its next start` : words);
+  store.auditLog.add(by, "cluster_rig_resources", { rig, from, to });
   if (stopped) return { ok: `${rig} has ${sizeWords(to)} when it starts again.` };
-  store.setClusterRigStatus(rig, "updating");
+  store.clusters.setRigStatus(rig, "updating");
   void inBackground(
     store,
     "cluster",

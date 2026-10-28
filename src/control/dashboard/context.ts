@@ -141,12 +141,12 @@ export function dashboardContext(store: ControlStore, opts: DashboardOptions) {
   const sessionOf = (c: Ctx) => {
     const sid = getCookie(c, "thermite_session");
     if (!sid) return undefined;
-    const s = store.uiSession(hashOf(sid));
+    const s = store.uiSessions.get(hashOf(sid));
     const now = Date.now();
     if (!s || s.expiresAt <= now || !sameSecret(s.tokenFp, tokenFp)) return undefined;
     // Renewed at most once a day, so a session in use does not run out.
     if (s.expiresAt - now < sessionMs - DAY_MS) {
-      store.extendUiSession(hashOf(sid), now + sessionMs);
+      store.uiSessions.extend(hashOf(sid), now + sessionMs);
       cookie(c, sid);
     }
     return sid;
@@ -211,7 +211,7 @@ export function dashboardContext(store: ControlStore, opts: DashboardOptions) {
   const needs = (c: Ctx, vs: RigView[], now: number, back = "/ui"): Need[] =>
     operatorNeeds(store, vs, forms(c), now, back).filter((n) => !n.decided);
   /** The archived campaigns (goal 077): out of the navigation, Needs you and the Overview. */
-  const archivedNames = () => new Set(store.archivedCampaigns().map((a) => a.campaign));
+  const archivedNames = () => new Set(store.archive.list().map((a) => a.campaign));
   /** Leaves out what belongs to an archived campaign's runs: for Needs you and the lists. */
   const notArchived = <T extends { rig: string; run?: string | undefined }>(
     vs: RigView[],
@@ -250,7 +250,7 @@ export function dashboardContext(store: ControlStore, opts: DashboardOptions) {
           ).length,
           now,
           nav: {
-            folders: store.campaignFolders(),
+            folders: store.folders.list(),
             archived,
             csrf: csrf(c),
             back: backHere(c),

@@ -37,7 +37,7 @@ async function stack() {
   const ingest = (rig: string, events: Ev[]) => {
     const from = next.get(rig) ?? 0;
     next.set(rig, from + events.length);
-    store.ingest({
+    store.rigEvents.ingest({
       rig,
       ledger_id: `ledger-${rig}`,
       cursor: from,
@@ -107,7 +107,7 @@ async function stack() {
       json ? { accept: "application/json" } : {},
     );
   const audit = (action: string) =>
-    store.listAudit(500).filter((a) => a.action === action) as {
+    store.auditLog.list(500).filter((a) => a.action === action) as {
       actor: string;
       body: Record<string, unknown>;
     }[];
@@ -141,7 +141,7 @@ describe("Archive a campaign over REST (goal 077)", () => {
       (await json<{ error: string }>(r1)).error,
       /wide-gemm-1 waits to start on rig-a\./,
     );
-    assert.ok(s.store.cancelCommand(resumed.id, "owner:ui"));
+    assert.ok(s.store.commands.cancel(resumed.id, "owner:ui"));
     const refusals = s.audit("refused").map((a) => a.body.path);
     assert.ok(refusals.includes("/v1/campaigns/fast-sort/archive"));
     assert.ok(refusals.includes("/v1/campaigns/gemv-speed/archive"));
@@ -447,7 +447,7 @@ describe("The navigation and archive on the dashboard (goal 077)", () => {
       await s.page(loc),
       /<b class="bad">No folder made\.<\/b> There is a folder named Kernels already\./,
     );
-    const id = String(s.store.campaignFolder("Kernels")?.id);
+    const id = String(s.store.folders.get("Kernels")?.id);
 
     // Dropped on a folder: the navigation's script asks for JSON.
     const drop = await s.post("/ui/campaigns/fast-sort/folder", { folder: id }, true);
@@ -493,7 +493,7 @@ describe("The navigation and archive on the dashboard (goal 077)", () => {
       await s.post(`/ui/campaigns/${k}/folder`, { folder: "" }, true);
     const deleted = await s.post(`/ui/campaign-folders/${id}/delete`, { back: "/ui" });
     assert.equal(deleted.headers.get("location"), "/ui?sent=Deleted%20the%20folder%20Sorts.");
-    assert.deepEqual(s.store.campaignFolders(), []);
+    assert.deepEqual(s.store.folders.list(), []);
     assert.ok(s.audit("refused").some((a) => a.body.path === `/ui/campaign-folders/${id}/delete`));
   });
 
@@ -572,7 +572,7 @@ describe("The navigation and archive on the dashboard (goal 077)", () => {
   test("an archived campaign keeps its folder: the folder's count leaves it out, the folder is not deleted, and Unarchive brings it back into it", async () => {
     const s = await stack();
     await s.post("/ui/campaign-folders", { name: "Old" });
-    const id = String(s.store.campaignFolder("Old")?.id);
+    const id = String(s.store.folders.get("Old")?.id);
     for (const k of ["old-sweep", "wide-gemm"])
       await s.post(`/ui/campaigns/${k}/folder`, { folder: id }, true);
     const fold = (html: string) =>

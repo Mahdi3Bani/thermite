@@ -94,7 +94,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     const now = Date.now();
     const vs = views();
     // Archived campaigns (goal 077) have their own filter, with Unarchive; one with no runs too.
-    const shelf = new Map(store.archivedCampaigns().map((a) => [a.campaign, a]));
+    const shelf = new Map(store.archive.list().map((a) => [a.campaign, a]));
     const reported = campaignViews(vs);
     const modes = shelf.size ? campaignModes(store, vs) : new Map<string, string | null>();
     const camps: CampaignView[] = [
@@ -136,7 +136,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
             waiting,
             archived: new Map(
               [...shelf].map(([name, a]) => {
-                const folder = store.campaignFolderOf(name);
+                const folder = store.folders.of(name);
                 return [
                   name,
                   `${ago(a.at, now)} ago by ${copiedBy(a.by)}${folder ? ` · in ${folder.name}` : ""}`,
@@ -185,7 +185,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         podRigs: [...new Set(d.pods.map((x) => x.rig))],
         // A campaign no rig reports now: its mode as control saved it, when it did.
         mode: (k) => {
-          const saved = (store.campaignVersions(k)[0]?.contract as { mode?: unknown } | undefined)
+          const saved = (store.campaigns.versions(k)[0]?.contract as { mode?: unknown } | undefined)
             ?.mode;
           return modes.get(k) ?? (typeof saved === "string" ? saved : null);
         },

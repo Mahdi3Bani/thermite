@@ -66,7 +66,7 @@ describe("RunPod rigs: stop", () => {
       ["runpod_stopping", true],
       ["runpod_stopped", true],
     ]);
-    const audit = s.store.listAudit(50);
+    const audit = s.store.auditLog.list(50);
     assert.equal(audit.find((a) => a.action === "runpod_rig_stop")?.actor, "owner:api");
     const stoppedAudit = audit.find((a) => a.action === "runpod_rig_stopped");
     assert.equal((stoppedAudit?.body as { why?: string } | undefined)?.why, "owner");
@@ -79,7 +79,7 @@ describe("RunPod rigs: stop", () => {
     harnessRefusesExport(s.store, rig);
     await s.advance();
     assert.deepEqual(s.cloud.stops(), [{ action: "stop" }]);
-    const failed = s.store.rigSetupEvents(rig).at(-1);
+    const failed = s.store.rigHistory.list(rig).at(-1);
     assert.equal(failed?.step, "runpod_stopped");
     assert.match(
       String(failed?.detail),
@@ -95,7 +95,7 @@ describe("RunPod rigs: stop", () => {
     await t.advance(2 * 60_000);
     assert.deepEqual(t.cloud.stops(), [{ action: "stop" }]);
     assert.match(
-      String(t.store.rigSetupEvents(slow).at(-1)?.detail),
+      String(t.store.rigHistory.list(slow).at(-1)?.detail),
       /no export within 15 minutes/,
     );
   });
@@ -124,7 +124,7 @@ describe("RunPod rigs: stop", () => {
     );
     const t = setup();
     const other = await working(t);
-    t.store.createReset(other, "owner:api");
+    t.store.fullResets.create(other, "owner:api");
     await assert.rejects(
       t.rigs.stop(other, "owner:api"),
       /a full reset of .* is under way \(start\)/,

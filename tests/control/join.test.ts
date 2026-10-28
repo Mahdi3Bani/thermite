@@ -197,7 +197,10 @@ describe("join a rig yourself: the dashboard and /v1/join", () => {
     assert.match(script, /registry\.example\.com\/harness-cuda:1/);
     const rigToken =
       /control-rig-token" <<'THERMITE_EOF_[0-9a-f]+'\n(.+)\n/.exec(script)?.[1] ?? "";
-    assert.ok(s.store.rigTokenMatches("box-a", rigToken), "the script carries the rig's own token");
+    assert.ok(
+      s.store.enrollments.tokenMatches("box-a", rigToken),
+      "the script carries the rig's own token",
+    );
     // Used once: it stops working.
     const twice = await s.fetchJoin("/v1/join/box-a/script?uid=1000", token);
     assert.equal(twice.status, 401);
@@ -211,7 +214,10 @@ describe("join a rig yourself: the dashboard and /v1/join", () => {
     const fresh = s.tokenOf(await (await s.post("/ui/rigs/box-a/join/new", {})).text());
     assert.ok(fresh && fresh !== token);
     const second = await (await s.fetchJoin("/v1/join/box-a/script?uid=0", fresh)).text();
-    assert.ok(!s.store.rigTokenMatches("box-a", rigToken), "the old rig token stopped working");
+    assert.ok(
+      !s.store.enrollments.tokenMatches("box-a", rigToken),
+      "the old rig token stopped working",
+    );
     assert.match(second, /\/etc\/containers\/systemd/);
 
     assert.match(
@@ -222,7 +228,7 @@ describe("join a rig yourself: the dashboard and /v1/join", () => {
       await s.where(await s.post("/ui/rigs/box-a/join/retire", { confirm: "retire box-a" })),
       /box-a is retired: its token no longer works/,
     );
-    assert.equal(s.store.enrolledRig("box-a"), undefined);
+    assert.equal(s.store.enrollments.rig("box-a"), undefined);
     assert.match(await s.page("/ui/rigs/box-a"), /box-a is retired/);
 
     // Four GPUs, one for the judge: the lowest-numbered is the judge's, the rest the agents'.
@@ -287,7 +293,7 @@ describe("join a rig yourself: the dashboard and /v1/join", () => {
     assert.ok(!kinds.includes("Namespace"));
     assert.ok(kinds.includes("ResourceClaimTemplate"));
     assert.ok(kinds.includes("NetworkPolicy"));
-    assert.ok(s.store.enrolledRig("box-b"));
+    assert.ok(s.store.enrollments.rig("box-b"));
     assert.match(await s.page("/ui/rigs/box-b"), /kubectl scale deployment -n team-a/);
   });
 });

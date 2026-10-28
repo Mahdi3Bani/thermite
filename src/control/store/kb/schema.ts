@@ -1,4 +1,4 @@
-/** The tables of control's knowledge base (kb.ts), moved out of kb.ts. */
+/** The tables of control's knowledge base (store/kb.ts). */
 export const KB_SCHEMA = `
 create table if not exists kb_item (
   id integer primary key autoincrement,
