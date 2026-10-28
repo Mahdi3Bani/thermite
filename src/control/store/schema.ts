@@ -1,6 +1,7 @@
 import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import { copyBeforeMigration, newerSchemaWords } from "../../common/db-copy.ts";
 import { transaction } from "../../common/sqlite.ts";
+import { busKeyTables } from "./bus.ts";
 import { runRegistryTable } from "./runs.ts";
 
 /**
@@ -700,6 +701,8 @@ const STORE_MIGRATIONS: readonly ((db: DatabaseSync) => void)[] = [
   schemaFive,
   // Control's run registry (goal 170), with its rows from what the store already holds.
   runRegistryTable,
+  // The message bus's keys (goal 168): each rig's registered key, and control's own, sealed.
+  busKeyTables,
 ];
 
 /**

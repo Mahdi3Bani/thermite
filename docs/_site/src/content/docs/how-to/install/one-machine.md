@@ -171,6 +171,7 @@ Compose keeps Thermite's state in named volumes. Their names start with the proj
 | `supervisor-home` | The supervisor's own state |
 | `results` | The local results repository. To push to a real one, see [Set up the results repository](../operate/results-repository.md) |
 | `nats-data` | With the `bus` profile only: the message bus's store, every report a rig sent over it and the commands waiting for each rig ([The compose file](../../reference/settings.md#the-compose-file)) |
+| `nats-users` | The message bus's users, which control writes and the bus's server reads: each user's public key and what it may do. Empty without the `bus` profile |
 
 The folder `.dev/`, next to `compose.yaml`, holds the tokens (`.dev/secrets/`), the inbox (`.dev/inbox/`) and the advisors' files (`.dev/advisors/`). The `init` container makes it.
 

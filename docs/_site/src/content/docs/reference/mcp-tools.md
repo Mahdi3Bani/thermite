@@ -414,6 +414,7 @@ For a rig control set up on a cluster, it returns `{rig, on: "cluster", cluster,
 | `report_after_start` | A report reached control after the start. Written after a cluster rig's `start` or `restart`, and, with the detail `it reported after the wait ended`, when a cluster rig marked `failed` while waiting after a start or restart reports after all |
 | `remove_cluster`, `remove` | Removed from the cluster; Removed from the machine |
 | `model_started`, `model_done`, `model_refused`, `model_failed` | A model download started, finished with its SHA-256 checked, was refused (its SHA-256 did not match) or stopped ([Model files on a rig](model-files.md)) |
+| `bus_key`, `bus_key_changed` | Its key on the message bus registered; Its key on the message bus changed. Its `detail` gives the key's fingerprint, `fingerprint <old> → <new>` for a change ([Who may use the message bus](../explanation/how-the-parts-talk.md#who-may-use-the-message-bus)) |
 | `runpod_launched` | Launched on RunPod. Its `detail` gives who launched it, the pod, the GPUs, the cloud and the price |
 | `runpod_stopping` | Stopping the pod: its runs paused, and its results sent out first. Its `detail` says who asked, or which limit was reached, and the runs it paused |
 | `runpod_stopped` | Pod stopped: its GPU is no longer billed, and its volume stays. Its `detail` says whether every result left the pod first, or what stayed on its volume |

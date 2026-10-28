@@ -107,6 +107,15 @@ Inside the harness, the broker reads the rig's secret files when it starts. It h
 
 [Trust between control and rigs](trust.md) explains what each key proves.
 
+## Keys on the message bus
+
+With the [message bus](how-the-parts-talk.md#who-may-use-the-message-bus), each part that signs in to it has a key of its own, which it made itself:
+
+- **A rig's key on the bus** is in the supervisor's state folder, readable by the supervisor alone. Only its public part travels, to control, on the supervisor's regular call. It survives a full reset.
+- **Control's two keys on the bus**, its own user and the one that asks the server to reload its users, are sealed in control's store like the secrets above.
+
+The bus's server holds no secret at all: control gives it a users file with each key's public part and what that user may do.
+
 ## The advisors file
 
 Advisors you configure in the advisors file on the supervisor read their API keys from the files it names, at each call, so a new key takes effect without a restart. An advisor you give a model from control (**Edit rig**, MCP or the REST API) instead keeps its key or token sealed in control, which hands it to the supervisor in memory. The [advisors file reference](../reference/advisors-file.md) lists every field.

@@ -15,7 +15,7 @@ This page lists where each part of Thermite listens, which networks join them, w
 | 8800/tcp | Control: the dashboard (`/ui`), the REST API (`/v1`), MCP (`/mcp`) and `/metrics` | People, scripts and agents; every rig's supervisor | `THERMITE_CONTROL_LISTEN`, default `0.0.0.0:8800` |
 | 8700/tcp | The harness API | The rig's own supervisor. Inside the harness container, its workers and tools on `127.0.0.1` | `THERMITE_LISTEN`, default `0.0.0.0:8700` |
 | none | The supervisor | Outside pull mode it listens on no port. It connects out to its harness and to control, and to the message bus when it has one | |
-| 4222/tcp | The message bus: the NATS server of the compose stack's `nats` service, with the `bus` profile | Control and the supervisors, when `THERMITE_NATS_URL` names it. Never the harness | `THERMITE_NATS_URL`, `nats://nats:4222` under compose |
+| 4222/tcp | The message bus: the NATS server of the compose stack's `nats` service, with the `bus` profile | Control and the supervisors, when `THERMITE_NATS_URL` names it, each signed in with its own key ([Who may use the message bus](../explanation/how-the-parts-talk.md#who-may-use-the-message-bus)). Never the harness | `THERMITE_NATS_URL`, `nats://nats:4222` under compose |
 | 8222/tcp, on the `nats` container's own `127.0.0.1` | The NATS server's monitoring | Its health check, inside the container. Nothing outside the container reaches it | Fixed in the compose file |
 | 8790/tcp | The supervisor of a rig in [pull mode](../explanation/trust.md#rigs-in-pull-mode), on every interface | Control alone, through RunPod's proxy, under a random path. Everything else gets an empty 404 | `THERMITE_TUNNEL_PORT`, `8790` in control's launch values and in the one-container rig image |
 | A free port on `127.0.0.1` | The supervisor in pull mode: its own calls to control wait there for control's next exchange | The supervisor alone: the port takes only a token that lives in the supervisor's memory, and answers anything else with an empty 404 | Chosen at start |
@@ -85,13 +85,15 @@ In a **slot**, a namespace the cluster's operators made for Thermite, the operat
 | --- | --- | --- |
 | Control | `/var/lib/thermite-control` (`THERMITE_CONTROL_DIR`) | `control.db` and, after an update that migrated it, its two newest copies from before (`control.db.v<version>.<time>.copy`); `control.db` holds rigs, reports, commands, providers, MCP servers with their secrets and sign-ins sealed, [Thermite's knowledge base](knowledge-base.md), the audit log); `control-signing.key` (0600) and `control-signing.pub`; `secrets.key`, which seals every key and sign-in control stores; `kits/`, kits written or uploaded on the **New campaign** page; `exports/`, the [exports](exports.md#where-control-keeps-them) of rigs without a results repository |
 | Control | `/keys` | `control-signing.pub`, copied there for rigs (`THERMITE_CONTROL_PUBKEY_EXPORT`) |
+| Control | `/nats-users` | With the message bus: `users.conf` (`THERMITE_NATS_USERS_FILE`, 0644), the bus's users that control writes for the NATS server. It holds each user's public key and what it may do, never a seed. Control's own two keys on the bus are in `control.db`, their seeds sealed with `secrets.key` |
 | Harness | `/var/lib/thermite` | The ledger, its two newest copies from before a migration (`ledger.db.v<version>.<time>.copy`), and the rig's report key (`ledger/`), git mirrors (`git/`), kits (`kits/`), imports (`imports/`), models (`models/`), builds (`builds/`), the model route control set (`model-route.json`, root only), the rig's settings (`rig-settings.json`; one the harness can't read is kept aside as `rig-settings.json.unreadable-<time>`, logged and reported, and the defaults apply) and its copy of each run's past research (`knowledge/<run>/`) |
 | Harness | `/scratch` | Workspaces, lane caches, the judge's runs and each run's research folder (`thermite/research/<run>/`, with its `knowledge/`). Emptied at every start, except each lane's cache folder, `thermite/lanes/<lane>/cache`, which a start keeps when it is a real folder its own lane's user owns ([below](#a-lanes-cache)) |
 | Harness | `/inbox` | Read-only: project and kit bundles and [model files](model-files.md) the supervisor fetched |
 | Harness | `/outbox` | Exports, written by the harness |
 | Harness | `/keys` | Read-only: control's public key |
 | NATS, the `nats` service | `/data` | JetStream's store: the `REPORTS` stream, every rig's reports sent over the bus, kept for good, and the `COMMANDS` stream, each rig's commands until its supervisor takes them. Control's consumer of the reports, `control-reports`, and each rig's consumer of its commands, `rig-<rig>-commands`, keep their places there |
-| Supervisor | `/var/lib/thermite-supervisor` | Its relay and export state, the exports waiting to be sent to control (`export-uploads.json`), where each run's past research sync is (`kb-state.json`), its local results repository (`results.git/`), its fetch caches, advisor records and the `ssh` home (`home/`). In pull mode also `tunnel/` (`THERMITE_TUNNEL_DIR`, 0700: the pod's keys, its enrollment and the nonces it has seen) and `enrolled/` (`THERMITE_TUNNEL_ENROLLED_DIR`: `control.pub`, `rig.json` and `rig.env` for the harness) |
+| NATS, the `nats` service | `/etc/nats/users` | Read-only: `users.conf`, the users control wrote. The server's own settings, which include it, are written at its start beside it, in `/etc/nats/thermite.conf` |
+| Supervisor | `/var/lib/thermite-supervisor` | Its relay and export state, the exports waiting to be sent to control (`export-uploads.json`), where each run's past research sync is (`kb-state.json`), its local results repository (`results.git/`), its fetch caches, advisor records and the `ssh` home (`home/`). With the message bus also `bus-key.seed` (0600): the seed of the rig's own key on the bus, which never leaves the file. In pull mode also `tunnel/` (`THERMITE_TUNNEL_DIR`, 0700: the pod's keys, its enrollment and the nonces it has seen) and `enrolled/` (`THERMITE_TUNNEL_ENROLLED_DIR`: `control.pub`, `rig.json` and `rig.env` for the harness) |
 | Supervisor | `/inbox` | Read and write: what it fetches for the harness |
 | Supervisor | `/outbox` | Read-only: the harness's exports |
 | Supervisor | `/results` | Compose only: the local results repository the rigs share |
@@ -110,7 +112,7 @@ Each lane keeps a cache folder for its builds, `/scratch/thermite/lanes/<lane>/c
 
 A deployment of your own that puts `/scratch` on an empty folder at each start, such as an `emptyDir` or a `tmpfs`, loses them: each lane then rebuilds its project at its first trial after a restart. A full reset empties them too.
 
-A full reset empties the harness's state, scratch and outbox, keeping only the rig's report key, and the supervisor's home, keeping only a pull mode rig's `tunnel/` and `enrolled/`. Control's knowledge base keeps the items the rig's runs reported before. See [Stop, restart, remove or reset a rig](../how-to/operate/rig-lifecycle.md).
+A full reset empties the harness's state, scratch and outbox, keeping only the rig's report key, and the supervisor's home, keeping only the rig's key on the message bus (`bus-key.seed`) and a pull mode rig's `tunnel/` and `enrolled/`. Control's knowledge base keeps the items the rig's runs reported before. See [Stop, restart, remove or reset a rig](../how-to/operate/rig-lifecycle.md).
 
 ### Compose volumes
 
@@ -118,6 +120,7 @@ A full reset empties the harness's state, scratch and outbox, keeping only the r
 | --- | --- | --- | --- |
 | `control-state` | control | `/var/lib/thermite-control` | read-write |
 | `control-pub` | control; harness, harness-2 | `/keys` | read-write in control; read-only in the harnesses |
+| `nats-users` | control; nats, with the `bus` profile | `/nats-users` in control; `/etc/nats/users` in nats | read-write in control; read-only in nats |
 | `harness-state`, `harness2-state` | harness, harness-2 | `/var/lib/thermite` | read-write |
 | `harness-scratch`, `harness2-scratch` | harness, harness-2 | `/scratch` | read-write |
 | `./.dev/inbox` (a folder) | harnesses and supervisors | `/inbox` | read-only in the harnesses; read-write in the supervisors |
@@ -180,7 +183,8 @@ The [one-container rig image](harness-image.md#where-the-state-lives) says when 
 | The owner's token | Control | `THERMITE_CONTROL_ADMIN_TOKEN_FILE` | For local use. Deployed, control takes the token's SHA-256 instead (`THERMITE_CONTROL_ADMIN_TOKEN_SHA256`). See [Tokens and roles](tokens.md) |
 | The operator's, agent's and reader's tokens | Control | `THERMITE_CONTROL_OPERATOR_TOKEN_FILE`, `THERMITE_CONTROL_AGENT_TOKEN_FILE`, `THERMITE_CONTROL_READ_TOKEN_FILE` | Optional, as above |
 | The rig tokens file | Control | `THERMITE_CONTROL_RIG_TOKENS_FILE` | `{"<rig>": "<token>"}` for rigs not enrolled through control. Read once, at start |
-| The secrets key | Control | `THERMITE_CONTROL_SECRETS_KEY_FILE`, default `secrets.key` in control's state folder | The key that seals every provider key, Git access, machine key, kubeconfig, RunPod key, and MCP server's key, client secret and sign-in. Made on first start |
+| The secrets key | Control | `THERMITE_CONTROL_SECRETS_KEY_FILE`, default `secrets.key` in control's state folder | The key that seals every provider key, Git access, machine key, kubeconfig, RunPod key, MCP server's key, client secret and sign-in, and control's own keys on the message bus. Made on first start |
+| Control's keys on the message bus | Control | `control.db`, sealed with the secrets key | With the message bus: control's user and its system user, which asks the NATS server to reload its users. Made at the first start with `THERMITE_NATS_URL` |
 | Control's signing key | Control | `control-signing.key` in control's state folder, 0600 | Signs every command to rigs. Made on first start |
 | The supervisor token | Harness and supervisor | `THERMITE_SUPERVISOR_TOKEN_FILE` (harness), `THERMITE_HARNESS_TOKEN_FILE` (supervisor) | The token the supervisor uses with its harness. Required |
 | The proposer token | Harness | `THERMITE_PROPOSER_TOKEN_FILE` | Optional: lets a person or script submit changes with `thermite submit` |
@@ -188,6 +192,7 @@ The [one-container rig image](harness-image.md#where-the-state-lives) says when 
 | The rig's control token | Supervisor | `THERMITE_CONTROL_TOKEN_FILE` | The rig's token for control |
 | Control's public key | Harness | `THERMITE_CONTROL_PUBKEY_FILE` | Checks every command's signature. The harness waits up to 120 s for it at start. In pull mode, enrollment leaves it in `control.pub` in `THERMITE_TUNNEL_ENROLLED_DIR`; in the one-container rig image, root checks its SHA-256 against the launch's and copies it to `THERMITE_CONTROL_PUBKEY_FILE` before the harness starts |
 | The rig's report key | Harness | `ledger/rig-signing.key` in its state, 0600 | Signs the rig's reports. Made on first start |
+| The rig's key on the message bus | Supervisor | `bus-key.seed` in its state folder, 0600 | With the message bus: the seed of the rig's NATS user key. Made at the first start with `THERMITE_NATS_URL`; only its public part goes to control, on the supervisor's regular call. A full reset keeps it |
 | The pod's keys | Supervisor, in pull mode | `keys.json` in `THERMITE_TUNNEL_DIR`, 0600 | Sign the pod's answers to control and open what control seals to the pod. Made on first start; control pins their public halves at enrollment |
 | The enrollment code | Supervisor, in pull mode | `THERMITE_TUNNEL_ENROLL_CODE` in the pod's environment | A one-time code. It never crosses the network, and the first enrollment spends it. The supervisor takes it out of its own environment at start |
 | The snapshot key | The broker (root), in the one-container rig image | `THERMITE_STATE_SNAPSHOT_KEY` in the pod's environment | Seals the rig's state snapshot on the pod's volume. Control makes a new one for each pod at its launch and keeps no copy; RunPod keeps it in the pod's settings. The broker takes it out of its own environment at start, so no part and no role has it |

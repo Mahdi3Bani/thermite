@@ -23,7 +23,7 @@ describe("control's store migrations", () => {
     old.close();
 
     const store = new ControlStore(path);
-    assert.equal(version(store.db), 6);
+    assert.equal(version(store.db), 7);
     const folder = store.db.prepare("select name from campaign_folder").get() as { name: string };
     assert.equal(folder.name, "speed");
     store.db.close();
@@ -45,7 +45,7 @@ describe("control's store migrations", () => {
   test("a new store is not copied", () => {
     const path = fresh();
     const store = new ControlStore(path);
-    assert.equal(version(store.db), 6);
+    assert.equal(version(store.db), 7);
     store.db.close();
     assert.deepEqual(copiesOf(path), []);
   });
@@ -56,7 +56,7 @@ describe("control's store migrations", () => {
     one.db.exec("drop table rig_update; delete from schema_migrations where version >= 2");
     one.db.close();
     const store = new ControlStore(path);
-    assert.equal(version(store.db), 6);
+    assert.equal(version(store.db), 7);
     assert.ok(store.db.prepare("select 1 from sqlite_master where name = 'rig_update'").get());
     store.db.close();
     assert.deepEqual(
@@ -81,7 +81,7 @@ describe("control's store migrations", () => {
       row.run(id, agent);
     three.db.close();
     const store = new ControlStore(path);
-    assert.equal(version(store.db), 6);
+    assert.equal(version(store.db), 7);
     const agents = store.db.prepare("select agent from model_call order by event_id").all();
     assert.deepEqual(
       agents.map((r) => r.agent),
@@ -100,11 +100,11 @@ describe("control's store migrations", () => {
     old.exec(V010);
     old.close();
     const store = new ControlStore(path);
-    store.db.prepare("insert into schema_migrations (version) values (7)").run();
+    store.db.prepare("insert into schema_migrations (version) values (8)").run();
     store.db.close();
     assert.throws(
       () => new ControlStore(path),
-      /control store is at schema version 7, newer than this code's 6: .*the copy made then: .*control\.db\.v0\..*\.copy/,
+      /control store is at schema version 8, newer than this code's 7: .*the copy made then: .*control\.db\.v0\..*\.copy/,
     );
   });
 });

@@ -4,6 +4,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
+import { createUser } from "@nats-io/nkeys";
 import { redact, waitForFile } from "../../src/common/env.ts";
 
 describe("waiting for a file", () => {
@@ -47,5 +48,11 @@ describe("what a log line never holds (redact)", () => {
       "THERMITE_STATE_SNAPSHOT_DIR=/workspace/thermite",
     ])
       assert.equal(redact(kept), kept);
+  });
+
+  test("a NATS key's seed is taken out; a key's public part stays", () => {
+    const seed = new TextDecoder().decode(createUser().getSeed());
+    const key = createUser().getPublicKey();
+    assert.equal(redact(`seed ${seed} for ${key}`), `seed S*** for ${key}`);
   });
 });

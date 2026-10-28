@@ -67,10 +67,13 @@ services:
       THERMITE_COMPOSE_SERVICES: '{"local-1":{"harness":"harness","supervisor":"supervisor"},"local-2":{"harness":"harness-2","supervisor":"supervisor-2"}}'
       # The message bus, with the `bus` profile: nats://nats:4222. Empty: HTTP alone.
       THERMITE_NATS_URL: "${THERMITE_NATS_URL:-}"
+      # With the bus, control writes its users here (each rig's key), and the server includes it.
+      THERMITE_NATS_USERS_FILE: /nats-users/users.conf
 
     volumes:
       - control-state:/var/lib/thermite-control
       - control-pub:/keys
+      - nats-users:/nats-users
     secrets: [control-admin-token, control-operator-token, control-rig-tokens]
     ports: ["127.0.0.1:${THERMITE_CONTROL_PORT:-8800}:8800"]
     networks: [control]
@@ -84,25 +87,34 @@ services:
   # The message bus (goal 168): NATS with JetStream, for control. With the `bus` profile and
   # THERMITE_NATS_URL=nats://nats:4222, the supervisors send their reports here and take their
   # commands from here; control folds the reports and publishes the commands. It is on the control
-  # network only: the harness never reaches it.
+  # network only: the harness never reaches it. It knows only the users control writes to its
+  # users file: control's own, and one for each rig whose supervisor registered its key.
   nats:
     profiles: [bus]
     image: docker.io/library/nats:2.15.1-alpine@sha256:7ae34c25dfd6fe2e01c6483eabef20d796690fdcac6c4d94ca780a6cf9877fde
-    # Its settings are written as it starts, so nothing beside this file is needed: the largest
-    # message (REPORT_MAX_BYTES in src/core/link/report.ts), monitoring on its own loopback for the
-    # health check, and JetStream's store on its volume.
+    # Its settings are written as it starts, beside the users file it includes: the largest message
+    # (REPORT_MAX_BYTES in src/core/link/report.ts), monitoring on its own loopback for the health
+    # check, JetStream's store on its volume, and the users. It starts once control has written
+    # them, and reads them again when control asks.
     command:
       - sh
       - -c
       - |
-        cat > /tmp/nats.conf <<'EOF'
+        cat > /etc/nats/thermite.conf <<'EOF'
         max_payload: 8388608
         http: 127.0.0.1:8222
         jetstream { store_dir: /data }
+        include users/users.conf
         EOF
-        exec nats-server -c /tmp/nats.conf
+        trap 'exit 0' TERM INT
+        [ -s /etc/nats/users/users.conf ] || echo "waiting for control to write the bus's users"
+        until [ -s /etc/nats/users/users.conf ]; do sleep 1; done
+        exec nats-server -c /etc/nats/thermite.conf
     volumes:
       - nats-data:/data
+      - nats-users:/etc/nats/users:ro
+    # Control first: it makes the users' volume, as its owner, and writes the users file.
+    depends_on: [control]
     networks: [control]
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8222/healthz?js-enabled-only=true"]
@@ -279,6 +291,7 @@ volumes:
   supervisor2-home: {}
   results: {}
   nats-data: {}
+  nats-users: {}
 
 # The init service writes these files; `docker compose up` needs them there first.
 secrets:

@@ -8,7 +8,8 @@ import {
   type MsgRequest,
   type StreamConfig,
 } from "@nats-io/jetstream";
-import { connect, headers, type NatsConnection } from "@nats-io/transport-node";
+import { connect, headers, type NatsConnection, nkeyAuthenticator } from "@nats-io/transport-node";
+import { reloadSubject } from "../core/link/users.ts";
 import { log } from "./env.ts";
 
 /**
@@ -29,6 +30,8 @@ export const BUS_ACK_TIMEOUT_MS = 30_000;
 export const BUS_RETRY_MS = 5_000;
 /** How many messages on a subject a removal looks at, at most: then it says it found none. */
 export const BUS_REMOVE_LOOK_MAX = 1000;
+/** How long a request for the server to reload its users may wait for the answer. It then fails. */
+export const BUS_RELOAD_TIMEOUT_MS = 10_000;
 
 /** The server's ack: the message's place in the stream, and whether it had the message's id. */
 export interface Published {
@@ -43,6 +46,16 @@ export interface BusMessage {
   seq: number;
   data: Uint8Array;
   header(name: string): string | undefined;
+}
+
+/**
+ * How a part signs in to the bus: the seed of its user key, which the server checks against the
+ * key's public part in its users; and, for a rig, the start of the subjects it takes replies on,
+ * the only ones its user may subscribe to.
+ */
+export interface BusSignIn {
+  seed: Uint8Array;
+  inboxPrefix?: string | undefined;
 }
 
 export type StreamSettings = Partial<StreamConfig> & { name: string };
@@ -141,7 +154,8 @@ async function ensureConsumer(
   stream: string,
   consumer: ConsumerSettings,
 ): Promise<void> {
-  const jsm = await jetstreamManager(nc);
+  // No check of the account's JetStream first: a rig's user may not read the account's figures.
+  const jsm = await jetstreamManager(nc, { checkAPI: false });
   try {
     await jsm.consumers.info(stream, consumer.durable_name);
   } catch (err) {
@@ -157,24 +171,33 @@ async function ensureConsumer(
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * The bus at `url`, as `name` (the part and its rig, shown in the server's list of connections).
- * It connects on first use, and again after a connection fails; the NATS client reconnects on its
- * own after a drop.
+ * The bus at `url`, as `name` (the part and its rig, shown in the server's list of connections),
+ * signed in with `signIn` when given. It connects on first use, and again after a connection fails
+ * or the client gave one up, as after the server refused its user; the NATS client reconnects on
+ * its own after a drop.
  */
-export function natsBus(url: string, name: string): Bus {
+export function natsBus(url: string, name: string, signIn?: BusSignIn): Bus {
   const server = where(url);
   let conn: Promise<NatsConnection> | undefined;
   let closed = false;
   let reading: ConsumerMessages | undefined;
   const connection = (): Promise<NatsConnection> => {
-    conn ??= connect({
+    if (conn) return conn;
+    const made = connect({
       servers: url,
       name,
       timeout: BUS_CONNECT_TIMEOUT_MS,
       maxReconnectAttempts: -1,
+      ...(signIn
+        ? { authenticator: nkeyAuthenticator(signIn.seed), inboxPrefix: signIn.inboxPrefix }
+        : {}),
     }).then(
       (nc) => {
         void watch(nc, server);
+        // Given up (its user refused twice running): the next call connects again.
+        void nc.closed().then(() => {
+          if (conn === made) conn = undefined;
+        });
         return nc;
       },
       (err: unknown) => {
@@ -182,7 +205,8 @@ export function natsBus(url: string, name: string): Bus {
         throw err;
       },
     );
-    return conn;
+    conn = made;
+    return made;
   };
   return {
     async publish(subject, data, o) {
@@ -282,4 +306,32 @@ export function natsBus(url: string, name: string): Bus {
       await nc?.close();
     },
   };
+}
+
+/**
+ * Asks the server at `url` to read its configuration again, as control's system user (`seed`):
+ * the users file control wrote takes effect without a restart, and the connections of a user it
+ * no longer has are closed. Throws when the server can't be reached, refuses the user, or says the
+ * reload failed.
+ */
+export async function reloadBus(url: string, seed: Uint8Array): Promise<void> {
+  const nc = await connect({
+    servers: url,
+    name: "control (reloads)",
+    timeout: BUS_CONNECT_TIMEOUT_MS,
+    maxReconnectAttempts: 0,
+    authenticator: nkeyAuthenticator(seed),
+  });
+  try {
+    const id = nc.info?.server_id;
+    if (!id) throw new Error("the bus's server gave no id");
+    const m = await nc.request(reloadSubject(id), "", { timeout: BUS_RELOAD_TIMEOUT_MS });
+    const answer = m.json<{ error?: { description?: string } }>();
+    if (answer.error)
+      throw new Error(
+        `the bus's server did not reload: ${answer.error.description ?? "no reason"}`,
+      );
+  } finally {
+    await nc.close();
+  }
 }

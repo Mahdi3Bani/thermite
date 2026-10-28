@@ -66,6 +66,25 @@ With the same setting, control publishes each command it issues to the rig's own
 - **The stream is a work queue.** A command the supervisor acked is gone from it. It holds up to 100 commands for each rig, and a command for at most a week: a full queue refuses the next command, which stays pending on control for the poll.
 - **A cancelled command is taken off the bus,** so the rig's supervisor never delivers it, unless the supervisor had taken it already.
 
+### Who may use the message bus
+
+Only control and the rigs' supervisors sign in to the bus, each with a NATS user key of its own, an nkey. The server knows each key by its public part. The secret part, the key's seed, never leaves the part that made it.
+
+- **A rig's supervisor makes its own key** the first time it starts with the bus, and keeps the seed in its state folder, `bus-key.seed`. It sends the key's public part to control on its regular call, the one that carries its figures, which the rig's token already authenticates: once before its first report, then with every call.
+- **Control writes the server's users.** It records the key for the rig, writes every user to the users file that the server's settings include, and asks the server to reload the file, which the server does without a restart. Control answers the supervisor's call once the server has reloaded, so the supervisor can sign in at once. A rig with no key registered has no user.
+- **A new key replaces the old one.** A supervisor that lost its state folder makes a new key at its next start. Control keeps the change as a step in the rig's history, `bus_key_changed`, and in its audit log, `rig_bus_key_changed`, each with the fingerprints of the old key and the new one, and the old key no longer signs in. A full reset keeps the key.
+- **A retired rig's user goes** within a minute: control looks at its users every 60 seconds. A rig brought back has its user again.
+
+Each user may do only its part:
+
+| User | May |
+| --- | --- |
+| Control | Everything on the bus: make the streams, fold the reports, publish commands and take back a cancelled one |
+| A rig's supervisor | Publish to its own report subject, `thermite.rig.<rig>.report`; make, read and take from its own consumer of the commands, `rig-<rig>-commands`, which the server lets take only the rig's own subject; ack what it took; and receive replies only under its own inbox, `_INBOX.rig.<rig>` |
+| Control's system user | Ask the server to reload its users |
+
+So a rig can't publish another rig's reports, take another rig's commands or read another rig's consumer, and a key the server does not know is refused. The bus's credentials add to the signatures and do not replace them: each report still carries the harness's signature, and each command control's.
+
 ### A rig on RunPod
 
 A RunPod pod can't be reached from outside except through RunPod's own HTTPS proxy, and it has no fixed address to dial. So for a rig on RunPod, **control** starts every connection: after the pod enrolls, control calls it through the proxy in a loop, and each call carries what control has for the rig and brings back what the rig has for control. The supervisor's own calls to control go to a port inside the pod and wait there for the next exchange. Because the proxy ends TLS, every exchange is also sealed and signed by Thermite itself. [Trust](trust.md#rigs-in-pull-mode) explains it.

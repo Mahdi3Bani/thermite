@@ -1,13 +1,14 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { serve } from "@hono/node-server";
-import { busUrl, natsBus } from "../common/bus.ts";
+import { busUrl, natsBus, reloadBus } from "../common/bus.ts";
 import { log, optionalSecretFromFile, parseListen } from "../common/env.ts";
 import { startLogging } from "../common/log.ts";
 import { readNumber } from "../common/settings.ts";
 import { generateSigningKeys } from "../core/commands.ts";
 import { buildInfo } from "../core/version.ts";
 import { createControlApi } from "./api.ts";
+import { BUS_USERS_SYNC_MS, BusUsers, busUsersFile } from "./bus/users.ts";
 import { realKubectl } from "./clusters/kubectl.ts";
 import { Credential } from "./credential.ts";
 import { followReports } from "./ingest.ts";
@@ -96,6 +97,16 @@ async function main(): Promise<void> {
   const secrets = SecretBox.fromFile(
     env.THERMITE_CONTROL_SECRETS_KEY_FILE ?? join(dir, "secrets.key"),
   );
+  // Who may use the bus: control's own users and each rig's that registered its key, written to
+  // the server's users file, which the server reloads on control's request (bus/users.ts).
+  const busUsers = natsUrl
+    ? new BusUsers({
+        store,
+        secrets,
+        file: busUsersFile(env),
+        reload: (seed) => reloadBus(natsUrl, seed),
+      })
+    : undefined;
   // Test pods on GPU clouds, advanced by the loop below.
   const runpodTests = new RunpodTests(store, secrets, {
     image: env.THERMITE_RUNPOD_TEST_IMAGE || undefined,
@@ -132,6 +143,8 @@ async function main(): Promise<void> {
       exportsDir: join(dir, "exports"),
       // How rigs and the machines control sets rigs up on reach control.
       publicUrl: env.THERMITE_CONTROL_PUBLIC_URL || undefined,
+      // Who may use the message bus: a rig's new key gets its user there.
+      busUsers,
       // The images rigs on machines run (none: control can't set rigs up there).
       rigImages:
         env.THERMITE_RIG_HARNESS_IMAGE && env.THERMITE_RIG_SUPERVISOR_IMAGE
@@ -158,9 +171,14 @@ async function main(): Promise<void> {
     bus: natsUrl ? new URL(natsUrl).host : null,
   });
   // Reports from the bus, folded through the ingest route's checks as they arrive; and each
-  // command control issues, published to its rig's subject as well as kept in the store.
-  const bus = natsUrl ? natsBus(natsUrl, "control") : undefined;
-  if (bus) {
+  // command control issues, published to its rig's subject as well as kept in the store. The
+  // users file is written first, so that the server can start, and kept up to date after.
+  const bus =
+    natsUrl && busUsers ? natsBus(natsUrl, "control", { seed: busUsers.controlSeed }) : undefined;
+  let usersSync: NodeJS.Timeout | undefined;
+  if (bus && busUsers) {
+    void busUsers.sync();
+    usersSync = setInterval(() => void busUsers.sync(), BUS_USERS_SYNC_MS);
     followReports(bus, { store, control: buildInfo(), requireKeyAcceptance }).catch((err) =>
       log("control", "reports from the bus stopped", { error: String(err) }, "error"),
     );
@@ -226,6 +244,7 @@ async function main(): Promise<void> {
     clearInterval(launched);
     clearInterval(quiet);
     clearInterval(clouds);
+    clearInterval(usersSync);
     server.close();
     process.exit(0);
   };

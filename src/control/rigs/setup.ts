@@ -46,6 +46,8 @@ export const STEP_WORDS: Record<string, string> = {
   model_refused: "Model refused: its SHA-256 did not match, and the file was deleted",
   model_failed: "Model download stopped",
   check: "Control checked where it runs",
+  bus_key: "Its key on the message bus registered",
+  bus_key_changed: "Its key on the message bus changed",
   ...UPDATE_STEP_WORDS,
 };
 

@@ -12,6 +12,7 @@ import { busUrl, natsBus } from "../common/bus.ts";
 import { log, optionalSecretFromFile, requireEnv, secretFromFile } from "../common/env.ts";
 import { startLogging } from "../common/log.ts";
 import { untoldKinds } from "../core/kb.ts";
+import { rigInboxPrefix } from "../core/link/users.ts";
 import type { McpUse } from "../core/mcp.ts";
 import { buildHeaders, buildInfo } from "../core/version.ts";
 import { modelStallMs } from "../harness/agents/model-stall.ts";
@@ -29,6 +30,7 @@ import { syncMcpServers } from "./mcp-sync.ts";
 import { ModelDownloads } from "./model-download.ts";
 import { syncModelRouteRound } from "./model-route.ts";
 import { commandPollMs, followCommands } from "./relay/commands.ts";
+import { BUS_KEY_FILE, busKey, busKeyFigure } from "./relay/key.ts";
 import {
   healCursor,
   oneAtATime,
@@ -83,17 +85,27 @@ async function main(): Promise<void> {
   const controlUrl = pull?.controlUrl ?? env.CONTROL_URL?.replace(/\/$/, "");
   const controlToken = pull?.controlToken ?? optionalSecretFromFile("THERMITE_CONTROL_TOKEN_FILE");
   // The message bus (goal 168): with THERMITE_NATS_URL, reports go there instead of to control's
-  // ingest route, and commands come from there; a bad address stops the supervisor here.
+  // ingest route, and commands come from there; a bad address stops the supervisor here. It signs
+  // in with the rig's own key, which control learns from the supervisor's figures.
   const natsUrl = busUrl(env);
-  const bus = natsUrl ? natsBus(natsUrl, `supervisor ${rig}`) : undefined;
+  const key = natsUrl ? busKey(home) : undefined;
+  const bus =
+    natsUrl && key
+      ? natsBus(natsUrl, `supervisor ${rig}`, {
+          seed: key.seed,
+          inboxPrefix: rigInboxPrefix(rig),
+        })
+      : undefined;
   if (natsUrl)
     log("supervisor", "reports and commands go over the message bus", {
       bus: new URL(natsUrl).host,
     });
-  // A full reset keeps the tunnel's keys and enrollment: control's trust in the pod stays.
+  // A full reset keeps the tunnel's keys and enrollment, and the rig's key on the bus: control's
+  // trust in the rig stays.
   const keepOnWipe = new Set(
     (pull?.dirs ?? []).filter((d) => dirname(d) === home).map((d) => basename(d)),
   );
+  keepOnWipe.add(BUS_KEY_FILE);
   const remote = env.THERMITE_RESULTS_REMOTE || undefined;
   const sshKeyFile = env.THERMITE_RESULTS_KEY_FILE || undefined;
   const knownHostsFile = env.THERMITE_RESULTS_KNOWN_HOSTS || undefined;
@@ -263,6 +275,62 @@ async function main(): Promise<void> {
   // The rig's settings and which advisors decide, from and to the harness.
   const harnessLink = harnessAdvisors(harnessUrl, harnessToken);
   const { tell: tellAdvisors, retell } = harnessLink;
+
+  // The supervisor's figures for control, its regular call: git sync, advisors, relay.
+  const figures = () => ({
+    at: new Date().toISOString(),
+    relay: { cursor: state.cursor },
+    export: {
+      remote: Boolean(remote),
+      to: remote ? "repository" : uploadToControl ? "control" : "none",
+      exports: exportState.done.length,
+      pushed: exportState.pushed ?? [],
+      pushed_commit: exportState.pushedCommit ?? null,
+      last_push_at: exportState.lastPushAt ?? null,
+      uploaded: uploadState.uploaded.slice(-50),
+      last_upload_at: uploadState.lastUploadAt ?? null,
+      // What has not left the rig: exports not yet taken from the outbox, and those taken
+      // but not yet pushed (or sent to control).
+      waiting:
+        notYetExported(exportCfg.outboxDir, exportState) +
+        (remote
+          ? (exportState.unpushed?.length ?? 0)
+          : uploadToControl
+            ? uploadState.queue.length
+            : 0),
+      champions_waiting: championQueue.length,
+      last_error:
+        ((!remote && uploadState.lastError) || exportState.lastError)?.slice(0, 900) ?? null,
+    },
+    models: models.list(),
+    advisors: advisors
+      ? {
+          ...adviseState.stats,
+          // Which roles are configured and on, so control can say whether an audit will be
+          // decided.
+          roles: {
+            teachers: harnessLink.last().teachers ? advisors.teachers.length : 0,
+            merged_by: harnessLink.last().teachers && Boolean(advisors.merged_by),
+            auditor: harnessLink.last().auditor && Boolean(advisors.auditor),
+            review_panel: harnessLink.last().review ? advisors.review_panel.length : 0,
+          },
+          // What the rig's advisors file sets up for each role, so that Edit rig can say what
+          // an advisor with no model from control uses (goal 074). No key, token or address.
+          // With no advisor from the file or from control, `advisors` is null: none in it.
+          file: advisorsFileReport(fileAdvisors),
+        }
+      : null,
+    // The rig's key on the bus, its public part: control gives it a user.
+    ...busKeyFigure(key),
+  });
+
+  // With the bus, the figures go once now, before the first report: control gives the rig's key
+  // its user, and the reports and commands on the bus need it.
+  if (bus)
+    await toControl("/supervisor", figures()).catch((err) =>
+      log("supervisor", "control report error", { error: String(err) }, "error"),
+    );
+
   // How often the pause between advisor rounds looks for a new owner's message to the teachers.
   const ownerCheckMs = 5000;
   // Advisors run on their own: a teacher round can take many minutes.
@@ -588,51 +656,7 @@ async function main(): Promise<void> {
       championQueue = left;
     }
     try {
-      // Supervisor figures for control: git sync, advisors, relay.
-      const answer = await toControl("/supervisor", {
-        at: new Date().toISOString(),
-        relay: { cursor: state.cursor },
-        export: {
-          remote: Boolean(remote),
-          to: remote ? "repository" : uploadToControl ? "control" : "none",
-          exports: exportState.done.length,
-          pushed: exportState.pushed ?? [],
-          pushed_commit: exportState.pushedCommit ?? null,
-          last_push_at: exportState.lastPushAt ?? null,
-          uploaded: uploadState.uploaded.slice(-50),
-          last_upload_at: uploadState.lastUploadAt ?? null,
-          // What has not left the rig: exports not yet taken from the outbox, and those taken
-          // but not yet pushed (or sent to control).
-          waiting:
-            notYetExported(exportCfg.outboxDir, exportState) +
-            (remote
-              ? (exportState.unpushed?.length ?? 0)
-              : uploadToControl
-                ? uploadState.queue.length
-                : 0),
-          champions_waiting: championQueue.length,
-          last_error:
-            ((!remote && uploadState.lastError) || exportState.lastError)?.slice(0, 900) ?? null,
-        },
-        models: models.list(),
-        advisors: advisors
-          ? {
-              ...adviseState.stats,
-              // Which roles are configured and on, so control can say whether an audit will be
-              // decided.
-              roles: {
-                teachers: harnessLink.last().teachers ? advisors.teachers.length : 0,
-                merged_by: harnessLink.last().teachers && Boolean(advisors.merged_by),
-                auditor: harnessLink.last().auditor && Boolean(advisors.auditor),
-                review_panel: harnessLink.last().review ? advisors.review_panel.length : 0,
-              },
-              // What the rig's advisors file sets up for each role, so that Edit rig can say what
-              // an advisor with no model from control uses (goal 074). No key, token or address.
-              // With no advisor from the file or from control, `advisors` is null: none in it.
-              file: advisorsFileReport(fileAdvisors),
-            }
-          : null,
-      });
+      const answer = await toControl("/supervisor", figures());
       // On the bus, control's answer names its place in the rig's events: after a page it
       // refused, the reports go back there.
       const healed = bus ? healCursor(state, answer) : state;

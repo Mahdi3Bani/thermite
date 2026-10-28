@@ -13,6 +13,8 @@ import { POD_CONFIG_ENV } from "../core/tunnel.ts";
 import { type BuildInfo, buildFromHeaders, buildInfo } from "../core/version.ts";
 import { rigModels, setRigModel } from "./agent-models.ts";
 import { runRoutes } from "./api/runs.ts";
+import { supervisorRoutes } from "./api/supervisor.ts";
+import type { BusUsers } from "./bus/users.ts";
 import {
   CampaignContextBody,
   campaignContextAnswer,
@@ -39,7 +41,7 @@ import { CopyCampaignBody, copyACampaign, copyCampaignAnswer } from "./copy-camp
 import { Credential, newToken } from "./credential.ts";
 import { createDashboard } from "./dashboard.ts";
 import { ExportFiles, mountExports } from "./exports.ts";
-import { reportPlace, takeReport } from "./ingest.ts";
+import { takeReport } from "./ingest.ts";
 import { cancelCommand, issueWaking, pendingFor, propagateChampion, WakeRefused } from "./issue.ts";
 import { addKit, kitAnswer, kitsAnswer } from "./kit-add.ts";
 import { KIT_BUNDLE_MAX, type KitRepos } from "./kit-repos.ts";
@@ -50,14 +52,12 @@ import { mountMcp } from "./mcp.ts";
 import { mountMcpServerRoutes } from "./mcp-server-routes.ts";
 import type { McpServers } from "./mcp-servers.ts";
 import { metricsText } from "./metrics.ts";
-import { modelSteps } from "./model-steps.ts";
 import { controlParts } from "./parts.ts";
 import { cappedWindow, claudeModelName, isOpencodeOwn, providerBase } from "./providers.ts";
 import { copiedFromRecords, untriedOf } from "./queue-copy.ts";
 import type { probeRepository, readKitManifest } from "./repo-probe.ts";
 import { resultsLeft } from "./results-left.ts";
 import {
-  AdvisorsFileSchema,
   neededHarness,
   RigModelBody,
   rigModelAnswer,
@@ -156,92 +156,6 @@ const IssueBody = z.object({
     .default(60),
 });
 
-/**
- * What a supervisor may say about itself: numbers and short strings only (it is unsigned). A field
- * this control does not know, at any level, is dropped, never stored or shown: a newer supervisor
- * that reports more still has the rest of its figures taken (goal 012). The fields it knows keep
- * their checks.
- */
-const Count = z.number().finite().min(0).max(1e12);
-const Bytes = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
-const Short = z.string().max(1000);
-const ExportNames = z.array(z.string().regex(/^[0-9A-Za-z-]{1,80}$/)).max(50);
-const SupervisorStats = z.object({
-  at: Short,
-  relay: z.object({ cursor: Count }).optional(),
-  export: z
-    .object({
-      remote: z.boolean(),
-      /** Where its exports go: the results repository, control, or nowhere off the rig. */
-      to: z.enum(["repository", "control", "none"]).optional(),
-      exports: Count,
-      pushed: ExportNames,
-      pushed_commit: z
-        .string()
-        .regex(/^[0-9a-f]{40,64}$/)
-        .nullable()
-        .optional(),
-      last_push_at: Short.nullable(),
-      /** The newest exports it sent to control in full. */
-      uploaded: ExportNames.optional(),
-      last_upload_at: Short.nullable().optional(),
-      /** Exports on the rig that have not left it yet, and champion patches not yet on control. */
-      waiting: Count.optional(),
-      champions_waiting: Count.optional(),
-      last_error: Short.nullable(),
-    })
-    .optional(),
-  /** Model files it downloads or downloaded for the harness (model-download.ts), newest first. */
-  models: z
-    .array(
-      z.object({
-        name: z.string().max(200),
-        path: Short,
-        sha256: z.string().regex(/^[0-9a-f]{64}$/),
-        from: z.string().max(300),
-        state: z.enum(["downloading", "done", "refused", "failed"]),
-        bytes: Bytes,
-        total: Bytes.nullable(),
-        resumed_from: Bytes,
-        started_at: Short,
-        updated_at: Short,
-        error: Short.optional(),
-        run: z.string().max(80).optional(),
-      }),
-    )
-    .max(20)
-    .optional(),
-  advisors: z
-    .object({
-      teacher_runs: Count,
-      directive_sets: Count,
-      directives: Count,
-      audits: Count,
-      reviews: Count,
-      errors: Count,
-      tokens_in: Count,
-      tokens_out: Count,
-      usd: Count,
-      last_error: Short.optional(),
-      /** Which advisor roles the rig has configured (so control knows if an auditor decides). */
-      roles: z
-        .object({
-          teachers: Count,
-          merged_by: z.boolean(),
-          auditor: z.boolean(),
-          review_panel: Count,
-        })
-        .optional(),
-      /**
-       * What the rig's advisors file sets up for each role (goal 074): Edit rig says what an
-       * advisor with no model from control uses. A malformed one is dropped, not the report.
-       */
-      file: AdvisorsFileSchema.optional().catch(undefined),
-    })
-    .nullable()
-    .optional(),
-});
-
 const AckBody = z.object({
   status: z.enum(["delivered", "rejected", "failed"]),
   outcome: z.unknown(),
@@ -310,6 +224,8 @@ export interface ControlOptions {
   mcpServers?: McpServers | undefined;
   /** Updates of rigs to control's version from their pages (tests give their own, with short waits). */
   rigUpdates?: RigUpdates | undefined;
+  /** The message bus's users, when control runs the bus: a rig's new key gets its user there. */
+  busUsers?: BusUsers | undefined;
 }
 
 export function createControlApi(
@@ -463,17 +379,8 @@ export function createControlApi(
     },
   );
 
-  // The supervisor's own figures and its daily report (unsigned: the supervisor reports itself).
-  // A model download that starts or ends is a step in the rig's history.
-  app.post("/v1/rigs/:rig/supervisor", rigAuth, bodyLimit({ maxSize: 256 * 1024 }), async (c) => {
-    const rig = c.req.param("rig");
-    const stats = SupervisorStats.parse(await jsonBody(c.req));
-    const before = store.supervisor(rig)?.models;
-    store.setSupervisor(rig, stats);
-    for (const s of modelSteps(before, stats.models))
-      store.rigSetupEvent(rig, s.step, s.ok, s.detail);
-    return c.json({ ok: true, reports: reportPlace(store, rig) });
-  });
+  // The supervisor's own figures, with its key on the bus (api/supervisor.ts).
+  supervisorRoutes(app, rigAuth, { store, busUsers: opts.busUsers });
 
   // The live view: the harness's signed lines, and the supervisor's own (live-in.ts).
   app.post("/v1/rigs/:rig/live", rigAuth, bodyLimit({ maxSize: 4 * 1024 * 1024 }), async (c) => {
