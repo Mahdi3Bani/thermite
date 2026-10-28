@@ -1,13 +1,14 @@
 import {
   championValues,
   championWords,
+  currentChampion,
   figure,
   type MetricValues,
   pairWords,
+  type RunView,
   valuesByCase,
   valuesWords,
-} from "../../metric-values.ts";
-import { currentChampion, type RunView } from "../../views/index.ts";
+} from "../../views/index.ts";
 import { signed } from "../words/index.ts";
 import { esc, infoLabel } from "./index.ts";
 

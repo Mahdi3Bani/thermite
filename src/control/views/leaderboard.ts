@@ -1,7 +1,7 @@
-import { championValues } from "../metric-values.ts";
 import type { ControlStore } from "../store/index.ts";
 import { rigView } from "./cache.ts";
 import { currentChampion } from "./facts.ts";
+import { championValues } from "./metric-values.ts";
 
 export interface LeaderEntry {
   rig: string;

@@ -1,9 +1,9 @@
 import type { Hardware } from "../../core/hardware.ts";
 import type { RigSettings } from "../../core/rig-settings.ts";
-import type { MetricValues } from "../metric-values.ts";
 import type { RunpodRigView } from "../runpod/index.ts";
 import type { RigVersions } from "../versions.ts";
 import type { GoalChecks, GoalValues, RigCheckView } from "./fold/index.ts";
+import type { MetricValues } from "./metric-values.ts";
 import type { ReportingState, RigModelView } from "./report.ts";
 import type {
   HypothesisView,

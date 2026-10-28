@@ -16,6 +16,15 @@ export { runDirections } from "./directions.ts";
 export { championsInForce, currentChampion, runCampaign } from "./facts.ts";
 export { foldCheck, type RigCheckView } from "./fold/index.ts";
 export { type LeaderEntry, leaderboard } from "./leaderboard.ts";
+export type { MetricValues } from "./metric-values.ts";
+export {
+  championValues,
+  championWords,
+  figure,
+  pairWords,
+  valuesByCase,
+  valuesWords,
+} from "./metric-values.ts";
 export {
   OFFLINE_AFTER_MS,
   type ReportingState,
