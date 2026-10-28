@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ResearchContract } from "../../core/contract.ts";
 import { MEASURES_NOTHING, questionLabel } from "../../core/research-check.ts";
+import type { ClaimRow } from "../ledger/claims.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
 import { checkCited } from "./checks.ts";
 import { registrableDomain } from "./fetcher.ts";
@@ -166,19 +167,6 @@ export function cardHistory(ledger: Ledger, run: string, question: number): Card
   ).map(cardOfRow);
 }
 
-/** How many verified claims each question of a run has, by question index. */
-export function verifiedByQuestion(ledger: Ledger, run: string): Map<number, number> {
-  return new Map(
-    (
-      ledger.db
-        .prepare(
-          "select question, count(*) as n from claim where run = ? and verified = 1 and question is not null group by question",
-        )
-        .all(run) as Row[]
-    ).map((r) => [Number(r.question), Number(r.n)]),
-  );
-}
-
 /** A claim as a request for cards shows it: its words, its sources' domains, and when. */
 export interface CardClaim {
   id: string;
@@ -321,10 +309,8 @@ export function checkCard(ledger: Ledger, run: string, c: CardInput): string[] {
   });
   // The newest claim the card's request gave: a verified claim of this question.
   if (c.through !== null) {
-    const t = ledger.db
-      .prepare("select question, verified from claim where run = ? and id = ?")
-      .get(run, c.through) as Row | undefined;
-    if (!t || Number(t.verified) !== 1 || t.question === null || Number(t.question) !== c.question)
+    const t = ledger.claims.get(run, c.through);
+    if (!t?.verified || t.question === null || t.question !== c.question)
       problems.push(
         `through ${clip(c.through, 60)} is not a verified claim of question ${c.question + 1} (index ${c.question}): post back the through the request gave`,
       );
@@ -344,24 +330,20 @@ const withoutQuestion = (c: Card): Omit<Card, "question"> => ({
 });
 
 /** A claim of the run, with its sources' domains, for a request. */
-function claimFor(ledger: Ledger, run: string, cl: Row, min: number): CardClaim {
+function claimFor(ledger: Ledger, run: string, cl: ClaimRow, min: number): CardClaim {
   const ids = [...new Set(list<{ source: string }>(cl.quotes).map((q) => q.source))];
   const domains = new Set<string>();
   for (const id of ids) {
-    const d = (
-      ledger.db.prepare("select domain from source where run = ? and id = ?").get(run, id) as
-        | { domain: string }
-        | undefined
-    )?.domain;
+    const d = ledger.sources.get(run, id)?.domain;
     // Registrable domains, as the review package and the report count them: one owner, one domain.
     if (d) domains.add(registrableDomain(d));
   }
   return {
-    id: String(cl.id),
-    text: String(cl.text),
+    id: cl.id,
+    text: cl.text,
     domains: [...domains],
     corroborated: domains.size >= min,
-    at: String(cl.created_at),
+    at: cl.created_at,
   };
 }
 
@@ -392,29 +374,13 @@ export class Cards {
       )
       .get(CARD_WRITTEN, run, question) as { through: string } | undefined;
     if (!r) return undefined;
-    const cl = this.ledger.db
-      .prepare("select created_at from claim where run = ? and id = ?")
-      .get(run, r.through) as { created_at: string } | undefined;
+    const cl = this.ledger.claims.get(run, r.through);
     return cl ? { at: cl.created_at, id: r.through } : undefined;
   }
 
   /** A question's verified claims after its cursor, the oldest first. */
-  private newClaims(run: string, question: number): Row[] {
-    const from = this.cursor(run, question);
-    return (
-      from
-        ? this.ledger.db
-            .prepare(
-              `select * from claim where run = ? and question = ? and verified = 1
-                 and (created_at > ? or (created_at = ? and id > ?)) order by created_at, id`,
-            )
-            .all(run, question, from.at, from.at, from.id)
-        : this.ledger.db
-            .prepare(
-              "select * from claim where run = ? and question = ? and verified = 1 order by created_at, id",
-            )
-            .all(run, question)
-    ) as Row[];
+  private newClaims(run: string, question: number): ClaimRow[] {
+    return this.ledger.claims.verifiedAfter(run, question, this.cursor(run, question));
   }
 
   /** The newest refusal of a card for a question, when it came after the question's card. */
@@ -432,7 +398,7 @@ export class Cards {
   package(run: string, now = Date.now()): CardsPackage | undefined {
     const contract = this.contract(run);
     const min = contract.quality.min_independent_sources;
-    const counts = verifiedByQuestion(this.ledger, run);
+    const counts = this.ledger.claims.verifiedByQuestion(run);
     const items = contract.questions.flatMap((text, index) => {
       const fresh = this.newClaims(run, index);
       if (!fresh.length) return [];
@@ -447,9 +413,7 @@ export class Cards {
         return [];
       const cited = card
         ? card.claims.flatMap((id) => {
-            const cl = this.ledger.db
-              .prepare("select * from claim where run = ? and id = ?")
-              .get(run, id) as Row | undefined;
+            const cl = this.ledger.claims.get(run, id);
             return cl ? [claimFor(this.ledger, run, cl, min)] : [];
           })
         : [];
@@ -630,7 +594,7 @@ export function briefCards(
   contract: Pick<ResearchContract, "questions">,
 ): string {
   const cards = new Map(cardsOf(ledger, run).map((c) => [c.question, c]));
-  const counts = verifiedByQuestion(ledger, run);
+  const counts = ledger.claims.verifiedByQuestion(run);
   const lines = [
     "Answer cards: the run's current answer to each question, which the synthesizer writes from verified claims and code checks. You add claims; you never edit a card. Fill a card's open evidence gaps first. Each card is whole in cards/q<index>.md of the research folder.",
   ];
@@ -737,7 +701,7 @@ export function answersSection(
   fence: (s: string) => string,
 ): string[] {
   const cards = new Map(cardsOf(ledger, run).map((c) => [c.question, c]));
-  const counts = verifiedByQuestion(ledger, run);
+  const counts = ledger.claims.verifiedByQuestion(run);
   const lines = [
     "## Answers",
     "",

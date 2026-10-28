@@ -29,6 +29,8 @@ import {
 } from "../../core/research-check.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import { countsText, type Knowledge } from "../knowledge.ts";
+import type { HypothesisRow } from "../ledger/hypotheses.ts";
+import type { LaneFileChange } from "../ledger/lane-files.ts";
 import type { Ledger } from "../ledger.ts";
 import { cardFile, cardHistory } from "./cards.ts";
 
@@ -64,8 +66,6 @@ export const NEXT_EXPERIMENTS_FILE = "next-experiments.json";
  * lane's files are saved in the harness's state when each trial ends (they survive a restart),
  * recorded in the ledger (who wrote what, and when), and shown to the other lanes under lanes/.
  */
-
-type Row = Record<string, unknown>;
 
 const SAFE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
@@ -190,10 +190,6 @@ export class ResearchFolder {
     return folderRootOf(this.scratchRoot, run);
   }
 
-  private all(sql: string, ...p: string[]): Row[] {
-    return this.ledger.db.prepare(sql).all(...p) as Row[];
-  }
-
   private once(run: string, path: string, make: () => string | Buffer): void {
     const done = this.written.get(run) ?? new Set<string>();
     this.written.set(run, done);
@@ -242,13 +238,13 @@ export class ResearchFolder {
         ]
       : [];
 
-    const sources = this.all("select * from source where run = ? order by fetched_at", run);
-    const urlOf = new Map(sources.map((s) => [String(s.id), String(s.url)]));
+    const sources = this.ledger.sources.list(run);
+    const urlOf = new Map(sources.map((s) => [s.id, s.url]));
     for (const s of sources)
       this.once(run, join(root, "sources", `${s.id}.txt`), () => {
         let text = "";
         try {
-          text = readFileSync(String(s.text_path), "utf8");
+          text = readFileSync(s.text_path, "utf8");
         } catch {
           text = "(the archived text is missing)";
         }
@@ -265,20 +261,20 @@ export class ResearchFolder {
       });
 
     const questions = contract.questions ?? [];
-    const claims = this.all("select * from claim where run = ? order by created_at", run);
+    const claims = this.ledger.claims.list(run);
     for (const c of claims)
       this.once(run, join(root, "claims", `${c.id}.md`), () => {
-        const quotes = JSON.parse(String(c.quotes)) as {
+        const quotes = JSON.parse(c.quotes) as {
           source: string;
           quote: string;
           resolved_from?: string;
         }[];
         const problems = list(c.problems);
-        const q = c.question === null ? undefined : Number(c.question);
+        const q = c.question === null ? undefined : c.question;
         return [
-          `# Claim ${c.id}: ${Number(c.verified) === 1 ? "verified" : "draft"}`,
+          `# Claim ${c.id}: ${c.verified ? "verified" : "draft"}`,
           "",
-          String(c.text),
+          c.text,
           "",
           ...(q !== undefined
             ? [`${questionLabel(q)}: ${questions[q] ?? "(no such question)"}`]
@@ -300,21 +296,21 @@ export class ResearchFolder {
         ].join("\n");
       });
 
-    const findings = this.all("select * from finding where run = ? order by created_at", run);
+    const findings = this.ledger.claims.findings(run);
     for (const f of findings)
       this.once(run, join(root, "findings", `${f.id}.md`), () =>
         [
-          `# Finding ${f.id}: ${Number(f.supported) === 1 ? "supported" : "draft"}`,
+          `# Finding ${f.id}: ${f.supported ? "supported" : "draft"}`,
           "",
-          String(f.text),
+          f.text,
           "",
           "## Summary",
           "",
-          String(f.summary),
+          f.summary,
           "",
           "## Why it matters",
           "",
-          String(f.why_it_matters),
+          f.why_it_matters,
           "",
           "## Supporting claims",
           "",
@@ -330,25 +326,24 @@ export class ResearchFolder {
 
     // The author's first, then promoted ones, the pool, merged and retired (goal 117); each file
     // follows its hypothesis's revisions.
-    const rank = (s: unknown) => {
-      const i = HYPOTHESIS_ORDER.indexOf(String(s));
+    const rank = (s: string) => {
+      const i = HYPOTHESIS_ORDER.indexOf(s);
       return i < 0 ? HYPOTHESIS_ORDER.length : i;
     };
-    const hypotheses = this.all(
-      "select * from hypothesis where run = ? order by created_at, rowid",
-      run,
-    ).sort((a, b) => rank(a.status) - rank(b.status));
-    const questionOf = (h: Row) =>
-      h.question === null || h.question === undefined
+    const hypotheses = this.ledger.hypotheses
+      .list(run)
+      .sort((a, b) => rank(a.status) - rank(b.status));
+    const questionOf = (h: HypothesisRow) =>
+      h.question === null
         ? "the whole run"
-        : `${questionLabel(Number(h.question))}: ${clipWords(questions[Number(h.question)] ?? "(no such question)", 300)}`;
+        : `${questionLabel(h.question)}: ${clipWords(questions[h.question] ?? "(no such question)", 300)}`;
     for (const h of hypotheses)
       this.changed(
         join(root, "hypotheses", `${h.id}.md`),
         [
-          `# Hypothesis ${h.id}: ${hypothesisStatusWords(String(h.status), h.merged_into === null ? null : String(h.merged_into))}`,
+          `# Hypothesis ${h.id}: ${hypothesisStatusWords(h.status, h.merged_into)}`,
           "",
-          String(h.text),
+          h.text,
           "",
           `About: ${questionOf(h)}`,
           `Supporting verified claims: ${list(h.supporting).join(", ") || "none"}`,
@@ -360,13 +355,13 @@ export class ResearchFolder {
         ].join("\n"),
       );
 
-    const notes = this.all("select * from note where run = ? order by id", run);
+    const notes = this.ledger.claims.notes(run);
     for (const n of notes)
       this.once(run, join(root, "notes", `note-${String(n.id).padStart(5, "0")}.md`), () =>
         [
           `# Note ${n.id}`,
           "",
-          String(n.text),
+          n.text,
           "",
           `Sources: ${list(n.sources).join(", ") || "none"}`,
           `Recorded: ${n.created_at} by ${n.lane ?? "research"}`,
@@ -374,7 +369,7 @@ export class ResearchFolder {
         ].join("\n"),
       );
 
-    const verified = claims.filter((c) => Number(c.verified) === 1).length;
+    const verified = claims.filter((c) => c.verified).length;
     if (!research) {
       // A hill-climb or goal run: what its trials recorded, and past research.
       this.changed(
@@ -398,12 +393,10 @@ export class ResearchFolder {
     }
 
     // Each question's answer card (goal 117), whole, with its earlier versions: cards/q<index>.md.
-    const claimText = new Map(claims.map((c) => [String(c.id), String(c.text)]));
+    const claimText = new Map(claims.map((c) => [c.id, c.text]));
     const cardRows = questions.map((_, i) => cardHistory(this.ledger, run, i));
     const verifiedOf = (i: number) =>
-      claims.filter(
-        (c) => Number(c.verified) === 1 && c.question !== null && Number(c.question) === i,
-      ).length;
+      claims.filter((c) => c.verified && c.question !== null && c.question === i).length;
     for (const [i, history] of cardRows.entries())
       this.changed(
         join(root, cardPath(i)),
@@ -412,17 +405,14 @@ export class ResearchFolder {
         ),
       );
 
-    const sections = this.all("select * from report_section where run = ? order by name", run);
+    const sections = this.ledger.reports.sections(run);
     for (const s of sections)
       this.changed(
-        join(root, sectionPath(String(s.name))),
+        join(root, sectionPath(s.name)),
         `# ${s.name}\n\n${s.body}\n\nUpdated: ${s.updated_at} by ${s.updated_by}\n`,
       );
 
-    const report = this.all(
-      "select kind, body, created_at from report_version where run = ? order by id desc limit 1",
-      run,
-    )[0];
+    const report = this.ledger.reports.newest(run);
     this.changed(
       join(root, "REPORT.md"),
       report
@@ -450,13 +440,7 @@ export class ResearchFolder {
         : [];
 
     // The newest state of each file each lane wrote.
-    const files = this.all(
-      `select f.lane, f.path, f.bytes, f.recorded_at from research_file f
-        where f.run = ? and f.change = 'written' and f.id = (
-          select max(g.id) from research_file g where g.run = f.run and g.lane = f.lane and g.path = f.path)
-        order by f.lane, f.path`,
-      run,
-    );
+    const files = this.ledger.laneFiles.current(run, "path");
     this.changed(
       join(root, "INDEX.md"),
       [
@@ -471,7 +455,7 @@ export class ResearchFolder {
         "",
         ...questions.map(
           (q, i) =>
-            `- ${questionLabel(i)}: ${q.replace(/\n/g, "\n  ")} (${claims.filter((c) => Number(c.verified) === 1 && Number(c.question) === i).length} verified claims)`,
+            `- ${questionLabel(i)}: ${q.replace(/\n/g, "\n  ")} (${claims.filter((c) => c.verified && Number(c.question) === i).length} verified claims)`,
         ),
         "",
         "## What is here",
@@ -481,7 +465,7 @@ export class ResearchFolder {
         ...briefLine,
         `- sources/: ${sources.length} archived pages as text, one file each (claims quote these words)`,
         `- claims/: ${claims.length} claims, ${verified} verified and ${claims.length - verified} drafts (the first line says which)`,
-        `- findings/: ${findings.length} findings (${findings.filter((f) => Number(f.supported) === 1).length} supported)`,
+        `- findings/: ${findings.length} findings (${findings.filter((f) => f.supported).length} supported)`,
         `- hypotheses/: ${hypotheses.length} (${hypotheses.filter((h) => REQUIRED_HYPOTHESES.some((s) => s === h.status)).length} that need a verdict, ${hypotheses.filter((h) => h.status === "pool").length} in the pool)`,
         `- notes/: ${notes.length}`,
         `- report/: ${sections.length} report sections`,
@@ -505,7 +489,7 @@ export class ResearchFolder {
         ...(findings.length
           ? findings.map(
               (f) =>
-                `- ${f.id} (${Number(f.supported) === 1 ? "supported" : "draft"}): ${String(f.text).replace(/\s+/g, " ").slice(0, 300)}`,
+                `- ${f.id} (${f.supported ? "supported" : "draft"}): ${f.text.replace(/\s+/g, " ").slice(0, 300)}`,
             )
           : ["None yet."]),
         "",
@@ -516,7 +500,7 @@ export class ResearchFolder {
         ...(hypotheses.length
           ? hypotheses.map(
               (h) =>
-                `- ${h.id} (${hypothesisStatusWords(String(h.status), h.merged_into === null ? null : String(h.merged_into))}; ${h.question === null ? "the whole run" : questionLabel(Number(h.question))}): ${clipWords(String(h.text), 300)}`,
+                `- ${h.id} (${hypothesisStatusWords(h.status, h.merged_into)}; ${h.question === null ? "the whole run" : questionLabel(h.question)}): ${clipWords(h.text, 300)}`,
             )
           : ["None yet."]),
         "",
@@ -637,16 +621,13 @@ export class ResearchFolder {
         clipped: text.length > KB_BODY_MAX,
       });
     }
-    const at = new Date().toISOString();
+    const changes: LaneFileChange[] = [];
     let written = 0;
     let removed = 0;
     this.ledger.tx(() => {
-      const add = this.ledger.db.prepare(
-        "insert into research_file (run, lane, trial, path, change, bytes, sha256, recorded_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
-      );
       for (const [rel, f] of now) {
         if (before[rel]?.sha256 === f.sha256) continue;
-        add.run(run, lane, trial, rel, "written", f.bytes, f.sha256, at);
+        changes.push({ path: rel, change: "written", bytes: f.bytes, sha256: f.sha256 });
         written++;
         const doc = docs.get(rel);
         if (doc)
@@ -663,7 +644,7 @@ export class ResearchFolder {
       }
       for (const [rel, f] of Object.entries(before)) {
         if (now.has(rel)) continue;
-        add.run(run, lane, trial, rel, "removed", null, null, at);
+        changes.push({ path: rel, change: "removed", bytes: null, sha256: null });
         removed++;
         if (f.doc)
           this.ledger.appendEvent(lane, "research_doc", run, {
@@ -673,6 +654,7 @@ export class ResearchFolder {
             change: "removed",
           });
       }
+      this.ledger.laneFiles.record(run, lane, trial, changes);
       if (written || removed)
         this.ledger.appendEvent(lane, "research_files_saved", run, {
           trial,

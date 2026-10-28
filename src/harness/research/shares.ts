@@ -3,7 +3,7 @@ import type { ResearchContract } from "../../core/contract.ts";
 import { questionLabel } from "../../core/research-check.ts";
 import type { Ledger } from "../ledger.ts";
 import type { TaskYield } from "../queue.ts";
-import { type Certainty, cardsOf, rubricOf, verifiedByQuestion } from "./cards.ts";
+import { type Certainty, cardsOf, rubricOf } from "./cards.ts";
 import {
   questionEnded,
   questionSaturated,
@@ -123,7 +123,7 @@ export function researchState(
   const window = Math.max(2, 2 * o.lanes);
   const n = contract.questions.length;
   const cards = new Map(cardsOf(ledger, run).map((c) => [c.question, c]));
-  const counts = verifiedByQuestion(ledger, run);
+  const counts = ledger.claims.verifiedByQuestion(run);
   const standing = standingDecisions(ledger, run);
   const has = (q: unknown): q is number =>
     typeof q === "number" && Number.isInteger(q) && q >= 0 && q < n;

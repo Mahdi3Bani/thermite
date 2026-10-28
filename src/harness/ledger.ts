@@ -7,6 +7,7 @@ import { currentEvent, type EventKind } from "../core/names.ts";
 import { LedgerAttempts } from "./ledger/attempts.ts";
 import { LedgerBuilds } from "./ledger/builds.ts";
 import { LedgerChampions } from "./ledger/champions.ts";
+import { LedgerClaims } from "./ledger/claims.ts";
 import { LedgerCommands } from "./ledger/commands.ts";
 import { LedgerContracts } from "./ledger/contracts.ts";
 import { LedgerDirectives } from "./ledger/directives.ts";
@@ -15,13 +16,17 @@ import { LedgerExperiments } from "./ledger/experiments.ts";
 import { LedgerExports } from "./ledger/exports.ts";
 import { LedgerGoals } from "./ledger/goals.ts";
 import { LedgerHeldOut } from "./ledger/held-out.ts";
+import { LedgerHypotheses } from "./ledger/hypotheses.ts";
 import { LedgerImports } from "./ledger/imports.ts";
 import { LedgerJobs } from "./ledger/jobs.ts";
+import { LedgerLaneFiles } from "./ledger/lane-files.ts";
 import { LedgerMeasurements } from "./ledger/measurements.ts";
 import { migrateLedger } from "./ledger/migrate.ts";
 import { LedgerError, type Row } from "./ledger/part.ts";
+import { LedgerReports } from "./ledger/reports.ts";
 import type { LedgerEvent } from "./ledger/rows.ts";
 import { eventRun, LedgerRuns } from "./ledger/runs.ts";
+import { LedgerSources } from "./ledger/sources.ts";
 import { LedgerTrials } from "./ledger/trials.ts";
 import { LedgerVerdicts } from "./ledger/verdicts.ts";
 
@@ -59,6 +64,11 @@ export class Ledger {
   readonly imports: LedgerImports;
   readonly exports: LedgerExports;
   readonly trials: LedgerTrials;
+  readonly sources: LedgerSources;
+  readonly claims: LedgerClaims;
+  readonly hypotheses: LedgerHypotheses;
+  readonly reports: LedgerReports;
+  readonly laneFiles: LedgerLaneFiles;
   private readonly clock: () => Date;
 
   private constructor(db: DatabaseSync, clock: () => Date) {
@@ -81,6 +91,11 @@ export class Ledger {
     this.imports = new LedgerImports(this, db, clock);
     this.exports = new LedgerExports(this, db, clock);
     this.trials = new LedgerTrials(this, db, clock);
+    this.sources = new LedgerSources(this, db, clock);
+    this.claims = new LedgerClaims(this, db, clock);
+    this.hypotheses = new LedgerHypotheses(this, db, clock);
+    this.reports = new LedgerReports(this, db, clock);
+    this.laneFiles = new LedgerLaneFiles(this, db, clock);
   }
 
   static open(path: string, clock: () => Date = () => new Date()): Ledger {

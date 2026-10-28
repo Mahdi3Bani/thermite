@@ -144,17 +144,7 @@ export function openTrials(ledger: Ledger, facts: FactsOf = NO_FACTS): OpenTrial
     tool_calls: t.tool_calls ?? 0,
     tokens_in: t.tokens_in ?? 0,
     claims:
-      t.mode === "research"
-        ? Number(
-            (
-              ledger.db
-                .prepare(
-                  "select count(*) as n from claim where run = ? and lane = ? and verified = 1 and created_at >= ?",
-                )
-                .get(t.run, t.lane, t.started_at) as { n: number }
-            ).n,
-          )
-        : null,
+      t.mode === "research" ? ledger.claims.countVerifiedOfLane(t.run, t.lane, t.started_at) : null,
     refused_again: refusedAgain(ledger, t),
     ...facts(t.id),
   }));

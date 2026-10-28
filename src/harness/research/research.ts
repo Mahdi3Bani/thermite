@@ -20,6 +20,9 @@ import {
   LIVE_HYPOTHESES,
   questionLabel,
 } from "../../core/research-check.ts";
+import type { ClaimRow, FindingRow } from "../ledger/claims.ts";
+import type { HypothesisRow } from "../ledger/hypotheses.ts";
+import type { SourceRow } from "../ledger/sources.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
 import type { TaskYield } from "../queue.ts";
 import { statusEvents } from "../run-status.ts";
@@ -73,8 +76,6 @@ const BRIEF_POOL = 10;
  *   that no verified claim supports;
  * - the harness owns the clock (running time only): workers cannot end a campaign.
  */
-
-type Row = Record<string, unknown>;
 
 export { normalizeQuote };
 
@@ -185,12 +186,15 @@ export function startingHypotheses(
   return ledger.tx(() =>
     texts.map((text) => {
       const id = `h-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
-      const now = new Date().toISOString();
-      ledger.db
-        .prepare(
-          "insert into hypothesis (id, run, lane, text, supporting, status, created_at, updated_at) values (?, ?, ?, ?, ?, 'author', ?, ?)",
-        )
-        .run(id, run, null, text, canonicalJson([]), now, now);
+      ledger.hypotheses.add({
+        id,
+        run,
+        lane: null,
+        question: null,
+        text,
+        supporting: [],
+        status: "author",
+      });
       ledger.appendEvent(by, "hypothesis_added", run, {
         hypothesis: id,
         lane: null,
@@ -249,11 +253,9 @@ export function setHypothesisStatus(
       `a status change is {"id", "status": "promoted", "pool" or "retired", "reason"}: ${p.error.issues[0]?.path.join(".") || "it"} ${p.error.issues[0]?.message ?? "is not valid"}`,
     );
   const { id, status, reason } = p.data;
-  const h = ledger.db.prepare("select * from hypothesis where run = ? and id = ?").get(run, id) as
-    | Row
-    | undefined;
+  const h = ledger.hypotheses.get(run, id);
   if (!h) throw new LedgerError("not_found", `no hypothesis ${id} in run ${run}`);
-  const from = String(h.status);
+  const from = h.status;
   if (from === "author")
     throw new LedgerError(
       "invalid",
@@ -274,33 +276,26 @@ export function setHypothesisStatus(
     };
   // A retired hypothesis comes back only when no live one repeats it meanwhile.
   if (from === "retired") {
-    const key = foldText(String(h.text));
-    const twin = (
-      ledger.db
-        .prepare(
-          `select id, status, text from hypothesis where run = ? and id != ? and status in (${LIVE_HYPOTHESES.map(() => "?").join(", ")}) order by created_at, rowid`,
-        )
-        .all(run, id, ...LIVE_HYPOTHESES) as Row[]
-    ).find((t) => foldText(String(t.text)) === key);
+    const key = foldText(h.text);
+    const twin = ledger.hypotheses
+      .withStatus(run, LIVE_HYPOTHESES)
+      .find((t) => t.id !== id && foldText(t.text) === key);
     if (twin)
       throw new LedgerError(
         "invalid",
-        `hypothesis ${id}'s words repeat ${String(twin.id)} (${hypothesisStatusWords(String(twin.status))}): change ${String(twin.id)} instead`,
+        `hypothesis ${id}'s words repeat ${twin.id} (${hypothesisStatusWords(twin.status)}): change ${twin.id} instead`,
       );
   }
-  const now = new Date().toISOString();
   ledger.tx(() => {
-    ledger.db
-      .prepare("update hypothesis set status = ?, updated_at = ? where id = ?")
-      .run(status, now, id);
+    ledger.hypotheses.setStatus(id, status);
     ledger.appendEvent(by, HYPOTHESIS_STATUS, run, {
       hypothesis: id,
       status,
       from,
       by,
       reason,
-      question: h.question === null ? null : Number(h.question),
-      text: String(h.text),
+      question: h.question,
+      text: h.text,
     });
   });
   return { hypothesis: id, status, from, changed: true };
@@ -394,29 +389,19 @@ export class Research {
     return f;
   }
 
-  private all(sql: string, ...p: (string | number | null)[]): Row[] {
-    return this.ledger.db.prepare(sql).all(...p) as Row[];
-  }
-
-  private get(sql: string, ...p: (string | number | null)[]): Row | undefined {
-    return this.ledger.db.prepare(sql).get(...p) as Row | undefined;
-  }
-
-  private text(source: Row): string {
-    return readFileSync(String(source.text_path), "utf8");
+  private text(source: SourceRow): string {
+    return readFileSync(source.text_path, "utf8");
   }
 
   async fetch(run: string, lane: string | null, url: string) {
     // Look up the URL in the form it is stored in (no fragment, normalized by URL); not a URL:
     // the fetcher refuses it below.
     const key = archiveUrl(url) ?? url;
-    const existing = this.get("select * from source where run = ? and url = ?", run, key);
+    const existing = this.ledger.sources.atUrl(run, key);
     if (existing) return this.view(existing, "already archived");
     const again = this.refusals.again(run, lane, url, key);
     if (again) return again;
-    const used = Number(
-      this.get("select coalesce(sum(bytes), 0) as n from source where run = ?", run)?.n,
-    );
+    const used = this.ledger.sources.bytes(run);
     if (used >= this.maxCorpusBytes) {
       return { refused: `the corpus is full (${Math.round(used / 1024 ** 2)} MiB archived)` };
     }
@@ -426,31 +411,25 @@ export class Research {
     } catch (err) {
       return this.refusals.refuse(run, lane, url, key, err);
     }
-    const same = this.get("select * from source where run = ? and sha256 = ?", run, f.sha256);
+    const same = this.ledger.sources.withContent(run, f.sha256);
     if (same) return this.view(same, "the same content is already archived under this id", f.links);
     const id = `s-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
     this.ledger.tx(() => {
-      this.ledger.db
-        .prepare(
-          `insert into source (id, run, url, final_url, domain, fetched_at, http_status, content_type, bytes, sha256,
-             title, raw_path, text_path, fetched_by) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          id,
-          run,
-          f.url,
-          f.finalUrl,
-          f.domain,
-          new Date().toISOString(),
-          f.status,
-          f.contentType,
-          f.bytes,
-          f.sha256,
-          f.title,
-          f.rawPath,
-          f.textPath,
-          lane ?? "research",
-        );
+      this.ledger.sources.add({
+        id,
+        run,
+        url: f.url,
+        finalUrl: f.finalUrl,
+        domain: f.domain,
+        status: f.status,
+        contentType: f.contentType,
+        bytes: f.bytes,
+        sha256: f.sha256,
+        title: f.title,
+        rawPath: f.rawPath,
+        textPath: f.textPath,
+        by: lane ?? "research",
+      });
       // Its address, its title and the text that was read (cut to an item's length), so the
       // campaign's folder in the knowledge base holds the source itself, from events alone.
       this.ledger.appendEvent(lane ?? "research", "source_fetched", run, {
@@ -463,7 +442,7 @@ export class Research {
         text: clip(f.text, KB_BODY_MAX),
       });
     });
-    const row = this.get("select * from source where id = ?", id) as Row;
+    const row = this.ledger.sources.get(run, id) as SourceRow;
     this.changed(run);
     return this.view(row, undefined, f.links);
   }
@@ -473,9 +452,9 @@ export class Research {
    * is more, and the links found on it, as many as fit beside the text (goal 117: nothing is cut
    * without a word; the links left out are said, and the frontier keeps them).
    */
-  private view(source: Row, note?: string, links: string[] = []) {
+  private view(source: SourceRow, note?: string, links: string[] = []) {
     const text = this.text(source);
-    const id = String(source.id);
+    const id = source.id;
     const shown: string[] = [];
     let size = 0;
     for (const l of links.slice(0, 60)) {
@@ -486,9 +465,9 @@ export class Research {
     const part = text.slice(0, VIEW_CHARS);
     return {
       source: id,
-      url: String(source.url),
-      title: source.title === null ? null : String(source.title),
-      status: Number(source.http_status),
+      url: source.url,
+      title: source.title,
+      status: source.http_status,
       ...(note ? { note } : {}),
       chars: text.length,
       offset: 0,
@@ -509,7 +488,7 @@ export class Research {
    * answer fits a tool's answer whole, with `next_offset` and where to read on when more is left.
    */
   read(run: string, source: string, offset = 0, length = VIEW_CHARS) {
-    const s = this.get("select * from source where run = ? and id = ?", run, source);
+    const s = this.ledger.sources.get(run, source);
     if (!s) throw new LedgerError("not_found", `no source ${source} in this run`);
     const text = this.text(s);
     const from = Math.max(0, Math.min(text.length, Math.trunc(Number(offset) || 0)));
@@ -517,7 +496,7 @@ export class Research {
     const part = text.slice(from, from + Math.max(1, Math.min(asked, READ_MAX)));
     return {
       source,
-      url: String(s.url),
+      url: s.url,
       chars: text.length,
       offset: from,
       text: part,
@@ -542,14 +521,14 @@ export class Research {
     let seen = 0;
     let size = 0;
     let more = false;
-    for (const s of this.all("select * from source where run = ? order by fetched_at", run)) {
+    for (const s of this.ledger.sources.list(run)) {
       const body = this.text(s);
       const at = body.toLowerCase().indexOf(needle);
       if (at < 0) continue;
       if (seen++ < from) continue;
       const m = {
-        source: String(s.id),
-        url: String(s.url),
+        source: s.id,
+        url: s.url,
         excerpt: body.slice(Math.max(0, at - 200), at + 300),
       };
       const len = JSON.stringify(m).length;
@@ -582,11 +561,7 @@ export class Research {
     const reason = blocked
       ? `blocked by the search policy (${blocked})`
       : "this rig has no web search: fetch URLs from the seeds and the links of archived sources";
-    this.ledger.db
-      .prepare(
-        "insert into research_query (run, lane, query, allowed, reason, created_at) values (?, ?, ?, ?, ?, ?)",
-      )
-      .run(run, lane, q, 0, reason, new Date().toISOString());
+    this.ledger.sources.recordQuery({ run, lane, query: q, allowed: false, reason });
     return { results: [], note: reason };
   }
 
@@ -600,8 +575,8 @@ export class Research {
   private resolveSource(
     run: string,
     cited: string,
-  ): { row: Row; from?: string | undefined } | { problem: string } {
-    const byId = (id: string) => this.get("select * from source where run = ? and id = ?", run, id);
+  ): { row: SourceRow; from?: string | undefined } | { problem: string } {
+    const byId = (id: string) => this.ledger.sources.get(run, id);
     const said = clip(cited, 200);
     const s = cited.trim();
     const exact = byId(s);
@@ -617,28 +592,20 @@ export class Research {
     }
     const url = /^https?:\/\//i.test(s) ? archiveUrl(s) : undefined;
     if (url) {
-      const rows = this.all(
-        "select id from source where run = ? and (url = ? or final_url = ?) order by fetched_at",
-        run,
-        url,
-        url,
-      );
-      if (rows.length === 1) return { row: byId(String(rows[0]?.id)) as Row, from: cited };
-      if (rows.length > 1)
+      const ids = this.ledger.sources.idsAt(run, url);
+      if (ids.length === 1) return { row: byId(ids[0] as string) as SourceRow, from: cited };
+      if (ids.length > 1)
         return {
-          problem: `no archived source ${said}: that URL is archived as ${rows.length} sources (${rows.map((r) => String(r.id)).join(", ")}); cite the id of the one the quote is from`,
+          problem: `no archived source ${said}: that URL is archived as ${ids.length} sources (${ids.join(", ")}); cite the id of the one the quote is from`,
         };
     }
     // Not archived as written. A URL archived in another form (http for https, without its
     // scheme or "www.", with an end slash) is named, never taken.
     const loose = looseUrl(s);
     const near: { id: string; at: string }[] = [];
-    for (const r of this.all(
-      "select id, url, final_url from source where run = ? order by fetched_at",
-      run,
-    )) {
-      const at = [r.url, r.final_url].find((u) => u !== null && looseUrl(String(u)) === loose);
-      if (at !== undefined) near.push({ id: String(r.id), at: String(at) });
+    for (const r of this.ledger.sources.list(run)) {
+      const at = [r.url, r.final_url].find((u) => looseUrl(u) === loose);
+      if (at !== undefined) near.push({ id: r.id, at });
       if (near.length === 3) break;
     }
     if (near.length)
@@ -661,13 +628,10 @@ export class Research {
     if (c.question === undefined && n > 1) throw new LedgerError("invalid", noQuestion(n));
     const question = research ? this.questionOf(run, c.question ?? 0) : null;
     const key = claimKey(c.text);
-    const same = this.all(
-      "select id, text, verified from claim where run = ? order by verified desc, created_at",
-      run,
-    ).find((r) => claimKey(String(r.text)) === key);
-    if (same && Number(same.verified) === 1) {
+    const same = this.ledger.claims.verifiedFirst(run).find((r) => claimKey(r.text) === key);
+    if (same?.verified) {
       return {
-        claim: String(same.id),
+        claim: same.id,
         verified: true,
         problems: [],
         note: "this claim is already recorded and verified",
@@ -683,7 +647,7 @@ export class Research {
         quotes.push({ source: q.source, quote: q.quote });
         continue;
       }
-      const id = String(s.row.id);
+      const id = s.row.id;
       quotes.push({
         source: id,
         quote: q.quote,
@@ -716,13 +680,12 @@ export class Research {
     // a worker that resubmits it in a loop learns what to change and fills no records.
     if (!verified) {
       const same = canonicalJson(quotes);
-      const before = this.all(
-        "select id, text, quotes from claim where run = ? and verified = 0 order by created_at",
-        run,
-      ).find((r) => claimKey(String(r.text)) === key && String(r.quotes) === same);
+      const before = this.ledger.claims
+        .drafts(run)
+        .find((r) => claimKey(r.text) === key && r.quotes === same);
       if (before)
         return {
-          claim: String(before.id),
+          claim: before.id,
           verified: false,
           problems,
           ...how,
@@ -731,22 +694,17 @@ export class Research {
     }
     const id = `c-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
     this.ledger.tx(() => {
-      this.ledger.db
-        .prepare(
-          "insert into claim (id, run, lane, question, text, quotes, verified, problems, confidence, created_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run(
-          id,
-          run,
-          lane,
-          question,
-          c.text,
-          canonicalJson(quotes),
-          verified ? 1 : 0,
-          canonicalJson(problems),
-          c.confidence ?? null,
-          new Date().toISOString(),
-        );
+      this.ledger.claims.add({
+        id,
+        run,
+        lane,
+        question,
+        text: c.text,
+        quotes,
+        verified,
+        problems,
+        confidence: c.confidence ?? null,
+      });
       // The claim's words and its first quote, bounded: the record of what the source says. Its
       // quotes' sources, and why a draft is one, so the owner sees it as the worker did.
       this.ledger.appendEvent(lane ?? "research", "claim_added", run, {
@@ -785,31 +743,24 @@ export class Research {
     const body = text.trim().slice(0, 4000);
     if (!body) throw new LedgerError("invalid", "a note needs its text");
     const key = foldText(body);
-    const same = this.all(
-      "select id, lane, created_at, text from note where run = ? order by id desc limit ?",
-      run,
-      NOTE_REPEATS,
-    ).find((n) => foldText(String(n.text)) === key);
+    const same = this.ledger.claims
+      .newestNotes(run, NOTE_REPEATS)
+      .find((n) => foldText(n.text) === key);
     if (same)
       throw new LedgerError(
         "invalid",
-        `this note repeats note ${String(same.id)} (by ${String(same.lane ?? "research")}, ${String(same.created_at)}) word for word: it is not recorded again. Record what is new, or go on with the work`,
+        `this note repeats note ${same.id} (by ${same.lane ?? "research"}, ${same.created_at}) word for word: it is not recorded again. Record what is new, or go on with the work`,
       );
     const cited = sources.slice(0, 20);
-    const first = cited.length
-      ? this.get("select url from source where run = ? and id = ?", run, cited[0] as string)
-      : undefined;
+    const first = cited.length ? this.ledger.sources.get(run, cited[0] as string) : undefined;
     const id = this.ledger.tx(() => {
-      const r = this.ledger.db
-        .prepare("insert into note (run, lane, text, sources, created_at) values (?, ?, ?, ?, ?)")
-        .run(run, lane, body, canonicalJson(cited), new Date().toISOString());
-      const id = Number(r.lastInsertRowid);
+      const id = this.ledger.claims.addNote({ run, lane, text: body, sources: cited });
       this.ledger.appendEvent(lane ?? "research", "research_note", run, {
         note: id,
         by: lane ?? "research",
         text: body,
         sources: cited,
-        ...(first ? { url: String(first.url) } : {}),
+        ...(first ? { url: first.url } : {}),
         ...(trial ? { trial } : {}),
       });
       return id;
@@ -831,20 +782,20 @@ export class Research {
   }
 
   /** The run's live hypothesis (the author's, the pool's or promoted) whose words these repeat. */
-  private twinOf(run: string, text: string, except?: string | undefined): Row | undefined {
+  private twinOf(
+    run: string,
+    text: string,
+    except?: string | undefined,
+  ): HypothesisRow | undefined {
     const key = foldText(text);
-    return this.all(
-      `select id, lane, status, text from hypothesis where run = ? and status in (${LIVE_HYPOTHESES.map(() => "?").join(", ")}) order by created_at, rowid`,
-      run,
-      ...LIVE_HYPOTHESES,
-    ).find((h) => String(h.id) !== except && foldText(String(h.text)) === key);
+    return this.ledger.hypotheses
+      .withStatus(run, LIVE_HYPOTHESES)
+      .find((h) => h.id !== except && foldText(h.text) === key);
   }
 
   /** The verified claims of the run among these ids, and the rest. */
   private verifiedAmong(run: string, ids: string[]): { ok: string[]; ignored: string[] } {
-    const known = new Set(
-      this.all("select id from claim where run = ? and verified = 1", run).map((r) => String(r.id)),
-    );
+    const known = new Set(this.ledger.claims.verified(run).map((r) => r.id));
     const unique = [...new Set(ids)];
     return { ok: unique.filter((c) => known.has(c)), ignored: unique.filter((c) => !known.has(c)) };
   }
@@ -871,13 +822,16 @@ export class Research {
     if (twin) throw new LedgerError("invalid", repeatsWords(twin));
     const { ok, ignored } = this.verifiedAmong(run, p.data.supporting);
     const id = `h-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
-    const now = new Date().toISOString();
     this.ledger.tx(() => {
-      this.ledger.db
-        .prepare(
-          "insert into hypothesis (id, run, lane, question, text, supporting, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?, 'pool', ?, ?)",
-        )
-        .run(id, run, lane, question, text, canonicalJson(ok), now, now);
+      this.ledger.hypotheses.add({
+        id,
+        run,
+        lane,
+        question,
+        text,
+        supporting: ok,
+        status: "pool",
+      });
       // So the campaign's folder in the knowledge base holds the run's hypotheses too.
       this.ledger.appendEvent(lane ?? "research", "hypothesis_added", run, {
         hypothesis: id,
@@ -914,10 +868,10 @@ export class Research {
         `a revision is {"id", "text"?, "question"?: the index of a campaign question from 0, or null, "supporting"?: verified claim ids}: ${p.error.issues[0]?.path.join(".") || "it"} ${p.error.issues[0]?.message ?? "is not valid"}`,
       );
     const r = p.data;
-    const h = this.get("select * from hypothesis where run = ? and id = ?", run, r.id.trim());
+    const h = this.ledger.hypotheses.get(run, r.id.trim());
     if (!h) throw new LedgerError("not_found", `no hypothesis ${r.id} in this run`);
-    const id = String(h.id);
-    const status = String(h.status);
+    const id = h.id;
+    const status = h.status;
     if (status === "author")
       throw new LedgerError(
         "invalid",
@@ -934,15 +888,10 @@ export class Research {
         "invalid",
         "a revision needs what changes: text, question or supporting (or more than one)",
       );
-    const text = r.text === undefined ? String(h.text) : r.text.trim().slice(0, HYPOTHESIS_MAX);
+    const text = r.text === undefined ? h.text : r.text.trim().slice(0, HYPOTHESIS_MAX);
     if (!text) throw new LedgerError("invalid", "a hypothesis needs its text");
-    const question =
-      r.question === undefined
-        ? h.question === null
-          ? null
-          : Number(h.question)
-        : this.questionOf(run, r.question);
-    let supporting = JSON.parse(String(h.supporting)) as string[];
+    const question = r.question === undefined ? h.question : this.questionOf(run, r.question);
+    let supporting = JSON.parse(h.supporting) as string[];
     let ignored: string[] = [];
     if (r.supporting !== undefined) {
       const v = this.verifiedAmong(run, r.supporting);
@@ -955,16 +904,11 @@ export class Research {
       ignored = v.ignored;
     }
     const twin = r.text === undefined ? undefined : this.twinOf(run, text, id);
-    const now = new Date().toISOString();
     const by = lane ?? "research";
     if (twin) {
-      const into = String(twin.id);
+      const into = twin.id;
       this.ledger.tx(() => {
-        this.ledger.db
-          .prepare(
-            "update hypothesis set text = ?, question = ?, supporting = ?, status = 'merged', merged_into = ?, updated_at = ? where id = ?",
-          )
-          .run(text, question, canonicalJson(supporting), into, now, id);
+        this.ledger.hypotheses.merge(id, { text, question, supporting }, into);
         this.ledger.appendEvent(by, "hypothesis_merged", run, {
           hypothesis: id,
           into,
@@ -983,17 +927,11 @@ export class Research {
       };
     }
     const same =
-      text === String(h.text) &&
-      question === (h.question === null ? null : Number(h.question)) &&
-      canonicalJson(supporting) === String(h.supporting);
+      text === h.text && question === h.question && canonicalJson(supporting) === h.supporting;
     if (same)
       return { hypothesis: id, status, question, supporting, ignored, note: "nothing changed" };
     this.ledger.tx(() => {
-      this.ledger.db
-        .prepare(
-          "update hypothesis set text = ?, question = ?, supporting = ?, updated_at = ? where id = ?",
-        )
-        .run(text, question, canonicalJson(supporting), now, id);
+      this.ledger.hypotheses.revise(id, { text, question, supporting });
       this.ledger.appendEvent(by, "hypothesis_revised", run, {
         hypothesis: id,
         lane: lane ?? null,
@@ -1032,38 +970,30 @@ export class Research {
     // The same statement again (goal 117): a supported one is kept once; a draft is refused in
     // words, whatever its problems, with the finding it repeats, so a worker that resends it in
     // a loop learns what to change and fills no records. Only a supported one is recorded again.
-    const before = this.all(
-      "select id, text, supported from finding where run = ? order by created_at",
-      run,
-    ).filter((r) => claimKey(String(r.text)) === claimKey(f.text));
-    const kept = before.find((r) => Number(r.supported) === 1);
-    if (kept)
-      return { finding: String(kept.id), supported: true, problems: [], note: KEPT_FINDING };
+    const before = this.ledger.claims
+      .findings(run)
+      .filter((r) => claimKey(r.text) === claimKey(f.text));
+    const kept = before.find((r) => r.supported);
+    if (kept) return { finding: kept.id, supported: true, problems: [], note: KEPT_FINDING };
     const draft = before[0];
     if (draft && !supported)
       throw new LedgerError(
         "invalid",
-        `this finding repeats draft finding ${String(draft.id)} and is not recorded again. It is still a draft: ${problems.join("; ")}. Cite only verified claims and use only numbers they contain, then send it again; or record what you learned as a note (add_note)`,
+        `this finding repeats draft finding ${draft.id} and is not recorded again. It is still a draft: ${problems.join("; ")}. Cite only verified claims and use only numbers they contain, then send it again; or record what you learned as a note (add_note)`,
       );
     const id = `f-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
     this.ledger.tx(() => {
-      this.ledger.db
-        .prepare(
-          `insert into finding (id, run, lane, text, summary, why_it_matters, supporting, supported, problems, created_at)
-           values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          id,
-          run,
-          lane,
-          f.text,
-          f.summary,
-          f.why_it_matters,
-          canonicalJson(cited),
-          supported ? 1 : 0,
-          canonicalJson(problems),
-          new Date().toISOString(),
-        );
+      this.ledger.claims.addFinding({
+        id,
+        run,
+        lane,
+        text: f.text,
+        summary: f.summary,
+        whyItMatters: f.why_it_matters,
+        supporting: cited,
+        supported,
+        problems,
+      });
       // The finding's statement, summary and why it matters, bounded.
       this.ledger.appendEvent(lane ?? "research", "finding_added", run, {
         finding: id,
@@ -1085,14 +1015,11 @@ export class Research {
    * question, and the newest of the pool; the folder lists them all.
    */
   hypothesesBrief(run: string): string {
-    const rows = this.all(
-      "select id, status, question, text from hypothesis where run = ? order by created_at, rowid",
-      run,
-    );
-    const where = (h: Row) =>
-      h.question === null ? "the whole run" : questionLabel(Number(h.question));
-    const line = (h: Row, n: number) =>
-      `- ${String(h.id)} (${hypothesisStatusWords(String(h.status))}; ${where(h)}): ${clip(String(h.text).replace(/\s+/g, " ").trim(), n)}`;
+    const rows = this.ledger.hypotheses.list(run);
+    const where = (h: HypothesisRow) =>
+      h.question === null ? "the whole run" : questionLabel(h.question);
+    const line = (h: HypothesisRow, n: number) =>
+      `- ${h.id} (${hypothesisStatusWords(h.status)}; ${where(h)}): ${clip(h.text.replace(/\s+/g, " ").trim(), n)}`;
     const required = [
       ...rows.filter((h) => h.status === "author"),
       ...rows.filter((h) => h.status === "promoted"),
@@ -1133,41 +1060,28 @@ export class Research {
     const lane = t.lane;
     const since = t.started_at;
     const domainOf = new Map(
-      this.all("select id, domain from source where run = ?", run).map((s) => [
-        String(s.id),
-        registrableDomain(String(s.domain)),
-      ]),
+      this.ledger.sources.ofRun(run).map((s) => [s.id, registrableDomain(s.domain)]),
     );
-    const domainsOf = (quotes: unknown) =>
+    const domainsOf = (quotes: string) =>
       new Set(
-        (JSON.parse(String(quotes)) as { source: string }[]).flatMap((q) => {
+        (JSON.parse(quotes) as { source: string }[]).flatMap((q) => {
           const d = domainOf.get(q.source);
           return d ? [d] : [];
         }),
       );
     // What each question's verified claims cited before the trial started.
     const seen = new Map<number, Set<string>>();
-    for (const c of this.all(
-      "select question, quotes from claim where run = ? and verified = 1 and question is not null and created_at < ?",
-      run,
-      since,
-    )) {
+    for (const c of this.ledger.claims.verifiedBefore(run, since)) {
       const q = Number(c.question);
       seen.set(q, new Set([...(seen.get(q) ?? []), ...domainsOf(c.quotes)]));
     }
     const by = new Map<number, { verified_claims: number; new_domain_claims: number }>();
     let total = 0;
-    for (const c of this.all(
-      "select question, quotes from claim where run = ? and lane = ? and verified = 1 and created_at >= ? and created_at <= ? order by created_at, rowid",
-      run,
-      lane,
-      since,
-      until,
-    )) {
+    for (const c of this.ledger.claims.verifiedOfLane(run, lane, since, until)) {
       total++;
       // A claim from before claims named their question counts in the total only.
       if (c.question === null) continue;
-      const q = Number(c.question);
+      const q = c.question;
       const had = seen.get(q) ?? new Set<string>();
       const ds = domainsOf(c.quotes);
       const fresh = [...ds].some((d) => !had.has(d));
@@ -1178,32 +1092,17 @@ export class Research {
       by.set(q, row);
     }
     const before = new Set(
-      this.all("select domain from source where run = ? and fetched_at < ?", run, since).map((s) =>
-        registrableDomain(String(s.domain)),
-      ),
+      this.ledger.sources.domainsBefore(run, since).map((d) => registrableDomain(d)),
     );
     const fresh = [
       ...new Set(
-        this.all(
-          "select domain from source where run = ? and fetched_by = ? and fetched_at >= ? and fetched_at <= ? order by fetched_at",
-          run,
-          lane,
-          since,
-          until,
-        )
-          .map((s) => registrableDomain(String(s.domain)))
+        this.ledger.sources
+          .domainsFetchedBy(run, lane, since, until)
+          .map((d) => registrableDomain(d))
           .filter((d) => !before.has(d)),
       ),
     ];
-    const findings = Number(
-      this.get(
-        "select count(*) as n from finding where run = ? and lane = ? and supported = 1 and created_at >= ? and created_at <= ?",
-        run,
-        lane,
-        since,
-        until,
-      )?.n ?? 0,
-    );
+    const findings = this.ledger.claims.countFindingsOfLane(run, lane, since, until);
     return {
       verified_claims: total,
       by_question: [...by.entries()]
@@ -1219,12 +1118,7 @@ export class Research {
   updateSection(run: string, by: string | null, name: string, body: string) {
     if (!/^[a-z0-9][a-z0-9 _-]{0,59}$/i.test(name))
       throw new LedgerError("invalid", "section names are short words");
-    this.ledger.db
-      .prepare(
-        `insert into report_section (run, name, body, updated_by, updated_at) values (?, ?, ?, ?, ?)
-         on conflict (run, name) do update set body = excluded.body, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
-      )
-      .run(run, name, body.slice(0, 20_000), by ?? "worker", new Date().toISOString());
+    this.ledger.reports.setSection(run, name, body.slice(0, 20_000), by ?? "worker");
     this.changed(run);
     return { section: name };
   }
@@ -1284,67 +1178,44 @@ export class Research {
     const ids = (JSON.parse(quotesJson) as { source: string }[]).map((q) => q.source);
     const domains = new Set<string>();
     for (const id of ids) {
-      const d = this.get("select domain from source where run = ? and id = ?", run, id)?.domain;
-      if (d !== undefined && d !== null) domains.add(registrableDomain(String(d)));
+      const d = this.ledger.sources.get(run, id)?.domain;
+      if (d !== undefined) domains.add(registrableDomain(d));
     }
     return domains.size;
   }
 
   /** The run's distinct registrable domains (goal 117). */
   private domains(run: string): number {
-    return new Set(
-      this.all("select distinct domain from source where run = ?", run).map((r) =>
-        registrableDomain(String(r.domain)),
-      ),
-    ).size;
+    return new Set(this.ledger.sources.domains(run).map((d) => registrableDomain(d))).size;
   }
 
   stats(run: string) {
     const c = this.contract(run);
-    const n = (sql: string, ...p: (string | number)[]) => Number(this.get(sql, ...p)?.n ?? 0);
+    const { claims, sources } = this.ledger;
     const hourAgo = new Date(Date.now() - 3_600_000).toISOString();
-    const verifiedRows = this.all("select quotes from claim where run = ? and verified = 1", run);
-    const corroborated = verifiedRows.filter(
-      (r) => this.claimDomains(run, String(r.quotes)) >= c.quality.min_independent_sources,
-    ).length;
-    const firstVerified = (i: number) =>
-      this.get(
-        "select min(created_at) as t from claim where run = ? and question = ? and verified = 1",
-        run,
-        i,
-      )?.t;
+    const corroborated = claims
+      .verified(run)
+      .filter((r) => this.claimDomains(run, r.quotes) >= c.quality.min_independent_sources).length;
     return {
-      sources: n("select count(*) as n from source where run = ?", run),
+      sources: sources.count(run),
       domains: this.domains(run),
-      verified: n("select count(*) as n from claim where run = ? and verified = 1", run),
+      verified: claims.count(run, { verified: true }),
       corroborated,
-      drafts: n("select count(*) as n from claim where run = ? and verified = 0", run),
-      hypotheses: n("select count(*) as n from hypothesis where run = ?", run),
-      findings: n("select count(*) as n from finding where run = ? and supported = 1", run),
-      draft_findings: n("select count(*) as n from finding where run = ? and supported = 0", run),
+      drafts: claims.count(run, { verified: false }),
+      hypotheses: this.ledger.hypotheses.count(run),
+      findings: claims.countFindings(run, true),
+      draft_findings: claims.countFindings(run, false),
       questions: c.questions.map((q, i) => ({
         question: q,
-        verified: n(
-          "select count(*) as n from claim where run = ? and question = ? and verified = 1",
-          run,
-          i,
-        ),
+        verified: claims.count(run, { question: i, verified: true }),
       })),
       // Novelty in the last hour: new sources, newly verified claims, newly covered questions.
       last_hour: {
-        sources: n(
-          "select count(*) as n from source where run = ? and fetched_at > ?",
-          run,
-          hourAgo,
-        ),
-        verified: n(
-          "select count(*) as n from claim where run = ? and verified = 1 and created_at > ?",
-          run,
-          hourAgo,
-        ),
+        sources: sources.countSince(run, hourAgo),
+        verified: claims.countVerifiedSince(run, hourAgo),
         questions_covered: c.questions.filter((_, i) => {
-          const t = firstVerified(i);
-          return typeof t === "string" && t > hourAgo;
+          const t = claims.firstVerified(run, i);
+          return t !== undefined && t > hourAgo;
         }).length,
       },
     };
@@ -1374,52 +1245,41 @@ export class Research {
         : undefined;
     const stats = this.stats(run);
     const clock = this.clock(run);
-    const sources = new Map(
-      this.all("select id, url, title, text_path from source where run = ?", run).map((s) => [
-        String(s.id),
-        s,
-      ]),
-    );
-    const claims = this.all(
-      "select * from claim where run = ? and verified = 1 order by created_at",
-      run,
-    );
-    const sections = this.all(
-      "select name, body from report_section where run = ? order by name",
-      run,
-    );
+    const sources = new Map(this.ledger.sources.ofRun(run).map((s) => [s.id, s]));
+    const claims = this.ledger.claims.verified(run);
+    const sections = this.ledger.reports.sections(run);
     // A number in a section is supported only by a verified claim (its text or its quotes).
     const supported = claimNumbers(claims);
     const unsupported: string[] = [];
     for (const s of sections) {
-      for (const num of numbersIn(String(s.body))) {
+      for (const num of numbersIn(s.body)) {
         if (!supported.has(num) && !unsupported.includes(num)) unsupported.push(num);
       }
     }
     const min = c.quality.min_independent_sources;
-    const corroborated = claims.filter((cl) => this.claimDomains(run, String(cl.quotes)) >= min);
-    const single = claims.filter((cl) => this.claimDomains(run, String(cl.quotes)) < min);
-    const cite = (cl: Row) => {
-      const quotes = JSON.parse(String(cl.quotes)) as { source: string; quote: string }[];
+    const corroborated = claims.filter((cl) => this.claimDomains(run, cl.quotes) >= min);
+    const single = claims.filter((cl) => this.claimDomains(run, cl.quotes) < min);
+    const cite = (cl: ClaimRow) => {
+      const quotes = JSON.parse(cl.quotes) as { source: string; quote: string }[];
       return `- ${cl.text} ${[...new Set(quotes.map((q) => sources.get(q.source)?.url).filter(Boolean))].map((u) => `[${u}]`).join(" ")}`;
     };
     // Worker-written text cannot make its own headings: a line starting with # is shown as text.
     const fence = (body: string) => body.replace(/^(\s*)#/gm, "$1\\#");
-    const byId = new Map(claims.map((cl) => [String(cl.id), cl]));
-    const findings = this.all("select * from finding where run = ? order by created_at", run);
-    const supportedFindings = findings.filter((f) => Number(f.supported) === 1);
-    const supportedWords = new Set(supportedFindings.map((f) => claimKey(String(f.text))));
-    const finding = (f: Row) => {
-      const cited = (JSON.parse(String(f.supporting)) as string[])
+    const byId = new Map(claims.map((cl) => [cl.id, cl]));
+    const findings = this.ledger.claims.findings(run);
+    const supportedFindings = findings.filter((f) => f.supported);
+    const supportedWords = new Set(supportedFindings.map((f) => claimKey(f.text)));
+    const finding = (f: FindingRow) => {
+      const cited = (JSON.parse(f.supporting) as string[])
         .map((id) => byId.get(id))
-        .filter((cl): cl is Row => cl !== undefined);
+        .filter((cl): cl is ClaimRow => cl !== undefined);
       const strong = cited.filter((cl) => corroborated.includes(cl)).length;
       return [
-        `### ${fence(String(f.text)).replace(/\n+/g, " ")}`,
+        `### ${fence(f.text).replace(/\n+/g, " ")}`,
         "",
-        fence(String(f.summary)),
+        fence(f.summary),
         "",
-        `Why it matters: ${fence(String(f.why_it_matters))}`,
+        `Why it matters: ${fence(f.why_it_matters)}`,
         "",
         `Supported by ${cited.length} verified claims (${strong} from at least ${min} independent domains):`,
         ...cited.map(cite),
@@ -1461,22 +1321,21 @@ export class Research {
       "",
       "## Draft findings (not supported by verified claims)",
       ...findings
-        .filter((f) => Number(f.supported) !== 1 && !supportedWords.has(claimKey(String(f.text))))
+        .filter((f) => !f.supported && !supportedWords.has(claimKey(f.text)))
         .map(
           (f) =>
-            `- ${fence(String(f.text)).replace(/\n+/g, " ")} (${(JSON.parse(String(f.problems)) as string[]).join("; ")})`,
+            `- ${fence(f.text).replace(/\n+/g, " ")} (${(JSON.parse(f.problems) as string[]).join("; ")})`,
         ),
       "",
       // Those that need a verdict first: the author's, then promoted ones; then the pool and the
       // rest, each with its status and question (goal 117).
       "## Hypotheses",
-      ...this.all(
-        "select id, text, supporting, status, question, merged_into from hypothesis where run = ? order by case status when 'author' then 0 when 'promoted' then 1 when 'pool' then 2 else 3 end, created_at, rowid",
-        run,
-      ).map(
-        (h) =>
-          `- ${fence(String(h.text)).replace(/\n+/g, " ")} (${String(h.id)}, ${hypothesisStatusWords(String(h.status), h.merged_into === null ? null : String(h.merged_into))}; ${h.question === null ? "the whole run" : questionLabel(Number(h.question))}; supported by ${(JSON.parse(String(h.supporting)) as string[]).length} verified claims)`,
-      ),
+      ...this.ledger.hypotheses
+        .byStatus(run)
+        .map(
+          (h) =>
+            `- ${fence(h.text).replace(/\n+/g, " ")} (${h.id}, ${hypothesisStatusWords(h.status, h.merged_into)}; ${h.question === null ? "the whole run" : questionLabel(h.question)}; supported by ${(JSON.parse(h.supporting) as string[]).length} verified claims)`,
+        ),
       "",
       "## Open questions",
       ...stats.questions.flatMap((q, i) =>
@@ -1484,7 +1343,7 @@ export class Research {
       ),
       "",
       "## Worker sections (not verified; only the findings and claims above are checked)",
-      ...sections.flatMap((s) => [`### ${s.name}`, fence(String(s.body)), ""]),
+      ...sections.flatMap((s) => [`### ${s.name}`, fence(s.body), ""]),
       ...(unsupported.length
         ? [
             "",
@@ -1505,9 +1364,7 @@ export class Research {
         ].join("\n")
       : lines.join("\n");
     this.ledger.tx(() => {
-      this.ledger.db
-        .prepare("insert into report_version (run, kind, body, created_at) values (?, ?, ?, ?)")
-        .run(run, kind, body, new Date().toISOString());
+      this.ledger.reports.add(run, kind, body);
       this.ledger.appendEvent(
         "research",
         kind === "final" ? "research_final" : "research_digest",
@@ -1532,11 +1389,7 @@ export class Research {
   }
 
   lastReportAt(run: string): string | undefined {
-    const r = this.get(
-      "select created_at from report_version where run = ? order by id desc limit 1",
-      run,
-    );
-    return r ? String(r.created_at) : undefined;
+    return this.ledger.reports.newest(run)?.created_at;
   }
 
   /**
@@ -1546,28 +1399,23 @@ export class Research {
    * and links with query strings come last (they are usually actions, not documents).
    */
   frontier(run: string, limit = 40): string[] {
-    const have = new Set(
-      this.all("select url from source where run = ?", run).map((r) => String(r.url)),
-    );
+    const have = new Set(this.ledger.sources.ofRun(run).map((r) => r.url));
     const perSource: { domain: string; links: string[] }[] = [];
-    for (const s of this.all(
-      "select raw_path, final_url, sha256, domain from source where run = ? order by fetched_at desc limit 30",
-      run,
-    )) {
+    for (const s of this.ledger.sources.newest(run, 30)) {
       let hrefs: string[] = [];
       try {
         // Links were saved at fetch time; older archives are parsed once more (linear time).
-        const saved = join(String(s.raw_path), "..", `${String(s.sha256)}.links.json`);
+        const saved = join(s.raw_path, "..", `${s.sha256}.links.json`);
         hrefs = existsSync(saved)
           ? (JSON.parse(readFileSync(saved, "utf8")) as string[])
-          : htmlToText(readFileSync(String(s.raw_path), "utf8")).links;
+          : htmlToText(readFileSync(s.raw_path, "utf8")).links;
       } catch {
         continue;
       }
       const links: string[] = [];
       for (const href of hrefs) {
         try {
-          const x = new URL(href, String(s.final_url));
+          const x = new URL(href, s.final_url);
           x.hash = "";
           if (x.protocol.startsWith("http") && !links.includes(x.toString()))
             links.push(x.toString());
@@ -1575,7 +1423,7 @@ export class Research {
           // not a URL
         }
       }
-      perSource.push({ domain: String(s.domain), links });
+      perSource.push({ domain: s.domain, links });
     }
     // Boilerplate: links that more than one archived page of the same site carries.
     const seen = new Map<string, number>();

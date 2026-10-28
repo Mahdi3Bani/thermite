@@ -9,7 +9,7 @@ import {
   PAPER_REQUESTED,
 } from "../../core/research-check.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
-import { type CardGap, cardsOf, verifiedByQuestion } from "./cards.ts";
+import { type CardGap, cardsOf } from "./cards.ts";
 import { checkCited, numbersIn, withoutReferences } from "./checks.ts";
 import {
   claimsAppendix,
@@ -328,9 +328,7 @@ function forNumbers(text: string): string {
 
 /** Whether an id is a verified claim of the run. */
 const verifiedClaim = (ledger: Ledger, run: string, id: string) =>
-  ledger.db
-    .prepare("select 1 from claim where run = ? and id = ? and verified = 1")
-    .get(run, id) !== undefined;
+  ledger.claims.get(run, id)?.verified === true;
 
 /** A number as it may be written: 1200 and 1,200. */
 const spellings = (n: number) => [String(n), n.toLocaleString("en-US")];
@@ -554,12 +552,9 @@ export function checkExperiments(ledger: Ledger, run: string, xs: PaperExperimen
         `${which} rests on no finding or claim: give the ids of the supported findings or verified claims it builds on`,
       );
     for (const f of [...new Set(x.findings)]) {
-      const row = ledger.db
-        .prepare("select supported from finding where run = ? and id = ?")
-        .get(run, f) as { supported: number } | undefined;
+      const row = ledger.claims.finding(run, f);
       if (!row) out.push(`${which}: no finding ${f}`);
-      else if (Number(row.supported) !== 1)
-        out.push(`${which}: finding ${f} is a draft, not supported`);
+      else if (!row.supported) out.push(`${which}: finding ${f} is a draft, not supported`);
     }
     for (const p of checkCited(ledger, run, x.claims, []).problems) out.push(`${which}: ${p}`);
   });
@@ -628,19 +623,17 @@ function figuresNow(
   contract: ResearchContract,
   review: Row | undefined,
 ): PaperFigures {
-  const n = (sql: string) =>
-    Number((ledger.db.prepare(sql).get(run) as { n: number } | undefined)?.n ?? 0);
   const corpus = researchPackage(ledger, run, contract).corpus;
   return {
     sources: corpus.sources,
     domains: corpus.domains,
     verified_claims: corpus.verified_claims,
     corroborated_claims: corpus.corroborated_claims,
-    draft_claims: n("select count(*) as n from claim where run = ? and verified = 0"),
+    draft_claims: ledger.claims.count(run, { verified: false }),
     findings: corpus.findings,
-    draft_findings: n("select count(*) as n from finding where run = ? and supported = 0"),
+    draft_findings: ledger.claims.countFindings(run, false),
     questions: contract.questions.length,
-    hypotheses: n("select count(*) as n from hypothesis where run = ?"),
+    hypotheses: ledger.hypotheses.count(run),
     min_independent_domains: corpus.min_independent_domains,
     review: review ? Number(review.id) : 0,
     reviewers: review ? checkedPanel(review).length : 0,
@@ -774,17 +767,9 @@ export class Papers {
 
   /** The hypotheses the run proposed that need no verdict (status pool), the oldest first. */
   private proposed(run: string): { id: string; text: string; question: number | null }[] {
-    return (
-      this.ledger.db
-        .prepare(
-          "select id, text, question from hypothesis where run = ? and status = 'pool' order by created_at, rowid",
-        )
-        .all(run) as Row[]
-    ).map((h) => ({
-      id: String(h.id),
-      text: String(h.text),
-      question: h.question === null || h.question === undefined ? null : Number(h.question),
-    }));
+    return this.ledger.hypotheses
+      .withStatus(run, ["pool"])
+      .map((h) => ({ id: h.id, text: h.text, question: h.question }));
   }
 
   /** What a run's paper is checked against; it must wait for its paper. */
@@ -801,18 +786,11 @@ export class Papers {
     const verdicts = new Map<string, Set<string>>();
     for (const h of items.hypotheses)
       if (h.decision) verdicts.set(h.id, new Set([h.decision.decision]));
-    const counts = verifiedByQuestion(this.ledger, run);
+    const counts = this.ledger.claims.verifiedByQuestion(run);
     const cards = new Map(cardsOf(this.ledger, run).map((c) => [c.question, c]));
     const ofQuestion = new Map<number, string[]>();
-    for (const c of this.ledger.db
-      .prepare(
-        "select id, question from claim where run = ? and verified = 1 and question is not null",
-      )
-      .all(run) as { id: string; question: number }[])
-      ofQuestion.set(Number(c.question), [
-        ...(ofQuestion.get(Number(c.question)) ?? []),
-        String(c.id),
-      ]);
+    for (const c of this.ledger.claims.verifiedWithQuestion(run))
+      ofQuestion.set(Number(c.question), [...(ofQuestion.get(Number(c.question)) ?? []), c.id]);
     return {
       review: asked.review,
       questions,
@@ -877,7 +855,7 @@ export class Papers {
     const items = this.items(id);
     const claims = verifiedClaims(this.ledger, id, contract.quality.min_independent_sources);
     const cards = new Map(cardsOf(this.ledger, id).map((c) => [c.question, c]));
-    const counts = verifiedByQuestion(this.ledger, id);
+    const counts = this.ledger.claims.verifiedByQuestion(id);
     const proposed = this.proposed(id);
     // The newest refusal since the newest request, if there is one.
     const request = this.ledger.events.lastId(PAPER_REQUESTED, { subject: id });
@@ -1122,14 +1100,8 @@ export class Papers {
       ...claimsAppendix(this.ledger, run, checked.cited, numbered.numbers),
       "",
     ].join("\n");
-    const finding = (id: string) =>
-      this.ledger.db.prepare("select text from finding where run = ? and id = ?").get(run, id) as
-        | { text: string }
-        | undefined;
-    const claim = (id: string) =>
-      this.ledger.db.prepare("select text from claim where run = ? and id = ?").get(run, id) as
-        | { text: string }
-        | undefined;
+    const finding = (id: string) => this.ledger.claims.finding(run, id);
+    const claim = (id: string) => this.ledger.claims.get(run, id);
     const experiments = input.experiments.map((x) => ({
       id: newExperimentId(),
       title: x.title,

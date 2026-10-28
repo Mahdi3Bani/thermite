@@ -1501,16 +1501,7 @@ export class Scheduler {
     if (past) out.push(`# Past research\n${past}`);
     // A code trial's run folder, once its trials recorded sources, claims or notes there (a
     // research trial's instructions describe its folder).
-    const recorded = Number(
-      (
-        this.ledger.db
-          .prepare(
-            `select (select count(*) from source where run = ?) + (select count(*) from claim where run = ?)
-               + (select count(*) from note where run = ?) as n`,
-          )
-          .get(run, run, run) as { n: number }
-      ).n,
-    );
+    const recorded = this.ledger.claims.recorded(run);
     if (reader === "worker" && recorded > 0)
       out.push(
         `# The run's research folder\n${knowledge.folder(run)} holds the sources, claims and notes this run's workers recorded (sources/, claims/, notes/), kept current by the harness. Search it with shell commands (grep -r, cat) before you fetch a page again. You cannot change it.`,
@@ -2252,11 +2243,9 @@ export class Scheduler {
     const research = this.o.research as Research;
     if (research.clock(run).elapsed_ms <= 3_600_000) return false;
     const hourAgo = new Date(Date.now() - 3_600_000).toISOString();
-    const n = (sql: string) =>
-      Number((this.ledger.db.prepare(sql).get(run, hourAgo) as { n: number }).n);
     return (
-      n("select count(*) as n from source where run = ? and fetched_at > ?") === 0 &&
-      n("select count(*) as n from claim where run = ? and verified = 1 and created_at > ?") === 0
+      this.ledger.sources.countSince(run, hourAgo) === 0 &&
+      this.ledger.claims.countVerifiedSince(run, hourAgo) === 0
     );
   }
 

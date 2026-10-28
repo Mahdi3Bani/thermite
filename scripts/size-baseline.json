@@ -49,7 +49,7 @@
       "lines": 1277
     },
     "src/harness/agents/scheduler.ts": {
-      "lines": 2927
+      "lines": 2916
     },
     "src/harness/agents/worker.ts": {
       "lines": 832
@@ -70,16 +70,13 @@
       "lines": 878
     },
     "src/harness/research/paper.ts": {
-      "lines": 1178
+      "lines": 1150
     },
     "src/harness/research/research.ts": {
-      "lines": 1603
+      "lines": 1451
     },
     "src/harness/research/review.ts": {
-      "lines": 1185
-    },
-    "src/harness/run-research.ts": {
-      "lines": 831
+      "lines": 1159
     },
     "src/harness/schema.ts": {
       "lines": 875

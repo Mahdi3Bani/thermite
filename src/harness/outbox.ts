@@ -158,13 +158,13 @@ export async function writeExport(input: {
     }));
     writeFileSync(join(tmp, "journal.jsonl"), jsonl(journal));
     const notesRel: string[] = [];
-    const researchNotes = rowsOf("note", ids("research_note", "note")).map((r) => ({
-      id: Number(r.id),
-      run: String(r.run),
-      lane: r.lane === null ? null : String(r.lane),
-      text: String(r.text),
-      sources: JSON.parse(String(r.sources)) as string[],
-      at: String(r.created_at),
+    const researchNotes = ledger.claims.notesById(ids("research_note", "note")).map((r) => ({
+      id: r.id,
+      run: r.run,
+      lane: r.lane,
+      text: r.text,
+      sources: JSON.parse(r.sources) as string[],
+      at: r.created_at,
     }));
     if (researchNotes.length) {
       writeFileSync(join(tmp, "research-notes.jsonl"), jsonl(researchNotes));
@@ -196,18 +196,7 @@ export async function writeExport(input: {
     // final report is written. A hill-climb or goal run that recorded sources, claims or notes,
     // or compacted a conversation, exports its folder when it is closed.
     if (input.researchFolder) {
-      const recorded = (run: string) =>
-        Number(
-          (
-            ledger.db
-              .prepare(
-                `select (select count(*) from source where run = ?) + (select count(*) from claim where run = ?)
-                   + (select count(*) from note where run = ?)
-                   + (select count(*) from event where kind = 'context_compacted' and subject = ?) as n`,
-              )
-              .get(run, run, run, run) as { n: number }
-          ).n,
-        ) > 0;
+      const recorded = (run: string) => ledger.claims.recorded(run, { compactions: true }) > 0;
       const finished = new Set([
         ...events.filter((e) => e.kind === "research_final").map((e) => String(e.subject)),
         ...events

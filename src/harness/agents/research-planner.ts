@@ -21,6 +21,7 @@ import {
 import type { CallUsage } from "../../core/usage.ts";
 import { NOTES_ARE_DATA, type notesData } from "../journal.ts";
 import { briefingData } from "../knowledge.ts";
+import type { HypothesisRow } from "../ledger/hypotheses.ts";
 import type { BriefingItem, Ledger } from "../ledger.ts";
 import type { QueueBrief } from "../queue.ts";
 import { SATURATION_TASKS } from "../research/progress.ts";
@@ -108,25 +109,21 @@ const clip = (s: string, n: number) => {
 
 /** The run's hypotheses as the research planner reads them, and what bounds its changes. */
 export function plannerHypotheses(ledger: Ledger, run: string): PlannerHypotheses {
-  const rows = ledger.db
-    .prepare(
-      "select id, status, question, text, supporting, lane from hypothesis where run = ? order by created_at, rowid",
-    )
-    .all(run) as Record<string, unknown>[];
-  const view = (r: Record<string, unknown>): PlannerHypothesis => {
+  const rows = ledger.hypotheses.list(run);
+  const view = (r: HypothesisRow): PlannerHypothesis => {
     let supporting = 0;
     try {
-      supporting = (JSON.parse(String(r.supporting)) as unknown[]).length;
+      supporting = (JSON.parse(r.supporting) as unknown[]).length;
     } catch {
       // Only the harness writes it, as JSON; a row that holds anything else supports nothing.
     }
     return {
-      id: String(r.id),
-      status: String(r.status),
-      question: r.question === null || r.question === undefined ? null : Number(r.question),
-      text: clip(String(r.text), 400),
+      id: r.id,
+      status: r.status,
+      question: r.question,
+      text: clip(r.text, 400),
       supporting,
-      by: r.lane ? String(r.lane) : "author",
+      by: r.lane ? r.lane : "author",
     };
   };
   const all = rows.map(view);

@@ -40,12 +40,8 @@ export function hypothesisEvidence(ledger: Ledger, run: string): Map<string, num
     for (const c of ids) s.add(c);
     claims.set(id, s);
   };
-  for (const h of ledger.db
-    .prepare(
-      `select id, supporting from hypothesis where run = ? and status in (${REQUIRED_HYPOTHESES.map(() => "?").join(", ")})`,
-    )
-    .all(run, ...REQUIRED_HYPOTHESES) as Row[])
-    add(String(h.id), list(h.supporting));
+  for (const h of ledger.hypotheses.withStatus(run, REQUIRED_HYPOTHESES))
+    add(h.id, list(h.supporting));
   // A reviewer's verdict that passed the check, with the claims it cites.
   for (const r of ledger.db
     .prepare(
@@ -72,22 +68,13 @@ export function unevidencedHypotheses(
   standing: Map<string, StandingDecision>,
 ): UnevidencedHypothesis[] {
   const evidence = hypothesisEvidence(ledger, run);
-  return (
-    ledger.db
-      .prepare(
-        `select id, text, question from hypothesis where run = ? and status in (${REQUIRED_HYPOTHESES.map(() => "?").join(", ")}) order by created_at, rowid`,
-      )
-      .all(run, ...REQUIRED_HYPOTHESES) as Row[]
-  )
+  return ledger.hypotheses
+    .withStatus(run, REQUIRED_HYPOTHESES)
     .filter((h) => {
-      const d = standing.get(`hypothesis:${String(h.id)}`);
-      return d?.decision === "undecided" && (evidence.get(String(h.id)) ?? 0) === 0;
+      const d = standing.get(`hypothesis:${h.id}`);
+      return d?.decision === "undecided" && (evidence.get(h.id) ?? 0) === 0;
     })
-    .map((h) => ({
-      id: String(h.id),
-      text: String(h.text),
-      question: h.question === null ? null : Number(h.question),
-    }));
+    .map((h) => ({ id: h.id, text: h.text, question: h.question }));
 }
 
 /** The gap a hypothesis's task closes: its line in the task's details names the hypothesis. */

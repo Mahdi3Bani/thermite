@@ -276,9 +276,6 @@ const clip = (s: string, n: number) => {
   return t.length > n ? `${t.slice(0, n - 1)}…` : t;
 };
 
-const count = (ledger: Ledger, sql: string, ...p: (string | number)[]) =>
-  Number((ledger.db.prepare(sql).get(...p) as { n: number } | undefined)?.n ?? 0);
-
 const listOf = <T>(json: unknown): T[] => {
   try {
     const v = JSON.parse(String(json ?? "[]")) as unknown;
@@ -317,17 +314,11 @@ export function requiredHypotheses(
   ledger: Ledger,
   run: string,
 ): { id: string; text: string; status: string; question: number | null; supporting: string[] }[] {
-  return (
-    ledger.db
-      .prepare(
-        `select id, text, status, question, supporting from hypothesis where run = ? and status in (${REQUIRED_HYPOTHESES.map(() => "?").join(", ")}) order by created_at, rowid`,
-      )
-      .all(run, ...REQUIRED_HYPOTHESES) as Row[]
-  ).map((h) => ({
-    id: String(h.id),
-    text: String(h.text),
-    status: String(h.status),
-    question: h.question === null || h.question === undefined ? null : Number(h.question),
+  return ledger.hypotheses.withStatus(run, REQUIRED_HYPOTHESES).map((h) => ({
+    id: h.id,
+    text: h.text,
+    status: h.status,
+    question: h.question,
     supporting: listOf<string>(h.supporting).map(String),
   }));
 }
@@ -448,11 +439,7 @@ export function researchReviewDue(
       why: `${questionsWords(bare)} ${bare.length === 1 ? "has" : "have"} no answer card yet`,
     };
   const floor = contract.min_verified_claims;
-  const verified = count(
-    ledger,
-    "select count(*) as n from claim where run = ? and verified = 1",
-    run,
-  );
+  const verified = ledger.claims.count(run, { verified: true });
   if (floor !== undefined && verified < floor)
     return {
       due: false,
@@ -476,12 +463,9 @@ export function researchReviewDue(
 /** Each source's registrable domain in a run, by its id. */
 function sourceDomains(ledger: Ledger, run: string): Map<string, string> {
   return new Map(
-    (
-      ledger.db.prepare("select id, domain from source where run = ?").all(run) as {
-        id: string;
-        domain: string | null;
-      }[]
-    ).map((s) => [String(s.id), s.domain ? registrableDomain(String(s.domain)) : ""]),
+    ledger.sources
+      .ofRun(run)
+      .map((s) => [s.id, s.domain ? registrableDomain(s.domain) : ""] as const),
   );
 }
 
@@ -498,23 +482,17 @@ export interface ClaimRow {
 export function verifiedClaims(ledger: Ledger, run: string, min: number): Map<string, ClaimRow> {
   const domains = sourceDomains(ledger, run);
   return new Map(
-    (
-      ledger.db
-        .prepare(
-          "select id, question, text, quotes from claim where run = ? and verified = 1 order by created_at, rowid",
-        )
-        .all(run) as Row[]
-    ).map((c) => {
+    ledger.claims.verified(run).map((c) => {
       const quotes = listOf<{ source: string; quote: string }>(c.quotes);
       const ds = [...new Set(quotes.map((q) => domains.get(String(q.source)) ?? ""))].filter(
         Boolean,
       );
       return [
-        String(c.id),
+        c.id,
         {
-          id: String(c.id),
-          question: c.question === null ? null : Number(c.question),
-          text: String(c.text),
+          id: c.id,
+          question: c.question,
+          text: c.text,
           quotes,
           domains: ds,
           corroborated: ds.length >= min,
@@ -598,15 +576,11 @@ export function researchPackage(
     return { shown: cut.map((c) => toClaim(c, quotes)), not: all.length - cut.length };
   };
   const corpus = {
-    sources: count(ledger, "select count(*) as n from source where run = ?", run),
+    sources: ledger.sources.count(run),
     domains: new Set([...sourceDomains(ledger, run).values()].filter(Boolean)).size,
     verified_claims: claims.size,
     corroborated_claims: [...claims.values()].filter((c) => c.corroborated).length,
-    findings: count(
-      ledger,
-      "select count(*) as n from finding where run = ? and supported = 1",
-      run,
-    ),
+    findings: ledger.claims.countFindings(run, true),
     min_independent_domains: min,
   };
   const build = (s: Shown, shortened: string | undefined): ResearchPackage => ({
