@@ -198,9 +198,9 @@ jobs:
             ^compose[^/]*\.yaml$
             ^package(-lock)?\.json$
             ^kits/smoke-cpu/
-            ^src/(control|harness)/api\.ts$
+            ^src/(control|harness)/api(\.ts|/)
             ^src/(control|harness|supervisor)/main\.ts$
-            ^src/supervisor/relay\.ts$
+            ^src/supervisor/relay(\.ts|/)
             ^scripts/(compose-smoke|stage-smoke)\.mjs$
             ^scripts/lib/
             ^\.github/workflows/ci\.yml$
@@ -222,7 +222,8 @@ jobs:
             ^tests/control/runpod
             ^src/control/(tunnel|exports)\.ts$
             ^src/core/tunnel\.ts$
-            ^src/supervisor/(export-upload|relay)\.ts$
+            ^src/supervisor/export-upload\.ts$
+            ^src/supervisor/relay(\.ts|/)
             ^tests/helpers/fake-runpod\.ts$
             ^containers/rig/
             ^scripts/runpod-acceptance\.mjs$

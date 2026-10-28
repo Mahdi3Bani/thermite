@@ -10,7 +10,7 @@ import {
   trialSession,
 } from "./trial-session.ts";
 
-/** A tool's handler whose calls are in control's audit log (mcp.ts's `audited`). */
+/** A tool's handler whose calls are in control's audit log (mcp/context.ts's `audited`). */
 export type Audited = <A>(
   tool: string,
   fn: (args: A) => unknown,

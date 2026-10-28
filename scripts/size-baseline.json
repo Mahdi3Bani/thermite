@@ -9,15 +9,6 @@
     "src/cli/thermite.ts": {
       "lines": 1298
     },
-    "src/control/api.ts": {
-      "lines": 1446
-    },
-    "src/control/mcp-servers.ts": {
-      "lines": 992
-    },
-    "src/control/mcp.ts": {
-      "lines": 1623
-    },
     "src/control/store.ts": {
       "lines": 3672
     },
