@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { log, redact } from "../../common/env.ts";
 import { answerOf } from "../../common/errors.ts";
+import { busHealth } from "../bus/index.ts";
 import { watchDrains } from "../clusters/index.ts";
 import { ExportFiles } from "../exports.ts";
 import { mountMcp } from "../mcp/index.ts";
@@ -77,7 +78,8 @@ export function createControlApi(
     }
   });
 
-  app.get("/v1/health", (c) => c.json({ ok: true }));
+  // Control is up; and the message bus as control holds it: off, connected or away.
+  app.get("/v1/health", (c) => c.json({ ok: true, bus: busHealth(parts.bus) }));
 
   relayRoutes(app, api);
   modelRoutes(app, api);

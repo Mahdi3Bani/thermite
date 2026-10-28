@@ -27,7 +27,7 @@ Rigs that control sets up, on a machine, on a cluster or with a join command, ge
 ## Before you start
 
 - **Control is ready for rigs elsewhere:** its address (`THERMITE_CONTROL_PUBLIC_URL`) and the rig images, plus `THERMITE_RIG_HARNESS_CUDA_IMAGE` for GPU rigs. See [Let rigs on other machines reach control](one-machine.md#let-rigs-on-other-machines-reach-control).
-- **The cluster's pods can reach control's address** and pull the images. Control adds no image pull secret, so the nodes must be able to pull the images without one ([Push the images to your own registry](own-registry.md)).
+- **The cluster's pods can reach control's address and the message bus's port** (4222 on control's host, unless control names another: [Run the message bus](../operate/message-bus.md#let-rigs-on-other-machines-reach-it)), and pull the images. Control adds no image pull secret, so the nodes must be able to pull the images without one ([Push the images to your own registry](own-registry.md)).
 - **A kubeconfig** with everything written inside it: a `token`, or `client-certificate-data` and `client-key-data`, and `certificate-authority-data`. Control refuses a kubeconfig that runs a command to log in (`exec` or an auth-provider), reads files, or goes through a proxy (`proxy-url`).
 - **Rights for the kubeconfig:** for namespaces control creates, see [below](#what-created-namespaces-need); for slots, a role in each slot ([below](#what-a-slot-needs)).
 - **For GPUs:** NVIDIA's device plugin (`nvidia.com/gpu`), or a device class for DRA (Kubernetes' Dynamic Resource Allocation).
@@ -130,9 +130,10 @@ You land on the rig's page: "Control is setting rig-1 up on cluster-1. Its page 
 
 - ✓ Enrolled with control: a token of its own
 - ✓ Its objects applied in the cluster: namespace, secret, volume, deployments
+- ✓ Its key on the message bus registered
 - ✓ First report reached control
 
-Control waits up to 10 minutes for the first report, and the nodes pull the images in that time. If a large image takes longer, the step shows ✕ "no report after 10 minutes: it may not have started", and the block's status says `failed`. When the rig reports later, its page still fills in, the status says `running` again, and a ✓ step follows the ✕: "First report reached control · it reported after the wait ended".
+Control waits up to 10 minutes for the first report, and the nodes pull the images in that time. With the message bus, the report comes over the bus: pods that can't reach the bus's port never report. If a large image takes longer, the step shows ✕ "no report after 10 minutes: it may not have started", and the block's status says `failed`. When the rig reports later, its page still fills in, the status says `running` again, and a ✓ step follows the ✕: "First report reached control · it reported after the wait ended".
 
 What control applies, all labelled `app.kubernetes.io/instance: rig-1`:
 
@@ -146,7 +147,7 @@ What control applies, all labelled `app.kubernetes.io/instance: rig-1`:
 | Deployments | `thermite-rig-1-harness` and `thermite-rig-1-supervisor` |
 | Network rules (created namespaces only) | `thermite-rig-1-harness-net` and `thermite-rig-1-supervisor-net` |
 
-In a namespace it creates, control's network rules let the harness reach only DNS and addresses outside the private ranges, and let only its supervisor reach the harness.
+In a namespace it creates, control's network rules let the harness reach only DNS and addresses outside the private ranges, and let only its supervisor reach the harness. With the message bus, the supervisor's deployment carries the bus's address (`THERMITE_NATS_URL`, from control's `THERMITE_NATS_PUBLIC_URL`) and the certificate of control's authority for the bus (`THERMITE_NATS_CA`), which is no secret, in its environment: each update and each change of size applies the deployments again with the ones control has then, so a rig set up before the bus gets it at its next update.
 
 ### If it doesn't report
 
@@ -162,7 +163,7 @@ kubectl logs -n thermite-rig-1 deployment/thermite-rig-1-supervisor
 | --- | --- | --- |
 | `Pending` | No node has room for the GPUs, CPUs or memory, or the volume claim is not bound. The events at the end of `describe` say which | Free room, or ask the operators. If the rig needs other choices, see below |
 | `ErrImagePull` or `ImagePullBackOff` | The nodes can't pull an image | Make the image pullable without signing in: [Push the images to your own registry](own-registry.md) |
-| `Running`, and still no report | The supervisor's log says why | [A rig is quiet](../operate/troubleshoot.md#a-rig-is-quiet) |
+| `Running`, and still no report | The supervisor's log says why. `following failed; trying again` with a refused or timed-out connection: the pods don't reach the message bus's port | [A rig is quiet](../operate/troubleshoot.md#a-rig-is-quiet); open the bus's port to the cluster: [Run the message bus](../operate/message-bus.md#let-rigs-on-other-machines-reach-it) |
 
 Once the cause is fixed, the pods start and the rig reports by itself, and its status goes back to `running`. If the rig needs another storage class or node, remove it (below) and add a new one under a new name: a removed rig's name can't be used again. New images need no new rig, and neither do another number of GPUs, other CPUs or other memory: see [Update the rig's images](#update-the-rigs-images) and [Change the rig's GPUs, CPUs and memory](#change-the-rigs-gpus-cpus-and-memory).
 

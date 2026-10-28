@@ -28,7 +28,21 @@ export interface RigPlan {
   root: boolean;
   controlPublicKey: string;
   controlFingerprint: string;
+  /** The message bus for its supervisor; none: it keeps to HTTP. */
+  bus?: RigBus | undefined;
 }
+
+/**
+ * The message bus as a rig control sets up reaches it: its address, and the certificate of
+ * control's authority, which the rig trusts the bus's server through (control/bus/tls.ts).
+ */
+export interface RigBus {
+  url: string;
+  ca: string;
+}
+
+/** Where a rig's supervisor reads the authority's certificate, on a machine as in compose. */
+export const SUPERVISOR_BUS_CA = "/keys/bus-ca.pem";
 
 export interface RigSecrets {
   /** The rig's token for control, minted by control at enrollment. */
@@ -71,7 +85,7 @@ export const unitName = (rig: string, part: "harness" | "supervisor") => `thermi
 /** What a rig's units are made of: the rest of a plan is for its first setup. */
 export type UnitPlan = Pick<
   RigPlan,
-  "rig" | "controlUrl" | "images" | "gpus" | "judgeGpus" | "root"
+  "rig" | "controlUrl" | "images" | "gpus" | "judgeGpus" | "root" | "bus"
 >;
 
 /** The Quadlet units, by file name. */
@@ -147,12 +161,13 @@ ${env({
   CONTROL_URL: p.controlUrl.replace(/\/$/, ""),
   THERMITE_HARNESS_TOKEN_FILE: "/run/secrets/harness-supervisor-token",
   THERMITE_CONTROL_TOKEN_FILE: "/run/secrets/control-rig-token",
+  ...(p.bus ? { THERMITE_NATS_URL: p.bus.url, THERMITE_NATS_CA_FILE: SUPERVISOR_BUS_CA } : {}),
 })}
 Volume=thermite-${p.rig}-supervisor:/var/lib/thermite-supervisor
 Volume=thermite-${p.rig}-inbox:/inbox:U
 Volume=thermite-${p.rig}-outbox:/outbox:ro
 ${secret("secrets/harness-supervisor-token")}
-${secret("secrets/control-rig-token")}
+${secret("secrets/control-rig-token")}${p.bus ? `\nVolume=${unitDir}/bus:/keys:ro,Z` : ""}
 Network=${net}.network
 Network=${egress}.network
 DropCapability=ALL
@@ -174,6 +189,20 @@ function writeFile(path: string, content: string, mode: string): string {
   return `cat > ${path} <<'${end}'\n${content.endsWith("\n") ? content : `${content}\n`}${end}\nchmod ${mode} ${path}`;
 }
 
+/**
+ * The bus's folder for the supervisor alone (its own, as the harness's keys folder is relabeled
+ * for the harness), with the authority's certificate, which is no secret: written at each setup and
+ * update, so that a rig gets control's authority again.
+ */
+const busFiles = (dir: string, bus: RigBus | undefined, q: (path: string) => string) =>
+  bus
+    ? [
+        `mkdir -p ${q(`${dir}/bus`)}`,
+        `chmod 0755 ${q(`${dir}/bus`)}`,
+        writeFile(q(`${dir}/bus/bus-ca.pem`), bus.ca, "0644"),
+      ]
+    : [];
+
 /** The deploy script: the rig's files and units, then images pulled and services started. */
 export function deployScript(p: RigPlan, secrets: RigSecrets): string {
   if (!RIG_ID.test(p.rig)) throw new Error(RIG_ID_WORDS);
@@ -194,6 +223,7 @@ export function deployScript(p: RigPlan, secrets: RigSecrets): string {
     writeFile(q(`${dir}/secrets/harness-supervisor-token`), secrets.harnessSupervisorToken, "0644"),
     writeFile(q(`${dir}/keys/control-signing.pub`), p.controlPublicKey, "0644"),
     writeFile(q(`${dir}/keys/control-signing.fingerprint`), p.controlFingerprint, "0644"),
+    ...busFiles(dir, p.bus, q),
     ...Object.entries(rigUnits(p)).map(([name, text]) =>
       writeFile(q(`${units}/${name}`), text, "0644"),
     ),
@@ -209,7 +239,8 @@ export function deployScript(p: RigPlan, secrets: RigSecrets): string {
  * The update script: a rig control set up moves onto other images. The images are pulled first,
  * while the rig still runs; then its two container units are written again and both services
  * restart. Its secrets, keys, volumes and networks stay, so its ledger, runs, tokens and key do.
- * An image the registry no longer serves but the machine holds is used as it is.
+ * The bus's address and control's authority are written again, as control has them now. An image
+ * the registry no longer serves but the machine holds is used as it is.
  */
 export function updateScript(p: UnitPlan): string {
   if (!RIG_ID.test(p.rig)) throw new Error(RIG_ID_WORDS);
@@ -222,6 +253,7 @@ export function updateScript(p: UnitPlan): string {
     "umask 077",
     `if [ ! -d ${q(dir)} ]; then echo "rig ${p.rig} is not on this machine" >&2; exit 3; fi`,
     `for image in ${shellQuote(p.images.harness)} ${shellQuote(p.images.supervisor)}; do podman pull -q "$image" >/dev/null || podman image exists "$image"; done`,
+    ...busFiles(dir, p.bus, q),
     ...containers.map(([name, text]) => writeFile(q(`${units}/${name}`), text, "0644")),
     `${systemctl} daemon-reload`,
     `${systemctl} restart ${unitName(p.rig, "harness")}.service ${unitName(p.rig, "supervisor")}.service`,

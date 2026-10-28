@@ -6,7 +6,7 @@ sidebar:
   order: 1
 ---
 
-This guide sets Thermite up to stay on one computer: control and one rig run as containers under Docker or Podman, your work is kept in volumes, and you sign in with a token of your own. You install it from a release: one compose file that runs Thermite's published images, so nothing is built on your computer. The guide also covers settings, updates, the port, and what control needs before rigs on other machines can reach it.
+This guide sets Thermite up to stay on one computer: control, its message bus and one rig run as containers under Docker or Podman, your work is kept in volumes, and you sign in with a token of your own. You install it from a release: one compose file that runs Thermite's published images, so nothing is built on your computer. The guide also covers settings, updates, the ports, and what control needs before rigs on other machines can reach it.
 
 [Your first run](../../tutorials/first-run.md) walks through the first start step by step. This page assumes you know what control and a [rig](../../reference/glossary.md) are. To build the images from the source code instead, as people who work on Thermite do, see [Running Thermite locally](https://github.com/iammrduncan/thermite/blob/main/docs/local-development.md).
 
@@ -41,7 +41,7 @@ docker compose ps                         # or: podman compose ps
 curl http://127.0.0.1:8800/v1/health
 ```
 
-`ps` lists `control`, `harness` and `supervisor` as up, and the health check answers `{"ok":true}`. The dashboard is at <http://127.0.0.1:8800/ui>. To sign in, paste the owner's token: `cat .dev/secrets/control-admin-token` prints it.
+`ps` lists `control`, `nats`, `harness` and `supervisor` as up, and the health check answers `{"ok":true,"bus":"connected"}`: control is up, and holds its connection to the message bus. In the first seconds it may say `"bus":"away"`, until the bus's server has started. The dashboard is at <http://127.0.0.1:8800/ui>. To sign in, paste the owner's token: `cat .dev/secrets/control-admin-token` prints it.
 
 On a computer without a screen, reach the dashboard from your own computer through SSH, then open the same address there:
 
@@ -69,6 +69,7 @@ Run `npx thermite` in your `thermite-source` folder; from another folder, `npx` 
 | Container | What it is |
 | --- | --- |
 | `control` | The dashboard, the REST API and MCP, on port 8800 |
+| `nats` | The [message bus](../operate/message-bus.md): a NATS server that carries the rig's reports and live lines to control, and control's commands and the rig's config to the rig, over TLS, on port 4222 |
 | `harness` | The rig `local-1`: its judge and its agents, on the CPU, or on the machine's NVIDIA GPUs with `compose.gpu.yaml`. It has no port outside the stack |
 | `supervisor` | The rig's link to control. It also does the rig's git work |
 | `init` | Makes `.dev/` and your tokens, then stops. `up` runs it too; it finds the files there and keeps them |
@@ -163,15 +164,15 @@ Compose keeps Thermite's state in named volumes. Their names start with the proj
 
 | Volume | What it holds |
 | --- | --- |
-| `control-state` | Control's database, with Thermite's [knowledge base](../../explanation/journals-and-knowledge.md) (a folder for each campaign), its signing key, the key that seals every provider key, and kits written on the New campaign page |
-| `control-pub` | Control's public key, which the harness reads |
+| `control-state` | Control's database, with Thermite's [knowledge base](../../explanation/journals-and-knowledge.md) (a folder for each campaign), its signing key, its certificate authority for the message bus, the key that seals every provider key, and kits written on the New campaign page |
+| `control-pub` | Control's public key, which the harness reads, and its bus authority's certificate, which the supervisor trusts the bus through |
 | `harness-state` | The rig's ledger, its git copies, kits, imports, models and settings, and copies of past research (what earlier runs recorded) for its runs to read |
 | `harness-scratch` | Working copies. The harness empties it every time it starts |
 | `outbox` | Exports waiting for the supervisor |
 | `supervisor-home` | The supervisor's own state |
 | `results` | The local results repository. To push to a real one, see [Set up the results repository](../operate/results-repository.md) |
-| `nats-data` | With the `bus` profile only: the message bus's store, every report a rig sent over it, the commands waiting for each rig, the newest live lines, for an hour at most, and each rig's config, sealed to the rig ([The compose file](../../reference/settings.md#the-compose-file)) |
-| `nats-users` | The message bus's users, which control writes and the bus's server reads: each user's public key and what it may do. Empty without the `bus` profile |
+| `nats-data` | The message bus's store: every report a rig sent over it, the commands waiting for each rig, the newest live lines, for an hour at most, and each rig's config, sealed to the rig ([The compose file](../../reference/settings.md#the-compose-file)) |
+| `nats-config` | What control writes for the bus's server: its users, each user's public key and what it may do, and its TLS certificate and key |
 
 The folder `.dev/`, next to `compose.yaml`, holds the tokens (`.dev/secrets/`), the inbox (`.dev/inbox/`) and the advisors' files (`.dev/advisors/`). The `init` container makes it.
 
@@ -227,10 +228,10 @@ Put settings in a file named `.env` next to `compose.yaml` (git ignores it), the
 
 | Container | The settings `.env` reaches |
 | --- | --- |
-| `control` | `THERMITE_CONTROL_PUBLIC_URL`, `THERMITE_RIG_HARNESS_IMAGE`, `THERMITE_RIG_HARNESS_CUDA_IMAGE`, `THERMITE_RIG_SUPERVISOR_IMAGE`, `THERMITE_RUNPOD_RIG_IMAGE`, `THERMITE_RUNPOD_TEST_IMAGE`, `THERMITE_CONTROL_REQUIRE_KEY_ACCEPT`, `THERMITE_CONTROL_SESSION_DAYS`, `THERMITE_CONTROL_STALE_SECONDS`, `THERMITE_CONTROL_OFFLINE_SECONDS`, `THERMITE_LIFECYCLE` |
+| `control` | `THERMITE_CONTROL_PUBLIC_URL`, `THERMITE_RIG_HARNESS_IMAGE`, `THERMITE_RIG_HARNESS_CUDA_IMAGE`, `THERMITE_RIG_SUPERVISOR_IMAGE`, `THERMITE_RUNPOD_RIG_IMAGE`, `THERMITE_RUNPOD_TEST_IMAGE`, `THERMITE_CONTROL_REQUIRE_KEY_ACCEPT`, `THERMITE_CONTROL_SESSION_DAYS`, `THERMITE_CONTROL_STALE_SECONDS`, `THERMITE_CONTROL_OFFLINE_SECONDS`, `THERMITE_LIFECYCLE`, `THERMITE_NATS_URL`, `THERMITE_NATS_PUBLIC_URL` |
 | `harness` | `THERMITE_PROMOTION`, `THERMITE_CALIBRATION_BLOCKS`, `THERMITE_MODEL_BASE_URL`, `THERMITE_MODEL`, `THERMITE_MODEL_CONTEXT_WINDOW`, `THERMITE_MODEL_MAX_TOKENS`, `THERMITE_MODEL_REASONING_EFFORT`, `THERMITE_MAX_TRIALS`, `THERMITE_TRIAL_MINUTES`, `THERMITE_MAX_TURNS`, `THERMITE_RESEARCH_MAX_MB`, `THERMITE_LLM_USD_PER_MTOK_IN`, `THERMITE_LLM_USD_PER_MTOK_OUT`, `THERMITE_EXPORT_MINUTES` |
-| `supervisor` | `THERMITE_POLL_SECONDS`, `THERMITE_COMMAND_POLL_SECONDS`, `THERMITE_MODEL_ROUTE_POLL_SECONDS`, `THERMITE_LIVE_INTERVAL_MS`, `THERMITE_RESULTS_REMOTE`, `THERMITE_ADVISORS_FILE`, `THERMITE_KB_SYNC_SECONDS` |
-| Compose itself | `THERMITE_CONTROL_PORT`, `THERMITE_COMMIT` for the images' builds, and `THERMITE_ENGINE_SOCKET_HOST` for `compose.lifecycle.yaml` |
+| `supervisor` | `THERMITE_POLL_SECONDS`, `THERMITE_COMMAND_POLL_SECONDS`, `THERMITE_MODEL_ROUTE_POLL_SECONDS`, `THERMITE_LIVE_INTERVAL_MS`, `THERMITE_RESULTS_REMOTE`, `THERMITE_ADVISORS_FILE`, `THERMITE_KB_SYNC_SECONDS`, `THERMITE_NATS_URL` |
+| Compose itself | `THERMITE_CONTROL_PORT`, `THERMITE_NATS_PUBLISH`, `THERMITE_COMMIT` for the images' builds, and `THERMITE_ENGINE_SOCKET_HOST` for `compose.lifecycle.yaml` |
 
 The [settings reference](../../reference/settings.md#the-compose-file) gives their defaults, and the few that the second rig of `two-rigs` leaves out.
 
@@ -265,7 +266,7 @@ docker compose -f compose.yaml -f compose.gpu.yaml -f compose.tokens.yaml -f com
 
 Name only the files you made. With Podman, write `podman compose` in place of `docker compose`.
 
-### The port
+### The ports
 
 If port 8800 is taken on this computer, choose another:
 
@@ -274,6 +275,14 @@ THERMITE_CONTROL_PORT=8801
 ```
 
 The dashboard is then at `http://127.0.0.1:8801/ui`. Inside the stack, control keeps port 8800.
+
+The message bus is published on `127.0.0.1:4222`. If that port is taken, give another, with its address:
+
+```sh title=".env"
+THERMITE_NATS_PUBLISH=127.0.0.1:4223
+```
+
+Inside the stack, the bus keeps port 4222. To run everything over HTTP without the bus, see [Turn it off](../operate/message-bus.md#turn-it-off).
 
 ## Stop, start and update
 
@@ -297,7 +306,7 @@ After an update, run the rig's **Judge smoke** check ([Check a rig](../operate/c
 
 ## Let rigs on other machines reach control
 
-A rig on another machine or a cluster reports to control by connecting to it. That takes a name for control that the rigs reach over HTTPS, a reverse proxy on this computer, and rig images that the rigs can pull without signing in. The release's published images are such images, and its compose file gives them to control already. **Rigs › Add a rig** (**Rigs** is in the sidebar on the left) needs three things, and shows what is missing:
+A rig on another machine or a cluster reports to control by connecting to it. That takes a name for control that the rigs reach over HTTPS, a reverse proxy on this computer, the message bus's port open to the rigs, and rig images that the rigs can pull without signing in. The release's published images are such images, and its compose file gives them to control already. **Rigs › Add a rig** (**Rigs** is in the sidebar on the left) needs the first, second and fourth below, and shows what is missing:
 
 1. **An HTTPS address the rigs can reach.** Compose publishes control on `127.0.0.1` only, so nothing outside this computer reaches it. Put a reverse proxy on this computer in front of `127.0.0.1:8800` (or the port you chose) that serves HTTPS under a name the rigs can reach, such as `control.example.com`. Thermite doesn't include a proxy or its configuration: use one you know. Have the proxy:
    - send `X-Forwarded-Proto: https`, so control marks the dashboard's sign-in cookie as secure;
@@ -319,12 +328,19 @@ A rig on another machine or a cluster reports to control by connecting to it. Th
    ```
 
    The CUDA image is needed only for GPU rigs.
+4. **The message bus's port, open to the rigs.** Each rig control sets up reports over the bus, on its own port, 4222, over TLS, with no proxy: publish the port on this computer's addresses and let the rigs reach it, as [Let rigs on other machines reach it](../operate/message-bus.md#let-rigs-on-other-machines-reach-it) says. In `.env`:
+
+   ```sh title=".env (part)"
+   THERMITE_NATS_PUBLISH=0.0.0.0:4222
+   ```
+
+   Control gives the rigs the bus's address, the host of `THERMITE_CONTROL_PUBLIC_URL` with port 4222, and the certificate of its own authority for the bus. If the rigs reach the bus at another name or port, set `THERMITE_NATS_PUBLIC_URL` too.
 
 Run `docker compose up -d`, with your `-f` options, to restart control with them.
 
 To tell that it worked:
 
-- From another machine, `curl https://control.example.com/v1/health` answers `{"ok":true}`.
-- **Rigs › Add a rig** no longer says "Control has no rig images configured" or "Control's address for rigs is not set", and its **Images** field lists the images.
+- From another machine, `curl https://control.example.com/v1/health` answers `{"ok":true,"bus":"connected"}`, and `nc -zv control.example.com 4222` connects to the bus's port.
+- **Rigs › Add a rig** no longer says "Control has no rig images configured" or "Control's address for rigs is not set", its **Images** field lists the images, and its **Message bus** field gives the bus's address the rigs will reach, such as `nats://control.example.com:4222`.
 
 Next: [Add a rig on a machine over SSH](rig-on-a-machine.md), [on a Kubernetes cluster](rig-on-a-cluster.md), or [join one yourself](join-a-rig.md).

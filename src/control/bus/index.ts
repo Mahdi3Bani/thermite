@@ -1,7 +1,8 @@
 /**
  * The message bus as control keeps it: who may use it, each rig's key and control's own two, and
- * the users file control writes for the bus's server (users.ts); each rig's config in the config
- * bucket, sealed to the rig's seal key (config.ts); and its state, for whoever runs control
+ * the users file control writes for the bus's server (users.ts); its TLS, with control's own
+ * certificate authority and the server's certificate (tls.ts, cert.ts); each rig's config in the
+ * config bucket, sealed to the rig's seal key (config.ts); and its state, for whoever runs control
  * (state.ts).
  */
 
@@ -20,8 +21,26 @@ export {
   BUS_STATE_TIMEOUT_MS,
   BUS_STREAMS,
   type BusView,
+  busHealth,
   busState,
   liveState,
   type RigLive,
 } from "./state.ts";
-export { BUS_USERS_SYNC_MS, BusUsers, busRigs, busUsersFile, takeRigBusKey } from "./users.ts";
+export {
+  BUS_CA_EXPORT_SETTING,
+  BUS_CA_FILES,
+  BUS_PORT,
+  BUS_PUBLIC_URL_SETTING,
+  BUS_TLS_FILES,
+  BusTls,
+  busPublicUrl,
+} from "./tls.ts";
+export {
+  BUS_CONFIG_DIR_SETTING,
+  BUS_USERS_FILE,
+  BUS_USERS_SYNC_MS,
+  BusUsers,
+  busConfigDir,
+  busRigs,
+  takeRigBusKey,
+} from "./users.ts";

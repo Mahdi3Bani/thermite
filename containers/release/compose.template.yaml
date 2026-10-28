@@ -65,15 +65,22 @@ services:
       THERMITE_LIFECYCLE: "${THERMITE_LIFECYCLE:-}"
       THERMITE_COMPOSE_PROJECT: thermite
       THERMITE_COMPOSE_SERVICES: '{"local-1":{"harness":"harness","supervisor":"supervisor"},"local-2":{"harness":"harness-2","supervisor":"supervisor-2"}}'
-      # The message bus, with the `bus` profile: nats://nats:4222. Empty: HTTP alone.
-      THERMITE_NATS_URL: "${THERMITE_NATS_URL:-}"
-      # With the bus, control writes its users here (each rig's key), and the server includes it.
-      THERMITE_NATS_USERS_FILE: /nats-users/users.conf
+      # The message bus (the nats service below), as control reaches it. To turn the bus off, set
+      # THERMITE_NATS_URL to nothing in .env (`THERMITE_NATS_URL=`): everything goes over HTTP.
+      THERMITE_NATS_URL: "${THERMITE_NATS_URL-nats://nats:4222}"
+      # The bus as rigs on other machines and clusters reach it (empty: the host of
+      # THERMITE_CONTROL_PUBLIC_URL, port 4222). Control gives it to the rigs it sets up.
+      THERMITE_NATS_PUBLIC_URL: "${THERMITE_NATS_PUBLIC_URL:-}"
+      # Control writes the bus's users (each rig's key) and its TLS certificate here; the server
+      # reads them.
+      THERMITE_NATS_CONFIG_DIR: /nats-config
+      # The certificate of control's own authority for the bus, which the supervisors trust.
+      THERMITE_NATS_CA_EXPORT: /keys/bus-ca.pem
 
     volumes:
       - control-state:/var/lib/thermite-control
       - control-pub:/keys
-      - nats-users:/nats-users
+      - nats-config:/nats-config
     secrets: [control-admin-token, control-operator-token, control-rig-tokens]
     ports: ["127.0.0.1:${THERMITE_CONTROL_PORT:-8800}:8800"]
     networks: [control]
@@ -84,19 +91,21 @@ services:
     security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
 
-  # The message bus (goal 168): NATS with JetStream, for control. With the `bus` profile and
-  # THERMITE_NATS_URL=nats://nats:4222, the supervisors send their reports and live lines here and
-  # take their commands and their rig's config from here; control folds the reports and the live
-  # lines, publishes the commands and writes each rig's config, sealed to the rig. It is on the
-  # control network only: the harness never reaches it. It knows only the
-  # users control writes to its users file: control's own, and one for each rig whose supervisor
-  # registered its key.
+  # The message bus (goal 168): NATS with JetStream, beside control. The supervisors send their
+  # reports and live lines here and take their commands and their rig's config from here; control
+  # folds the reports and the live lines, publishes the commands and writes each rig's config,
+  # sealed to the rig. Every connection is over TLS, with the certificate that control's own
+  # authority signs, and signs in with a key the server knows from the users control writes:
+  # control's own, and one for each rig whose supervisor registered its key. The harness never
+  # reaches it. Its port, NATS's own, is published on this machine's loopback only, unless
+  # THERMITE_NATS_PUBLISH names an address and port of its own: rigs on other machines reach it
+  # there.
   nats:
-    profiles: [bus]
     image: docker.io/library/nats:2.15.1-alpine@sha256:7ae34c25dfd6fe2e01c6483eabef20d796690fdcac6c4d94ca780a6cf9877fde
-    # Its settings are written as it starts, beside the users file it includes: the largest message
-    # (REPORT_MAX_BYTES in src/core/link/report.ts), monitoring on its own loopback for the health
-    # check, JetStream's store on its volume, and the users. It starts once control has written
+    # Its settings are written as it starts, beside the files control writes for it: the largest
+    # message (REPORT_MAX_BYTES in src/core/link/report.ts), monitoring on its own loopback for the
+    # health check, JetStream's store on its volume, TLS with control's certificate, and the users
+    # (BUS_TLS_FILES and BUS_USERS_FILE in src/control/bus/). It starts once control has written
     # them, and reads them again when control asks.
     command:
       - sh
@@ -106,19 +115,26 @@ services:
         max_payload: 8388608
         http: 127.0.0.1:8222
         jetstream { store_dir: /data }
-        include users/users.conf
+        tls {
+          cert_file: "/etc/nats/thermite/server-cert.pem"
+          key_file: "/etc/nats/thermite/server-key.pem"
+        }
+        include thermite/users.conf
         EOF
         trap 'exit 0' TERM INT
-        # Control writes the users as its own user (10001): the folder is given to it here, since
-        # not every engine gives a new volume the owner its first container's image has.
-        chown 10001:10001 /etc/nats/users
-        [ -s /etc/nats/users/users.conf ] || echo "waiting for control to write the bus's users"
-        until [ -s /etc/nats/users/users.conf ]; do sleep 1; done
+        # Control writes them as its own user (10001): the folder is given to it here, since not
+        # every engine gives a new volume the owner its first container's image has. The server
+        # reads the certificate's key through control's group (user, below).
+        chown 10001:10001 /etc/nats/thermite
+        [ -s /etc/nats/thermite/users.conf ] || echo "waiting for control to write the bus's users and certificate"
+        until [ -s /etc/nats/thermite/users.conf ] && [ -s /etc/nats/thermite/server-cert.pem ] && [ -s /etc/nats/thermite/server-key.pem ]; do sleep 1; done
         exec nats-server -c /etc/nats/thermite.conf
+    user: "0:10001"
     volumes:
       - nats-data:/data
-      - nats-users:/etc/nats/users
-    # Control first: it writes the users file.
+      - nats-config:/etc/nats/thermite
+    ports: ["${THERMITE_NATS_PUBLISH:-127.0.0.1:4222}:4222"]
+    # Control first: it writes the users and the certificate.
     depends_on: [control]
     networks: [control]
     healthcheck:
@@ -127,7 +143,7 @@ services:
       timeout: 5s
       retries: 3
     cap_drop: [ALL]
-    # Only to give the users' folder to control's user as it starts (above).
+    # Only to give the folder of control's files to control's user as it starts (above).
     cap_add: [CHOWN]
     security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
@@ -195,15 +211,17 @@ services:
       THERMITE_RESULTS_REMOTE: "${THERMITE_RESULTS_REMOTE:-file:///results/results.git}"
       # The advisors: teachers, their merged by model, auditor and review panel (off unless a config file is given).
       THERMITE_ADVISORS_FILE: "${THERMITE_ADVISORS_FILE:-}"
-      # With the `bus` profile, nats://nats:4222: reports, commands, live lines and config go over it.
-      # Empty: HTTP.
-      THERMITE_NATS_URL: "${THERMITE_NATS_URL:-}"
+      # The message bus: reports, commands, live lines and config go over it, over TLS, trusting
+      # control's authority. THERMITE_NATS_URL set to nothing in .env: HTTP.
+      THERMITE_NATS_URL: "${THERMITE_NATS_URL-nats://nats:4222}"
+      THERMITE_NATS_CA_FILE: /keys/bus-ca.pem
     volumes:
       - supervisor-home:/var/lib/thermite-supervisor
       - ./.dev/inbox:/inbox
       - outbox:/outbox:ro
       - results:/results
       - ./.dev/advisors:/etc/thermite/advisors:ro
+      - control-pub:/keys:ro
     secrets: [harness-supervisor-token, control-rig-token]
     networks: [rig, control, egress]
     depends_on: [harness, control]
@@ -265,15 +283,17 @@ services:
       THERMITE_CONTROL_TOKEN_FILE: /run/secrets/control-rig-token-2
       THERMITE_RESULTS_REMOTE: "${THERMITE_RESULTS_REMOTE:-file:///results/results.git}"
       THERMITE_ADVISORS_FILE: "${THERMITE_ADVISORS_FILE:-}"
-      # With the `bus` profile, nats://nats:4222: reports, commands, live lines and config go over it.
-      # Empty: HTTP.
-      THERMITE_NATS_URL: "${THERMITE_NATS_URL:-}"
+      # The message bus: reports, commands, live lines and config go over it, over TLS, trusting
+      # control's authority. THERMITE_NATS_URL set to nothing in .env: HTTP.
+      THERMITE_NATS_URL: "${THERMITE_NATS_URL-nats://nats:4222}"
+      THERMITE_NATS_CA_FILE: /keys/bus-ca.pem
     volumes:
       - supervisor2-home:/var/lib/thermite-supervisor
       - ./.dev/inbox:/inbox
       - outbox2:/outbox:ro
       - results:/results
       - ./.dev/advisors:/etc/thermite/advisors:ro
+      - control-pub:/keys:ro
     secrets: [harness2-supervisor-token, control-rig-token-2]
     networks: [rig2, control, egress]
     depends_on: [harness-2, control]
@@ -300,7 +320,7 @@ volumes:
   supervisor2-home: {}
   results: {}
   nats-data: {}
-  nats-users: {}
+  nats-config: {}
 
 # The init service writes these files; `docker compose up` needs them there first.
 secrets:

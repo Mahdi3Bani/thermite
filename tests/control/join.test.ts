@@ -118,12 +118,13 @@ describe("join a rig yourself: what control renders", () => {
   });
 });
 
-async function control() {
+async function control(o: { rigBus?: { url: string; ca: string } } = {}) {
   const { store, control: api } = controlOnly({
     tokens: { rigs: {} },
     options: {
       secrets: SecretBox.ephemeral(),
       publicUrl: "https://control.example.com",
+      rigBus: o.rigBus,
       rigImages: {
         harness: IMAGES.harness,
         harnessCuda: "registry.example.com/harness-cuda:1",
@@ -295,5 +296,45 @@ describe("join a rig yourself: the dashboard and /v1/join", () => {
     assert.ok(kinds.includes("NetworkPolicy"));
     assert.ok(s.store.enrollments.rig("box-b"));
     assert.match(await s.page("/ui/rigs/box-b"), /kubectl scale deployment -n team-a/);
+  });
+
+  test("with the message bus, what a join fetches gives the supervisor the bus and control's authority", async () => {
+    const bus = { url: "nats://control.example.com:4222", ca: "-----BEGIN CERTIFICATE-----\nca\n" };
+    const s = await control({ rigBus: bus });
+    // Add a rig says where the rig will reach the bus.
+    assert.match(await s.page("/ui/rigs/add"), /nats:\/\/control\.example\.com:4222/);
+    assert.match(await (await control()).page("/ui/rigs/add"), /off: the rig reports over HTTP/);
+    const machine = s.tokenOf(
+      await (await s.post("/ui/rigs/add", { place: "join:machine", rig: "box-a" })).text(),
+    );
+    const script = await (await s.fetchJoin("/v1/join/box-a/script?uid=1000", machine)).text();
+    assert.match(script, /^Environment=THERMITE_NATS_URL=nats:\/\/control\.example\.com:4222$/m);
+    assert.match(script, /^Environment=THERMITE_NATS_CA_FILE=\/keys\/bus-ca\.pem$/m);
+    assert.match(
+      script,
+      /\/bus\/bus-ca\.pem" <<'THERMITE_EOF_[0-9a-f]+'\n-----BEGIN CERTIFICATE-----\nca\n/,
+    );
+    const ns = s.tokenOf(
+      await (
+        await s.post("/ui/rigs/add", {
+          place: "join:namespace",
+          rig: "box-b",
+          j_namespace: "team-a",
+        })
+      ).text(),
+    );
+    const manifest = await (await s.fetchJoin("/v1/join/box-b/manifest", ns)).text();
+    type Item = {
+      kind: string;
+      metadata: { name: string };
+      spec?: { template: { spec: { containers: { env: { name: string; value: string }[] }[] } } };
+    };
+    const items = (JSON.parse(manifest) as { items: Item[] }).items;
+    const supervisor = items.find((o) => o.metadata.name === "thermite-box-b-supervisor");
+    const env = Object.fromEntries(
+      (supervisor?.spec?.template.spec.containers[0]?.env ?? []).map((e) => [e.name, e.value]),
+    );
+    assert.equal(env.THERMITE_NATS_URL, bus.url);
+    assert.equal(env.THERMITE_NATS_CA, bus.ca);
   });
 });

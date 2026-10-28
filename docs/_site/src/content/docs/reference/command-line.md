@@ -451,7 +451,8 @@ It prints `enrolled RIG; control's key fingerprint <fingerprint>`, then `wrote` 
 | `secrets/harness-supervisor-token` | 0600 | A new token the command makes itself. Control never sees it | The harness, as `THERMITE_SUPERVISOR_TOKEN_FILE`, and the supervisor, as `THERMITE_HARNESS_TOKEN_FILE` |
 | `keys/control-signing.pub` | 0644 | Control's public key | The harness, as `THERMITE_CONTROL_PUBKEY_FILE` |
 | `keys/control-signing.fingerprint` | 0644 | That key's fingerprint | You, to compare with the fingerprint control's dashboard shows |
-| `rig.env` | 0644 | `THERMITE_RIG_ID=<rig>` and `CONTROL_URL=<control's address>` | The rig's settings |
+| `keys/bus-ca.pem` | 0644 | With control's message bus on for rigs: the certificate of control's authority for the bus | The supervisor, as `THERMITE_NATS_CA_FILE` |
+| `rig.env` | 0644 | `THERMITE_RIG_ID=<rig>` and `CONTROL_URL=<control's address>`; with the message bus, also `THERMITE_NATS_URL=<the bus's address for rigs>` | The rig's settings |
 | `README.txt` | 0644 | What each file is for | You |
 
 Control refuses a name that is taken: `409 {"error":"rig <rig> is already enrolled"}`, or `rig <rig> has its token in control's rig tokens file; change it there` for a rig listed in that file.

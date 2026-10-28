@@ -69,6 +69,11 @@ export const ENROLL = {
     token: z.string(),
     control_public_key: z.string(),
     control_fingerprint: z.string(),
+    /**
+     * The message bus as the rig reaches it, with the certificate of control's authority it trusts
+     * the bus's server through; null: control runs without one for rigs, and the rig keeps to HTTP.
+     */
+    bus: z.object({ url: z.string(), ca: z.string() }).nullable().optional(),
   }),
 } as const satisfies Route;
 

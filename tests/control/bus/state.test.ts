@@ -66,6 +66,10 @@ describe("the message bus's state", () => {
     const s = setup();
     assert.deepEqual(await (await s.read("/v1/bus")).json(), { on: false });
     assert.equal((await s.control.request("/v1/bus")).status, 401);
+    // Control's health says the bus is off, and needs no token.
+    const health = await s.control.request("/v1/health");
+    assert.equal(health.status, 200);
+    assert.deepEqual(await health.json(), { ok: true, bus: "off" });
     const metrics = await (await s.read("/metrics")).text();
     assert.doesNotMatch(metrics, /thermite_bus_|thermite_live_/);
   });
@@ -210,6 +214,13 @@ describe("the message bus's state", () => {
       throw new Error("connection refused: nats:4222");
     };
     const s = setup(b.view);
+    const health = async () => (await s.control.request("/v1/health")).json();
+    assert.deepEqual(await health(), { ok: true, bus: "connected" });
+    // Control holds no connection to the server: its health says so, and control still serves.
+    b.bus.up = false;
+    const away = await s.control.request("/v1/health");
+    assert.equal(away.status, 200);
+    assert.deepEqual(await away.json(), { ok: true, bus: "away" });
     const state = (await (await s.read("/v1/bus")).json()) as Record<string, unknown>;
     assert.equal(state.reachable, false);
     assert.equal(state.error, "connection refused: nats:4222");

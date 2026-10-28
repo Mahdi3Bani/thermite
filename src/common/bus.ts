@@ -1,3 +1,6 @@
+import { X509Certificate } from "node:crypto";
+import { isIP } from "node:net";
+import { type ConnectionOptions, checkServerIdentity } from "node:tls";
 import {
   type ConsumerConfig,
   type ConsumerMessages,
@@ -14,6 +17,7 @@ import {
   headers,
   type NatsConnection,
   nkeyAuthenticator,
+  type TlsOptions,
 } from "@nats-io/transport-node";
 import { reloadSubject } from "../core/link/users.ts";
 import { log } from "./env.ts";
@@ -23,12 +27,17 @@ import { log } from "./env.ts";
  * rigs' supervisors reach it through this module alone, which hides the NATS library behind a few
  * calls: a publish that waits for the server's ack, a durable consumer whose messages are handed
  * over one at a time, a key-value bucket watched from the latest of each key, a subject's last
- * message, a stream made, a message removed, and the streams' state. The harness and the agents
- * never reach the bus.
+ * message, a stream made, a message removed, and the streams' state. Every connection is over
+ * TLS, and trusts the server through the authority it is given (control's own, which control hands
+ * every rig it sets up), or else the system's. The harness and the agents never reach the bus.
  */
 
 /** The setting that names the server. Not set: the part keeps to HTTP. */
 export const BUS_URL_SETTING = "THERMITE_NATS_URL";
+/** The settings that give a supervisor the authority it trusts the server through: the PEM itself… */
+export const BUS_CA_SETTING = "THERMITE_NATS_CA";
+/** …or a file that holds it, read at each connection. */
+export const BUS_CA_FILE_SETTING = "THERMITE_NATS_CA_FILE";
 /** How long a connection attempt may take: the call that needed it fails, the next tries again. */
 export const BUS_CONNECT_TIMEOUT_MS = 10_000;
 /** How long a publish waits for the server's ack. It then fails; the message may be kept or not. */
@@ -65,7 +74,12 @@ export interface BusMessage {
 export interface BusSignIn {
   seed: Uint8Array;
   inboxPrefix?: string | undefined;
+  /** The authority the server's certificate must come from; none: the system's authorities. */
+  trust?: BusTrust | undefined;
 }
+
+/** The certificate authority a part trusts the bus's server through: its PEM, or a file of it. */
+export type BusTrust = { ca: string } | { caFile: string };
 
 /** A stream as the server has it now, with what each of its consumers has still to take. */
 export interface StreamState {
@@ -146,6 +160,8 @@ export interface Bus {
   remove(stream: string, subject: string, id: string): Promise<boolean>;
   /** The state of each of these streams the server has; a stream not made yet is left out. */
   streams(names: readonly string[]): Promise<StreamState[]>;
+  /** Whether the part holds a connection to the server now. */
+  connected(): boolean;
   close(): Promise<void>;
 }
 
@@ -161,9 +177,15 @@ export function refusedForGood(err: unknown): boolean {
   return false;
 }
 
-/** The bus's address from its setting, or undefined when not set. A bad one stops the part. */
-export function busUrl(env: Record<string, string | undefined>): string | undefined {
-  const raw = env[BUS_URL_SETTING]?.trim();
+/**
+ * The bus's address from its setting (`setting`: another that names one), or undefined when not
+ * set. A bad one stops the part.
+ */
+export function busUrl(
+  env: Record<string, string | undefined>,
+  setting = BUS_URL_SETTING,
+): string | undefined {
+  const raw = env[setting]?.trim();
   if (!raw) return undefined;
   let url: URL | undefined;
   try {
@@ -172,22 +194,72 @@ export function busUrl(env: Record<string, string | undefined>): string | undefi
     url = undefined;
   }
   if (url?.protocol !== "nats:" || !url.hostname)
-    throw new Error(
-      `${BUS_URL_SETTING} takes a nats:// address, such as nats://nats:4222, not "${raw}"`,
-    );
+    throw new Error(`${setting} takes a nats:// address, such as nats://nats:4222, not "${raw}"`);
   return raw;
+}
+
+/**
+ * The authority a supervisor trusts the bus's server through, from its settings: the certificate
+ * itself (THERMITE_NATS_CA, as a rig on a cluster gets it), or a file of it (THERMITE_NATS_CA_FILE,
+ * read at each connection, so that it may come after the supervisor starts); undefined when neither
+ * is set, and the system's authorities serve. Both set, or a certificate that is not an
+ * authority's, stops the part at start.
+ */
+export function busTrust(env: Record<string, string | undefined>): BusTrust | undefined {
+  const ca = env[BUS_CA_SETTING]?.trim();
+  const caFile = env[BUS_CA_FILE_SETTING]?.trim();
+  if (ca && caFile) throw new Error(`set ${BUS_CA_SETTING} or ${BUS_CA_FILE_SETTING}, not both`);
+  if (caFile) return { caFile };
+  if (!ca) return undefined;
+  let authority = false;
+  try {
+    authority = new X509Certificate(ca).ca;
+  } catch {
+    authority = false;
+  }
+  if (!authority)
+    throw new Error(
+      `${BUS_CA_SETTING} takes the PEM certificate of the authority that signed the bus's server's certificate`,
+    );
+  return { ca: `${ca}\n` };
 }
 
 /** The server's host and port, for logs: never a user or password in its address. */
 const where = (url: string) => new URL(url).host;
 
-/** Logs the connection's changes: a drop, a reconnect, an error from the server. */
-async function watch(nc: NatsConnection, server: string): Promise<void> {
+/** The host of a nats:// address, as a certificate names it: no brackets round an IPv6 one. */
+export const busHost = (url: string) => new URL(url).hostname.replace(/^\[(.*)\]$/, "$1");
+
+/**
+ * The client's TLS options: always TLS, with the authority when one is given. A server reached at
+ * an address, not a name, is checked against the certificate's addresses: the NATS client gives
+ * Node's TLS no name then, and Node would check the certificate against "localhost".
+ */
+function tlsOf(trust: BusTrust | undefined, url: string): TlsOptions {
+  const host = busHost(url);
+  if (!isIP(host)) return trust ?? {};
+  const byAddress: TlsOptions & Pick<ConnectionOptions, "checkServerIdentity"> = {
+    ...trust,
+    checkServerIdentity: (_name, cert) => checkServerIdentity(host, cert),
+  };
+  return byAddress;
+}
+
+/**
+ * Logs the connection's changes (a drop, a reconnect, an error from the server) and tells
+ * `up` whether the connection holds now.
+ */
+async function watch(nc: NatsConnection, server: string, up: (on: boolean) => void): Promise<void> {
   log("bus", "connected", { server });
+  up(true);
   for await (const s of nc.status()) {
-    if (s.type === "disconnect") log("bus", "disconnected; reconnecting", { server }, "warn");
-    else if (s.type === "reconnect") log("bus", "reconnected", { server });
-    else if (s.type === "error")
+    if (s.type === "disconnect") {
+      up(false);
+      log("bus", "disconnected; reconnecting", { server }, "warn");
+    } else if (s.type === "reconnect") {
+      up(true);
+      log("bus", "reconnected", { server });
+    } else if (s.type === "error")
       log("bus", "server error", { server, error: String(s.error) }, "warn");
   }
 }
@@ -246,6 +318,7 @@ export function natsBus(url: string, name: string, signIn?: BusSignIn): Bus {
   const server = where(url);
   let conn: Promise<NatsConnection> | undefined;
   let closed = false;
+  let up = false;
   /** The consumers being read now, each by its own loop: a close stops them all. */
   const readings = new Set<ConsumerMessages>();
   const connection = (): Promise<NatsConnection> => {
@@ -255,14 +328,18 @@ export function natsBus(url: string, name: string, signIn?: BusSignIn): Bus {
       name,
       timeout: BUS_CONNECT_TIMEOUT_MS,
       maxReconnectAttempts: -1,
+      tls: tlsOf(signIn?.trust, url),
       ...(signIn
         ? { authenticator: nkeyAuthenticator(signIn.seed), inboxPrefix: signIn.inboxPrefix }
         : {}),
     }).then(
       (nc) => {
-        void watch(nc, server);
+        void watch(nc, server, (on) => {
+          up = on;
+        });
         // Given up (its user refused twice running): the next call connects again.
         void nc.closed().then(() => {
+          up = false;
           if (conn === made) conn = undefined;
         });
         return nc;
@@ -440,6 +517,7 @@ export function natsBus(url: string, name: string, signIn?: BusSignIn): Bus {
       }
       return out;
     },
+    connected: () => up,
     async close() {
       closed = true;
       for (const r of readings) r.stop();
@@ -450,17 +528,18 @@ export function natsBus(url: string, name: string, signIn?: BusSignIn): Bus {
 }
 
 /**
- * Asks the server at `url` to read its configuration again, as control's system user (`seed`):
- * the users file control wrote takes effect without a restart, and the connections of a user it
- * no longer has are closed. Throws when the server can't be reached, refuses the user, or says the
- * reload failed.
+ * Asks the server at `url` to read its configuration again, as control's system user (`seed`),
+ * trusting it through `trust`: the users file and the certificate control wrote take effect without
+ * a restart, and the connections of a user it no longer has are closed. Throws when the server
+ * can't be reached, refuses the user, or says the reload failed.
  */
-export async function reloadBus(url: string, seed: Uint8Array): Promise<void> {
+export async function reloadBus(url: string, seed: Uint8Array, trust?: BusTrust): Promise<void> {
   const nc = await connect({
     servers: url,
     name: "control (reloads)",
     timeout: BUS_CONNECT_TIMEOUT_MS,
     maxReconnectAttempts: 0,
+    tls: tlsOf(trust, url),
     authenticator: nkeyAuthenticator(seed),
   });
   try {

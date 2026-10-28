@@ -2,16 +2,21 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "n
 import { dirname, join } from "node:path";
 import { serve } from "@hono/node-server";
 import { buildInfo } from "../common/build-info.ts";
-import { busUrl, natsBus, reloadBus } from "../common/bus.ts";
+import { busHost, busUrl, natsBus, reloadBus } from "../common/bus.ts";
 import { log, optionalSecretFromFile, parseListen } from "../common/env.ts";
+import { writeAtomic } from "../common/fs.ts";
 import { startLogging } from "../common/log.ts";
 import { readNumber } from "../common/settings.ts";
 import { generateSigningKeys } from "../core/commands.ts";
 import { createControlApi } from "./api/index.ts";
 import {
+  BUS_CA_EXPORT_SETTING,
+  BUS_USERS_FILE,
   BUS_USERS_SYNC_MS,
+  BusTls,
   BusUsers,
-  busUsersFile,
+  busConfigDir,
+  busPublicUrl,
   CONFIG_WRITE_MS,
   ConfigWriter,
   ConfigWritten,
@@ -95,6 +100,25 @@ async function main(): Promise<void> {
   // The message bus (goal 168): with THERMITE_NATS_URL, rigs' reports and live lines arrive
   // there too, and commands leave there too.
   const natsUrl = busUrl(env);
+  // How rigs and the machines control sets rigs up on reach control.
+  const publicUrl = env.THERMITE_CONTROL_PUBLIC_URL || undefined;
+  // The bus as the rigs control sets up reach it (none: they keep to HTTP), and its TLS: control's
+  // own authority, kept beside its signing key, and the server's certificate for the names control
+  // and those rigs reach it by, written to the folder the server reads (bus/tls.ts).
+  const rigBusUrl = natsUrl ? busPublicUrl(env, publicUrl) : undefined;
+  const busDir = natsUrl ? busConfigDir(env) : undefined;
+  const busTls =
+    natsUrl && busDir
+      ? new BusTls({
+          stateDir: dir,
+          configDir: busDir,
+          names: [busHost(natsUrl), ...(rigBusUrl ? [busHost(rigBusUrl)] : [])],
+        })
+      : undefined;
+  // The rigs beside control in compose read the authority's certificate from control's volume.
+  const caExport = env[BUS_CA_EXPORT_SETTING];
+  if (busTls && caExport) writeAtomic(caExport, busTls.caCert, 0o644);
+  const trust = busTls ? { ca: busTls.caCert } : undefined;
   // The key that seals model routes' API keys: its own file, made on first use. Mount it
   // from a separate secret to keep it off the database's volume.
   const secrets = SecretBox.fromFile(
@@ -102,18 +126,22 @@ async function main(): Promise<void> {
   );
   // Who may use the bus: control's own users and each rig's that registered its key, written to
   // the server's users file, which the server reloads on control's request (bus/users.ts).
-  const busUsers = natsUrl
-    ? new BusUsers({
-        store,
-        secrets,
-        file: busUsersFile(env),
-        reload: (seed) => reloadBus(natsUrl, seed),
-      })
-    : undefined;
+  const busUsers =
+    natsUrl && busDir && busTls
+      ? new BusUsers({
+          store,
+          secrets,
+          file: join(busDir, BUS_USERS_FILE),
+          tls: busTls,
+          reload: (seed) => reloadBus(natsUrl, seed, trust),
+        })
+      : undefined;
   // Control's connection to the bus, signed in as its own user; and what it took from the live
   // stream and wrote to the config bucket, which the bus's state shows.
   const bus =
-    natsUrl && busUsers ? natsBus(natsUrl, "control", { seed: busUsers.controlSeed }) : undefined;
+    natsUrl && busUsers
+      ? natsBus(natsUrl, "control", { seed: busUsers.controlSeed, trust })
+      : undefined;
   const liveTaken = new LiveTaken();
   const configWritten = new ConfigWritten();
   // What the dashboard, REST, MCP and the loops below share, made once here (parts.ts): the test
@@ -129,8 +157,7 @@ async function main(): Promise<void> {
       runpodRigImage: env.THERMITE_RUNPOD_RIG_IMAGE || undefined,
       // Kits written on the new-campaign page, kept as git repositories in control's state.
       kits: new KitRepos(join(dir, "kits")),
-      // How rigs and the machines control sets rigs up on reach control.
-      publicUrl: env.THERMITE_CONTROL_PUBLIC_URL || undefined,
+      publicUrl,
       // The images rigs on machines run (none: control can't set rigs up there).
       rigImages:
         env.THERMITE_RIG_HARNESS_IMAGE && env.THERMITE_RIG_SUPERVISOR_IMAGE
@@ -140,6 +167,7 @@ async function main(): Promise<void> {
               supervisor: env.THERMITE_RIG_SUPERVISOR_IMAGE,
             }
           : undefined,
+      rigBus: rigBusUrl && busTls ? { url: rigBusUrl, ca: busTls.caCert } : undefined,
       bus:
         bus && natsUrl
           ? { server: new URL(natsUrl).host, bus, live: liveTaken, config: configWritten }
@@ -181,6 +209,7 @@ async function main(): Promise<void> {
       .map((r) => r.rig),
     lifecycle: driver?.kind ?? null,
     bus: natsUrl ? new URL(natsUrl).host : null,
+    bus_for_rigs: rigBusUrl ? new URL(rigBusUrl).host : null,
   });
   // Reports from the bus, folded through the ingest route's checks as they arrive; live lines,
   // folded into the live view as they arrive; each command control issues, published to its

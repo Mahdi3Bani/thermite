@@ -43,7 +43,10 @@ export async function firstRun() {
   const notUp = plan.firstRun.services.filter(
     (s) => !lines.some((l) => l.includes(s) && /\bUp\b/.test(l)),
   );
-  check("ps lists control, harness and supervisor as Up", !notUp.length, { notUp });
+  check("ps lists the page's containers as Up", !notUp.length, {
+    services: plan.firstRun.services,
+    notUp,
+  });
 
   section("Your first run, 4: sign in");
   setToken((await typed(plan.firstRun.token, "step 4", { secret: true })).trim());

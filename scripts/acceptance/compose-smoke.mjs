@@ -3,10 +3,11 @@
 // through control, submit one candidate as a proposer, and wait until its verdict reaches
 // control. Usage: COMPOSE="podman compose" node scripts/acceptance/compose-smoke.mjs (or "docker compose").
 //
-// With THERMITE_NATS_URL=nats://nats:4222, the stack runs with the `bus` profile and the
-// supervisor sends its reports and live lines over the message bus (goal 168): the smoke then
-// checks that they reached control that way. Either way it prints how long events took to reach
-// control.
+// The stack runs with the message bus, as compose.yaml does by default (goal 168): the supervisor
+// sends its reports and live lines over it, over TLS, and the smoke checks that they reached
+// control that way. With THERMITE_NATS_URL set to nothing (THERMITE_NATS_URL= node …), the stack
+// runs without it, everything over HTTP, as a deployment that turns the bus off does. Either way it
+// prints how long events took to reach control.
 import {
   api,
   assign,
@@ -20,14 +21,13 @@ import {
   until,
 } from "./lib/smoke-env.mjs";
 
-const bus = process.env.THERMITE_NATS_URL ?? "";
+const bus = process.env.THERMITE_NATS_URL ?? "nats://nats:4222";
 const composeEnv = {
   THERMITE_POLL_SECONDS: "3",
   THERMITE_CALIBRATION_BLOCKS: "0",
   THERMITE_NATS_URL: bus,
 };
-const profile = bus ? ["--profile", "bus"] : [];
-const stack = (...args) => dc(composeEnv, ...profile, ...args);
+const stack = (...args) => dc(composeEnv, ...args);
 
 /**
  * Seconds from each event's time at the rig to control holding it, from control's own store, for
@@ -65,6 +65,17 @@ console.log(`compose: build and start (reports over ${bus ? "the message bus" : 
 stack("up", "-d", "--build");
 try {
   await until("control health", async () => (await fetch(`${control}/v1/health`)).ok);
+  // Control's health says how it holds the bus: connected once the server took control's files,
+  // or off.
+  const health = await until(
+    `control's health says the bus is ${bus ? "connected" : "off"}`,
+    async () => {
+      const h = await (await fetch(`${control}/v1/health`)).json();
+      return h.bus === (bus ? "connected" : "off") ? h : undefined;
+    },
+    60_000,
+  );
+  console.log("control's health:", JSON.stringify(health));
   await assign(env, "smoke-1");
   console.log("assign_campaign delivered and accepted");
   const a = submit(

@@ -20,7 +20,7 @@ const onBox = (cmd, input) =>
 sh("node", ["scripts/dev/init.mjs"]);
 const env = { THERMITE_CONTROL_PUBLIC_URL: "http://control:8800" };
 console.log("compose: build and start control; build the stand-in machine");
-dc(env, "up", "-d", "--build", "control");
+dc(env, "up", "-d", "--build", "control", "nats");
 run("build", "-q", "-t", "thermite-test-machine", "containers/test-machine");
 try {
   run("rm", "-f", box);

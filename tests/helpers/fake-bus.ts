@@ -34,8 +34,13 @@ function takes(pattern: string, subject: string): boolean {
  * does.
  */
 export class FakeBus
-  implements Pick<Bus, "publish" | "makeStream" | "remove" | "streams" | "last">
+  implements Pick<Bus, "publish" | "makeStream" | "remove" | "streams" | "last" | "connected">
 {
+  /** Whether the part holds a connection to the server now, as control's health says. */
+  up = true;
+  connected(): boolean {
+    return this.up;
+  }
   /** The streams made, by name. */
   readonly made = new Map<string, StreamSettings>();
   readonly kept: Kept[] = [];

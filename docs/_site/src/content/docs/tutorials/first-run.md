@@ -14,7 +14,7 @@ It takes about twenty minutes. You build nothing: Thermite comes as ready-made c
 
 ## What you need
 
-- A computer running Linux or macOS, with a few CPU cores, a few gigabytes of free memory and several gigabytes of free disk. Thermite's three images take about 2.5 GB. With Podman on a Mac, that space must be free in Podman's virtual machine.
+- A computer running Linux or macOS, with a few CPU cores, a few gigabytes of free memory and several gigabytes of free disk. Thermite's three images, with the message bus's small one, take about 2.5 GB. With Podman on a Mac, that space must be free in Podman's virtual machine.
 - **Docker** with Docker Compose, or **Podman** with `podman compose`. These run Thermite's parts as containers. `podman compose` hands the work to a compose program, so install one of them too: podman-compose (for example, `pipx install podman-compose`), or Docker Compose 2 or later. Not `docker-compose` 1.x, which some Linux systems' packages still give: it can't read Thermite's compose file, and `podman compose` uses it first when it is installed. If you have it, [remove it first](../how-to/operate/troubleshoot.md#compose-wont-start-name-does-not-match-any-of-the-regexes). On a Mac, Podman runs the containers in a small virtual machine, which must be started (`podman machine start`).
 - `curl`, which macOS and most Linux systems already have, and an internet connection.
 
@@ -52,15 +52,15 @@ docker compose up -d             # Docker
 podman compose up -d             # Podman
 ```
 
-The first time, this downloads the other two images, which can take a few minutes. Later starts take seconds. When it finishes, check that three containers are up:
+The first time, this downloads the other three images, which can take a few minutes. Later starts take seconds. When it finishes, check that four containers are up:
 
 ```sh
 docker compose ps                # or: podman compose ps
 ```
 
-You see three lines, one each for `control`, `harness` and `supervisor`, and each one's status starts with `Up`. If a fourth line, `init`, says `Exited (0)`, that is the token step of step 2: it stops when its work is done. The three are the two halves of Thermite:
+You see four lines, one each for `control`, `nats`, `harness` and `supervisor`, and each one's status starts with `Up`. If a fifth line, `init`, says `Exited (0)`, that is the token step of step 2: it stops when its work is done. The four are the two halves of Thermite:
 
-- **control** is the one place you watch and steer everything from: the dashboard, its API and MCP.
+- **control** is the one place you watch and steer everything from: the dashboard, its API and MCP. **nats** is its message bus, which carries what the rig reports to control, and control's commands to the rig.
 - **harness** and **supervisor** together make a **rig**: the place where research happens. The harness holds the judge and the agents. The supervisor is the rig's link to control. This rig is called `local-1`.
 
 :::tip[If a line is missing or its status isn't `Up`]

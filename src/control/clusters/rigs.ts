@@ -246,6 +246,7 @@ export const clusterPlan = (parts: ControlParts, r: ClusterRig, images = r.spec.
   storageGi: r.spec.storageGi,
   resources: r.spec.resources,
   controlPublicKey: parts.controlPublicKey,
+  bus: parts.rigBus,
 });
 
 /** Sets a rig up on a cluster, in the background: one apply, then the first report. */

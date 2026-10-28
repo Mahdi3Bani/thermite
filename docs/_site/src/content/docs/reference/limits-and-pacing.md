@@ -177,6 +177,7 @@ The dashboard calls an epoch a **round**.
 | Commands fetched from control | Every 5 s; with the message bus, as they are issued, and fetched every 180 s for any that never reached the bus | `THERMITE_COMMAND_POLL_SECONDS`; `THERMITE_NATS_URL` |
 | Live view lines sent to control | Every 3,000 ms; with the message bus, published there as often | `THERMITE_LIVE_INTERVAL_MS` |
 | The message bus's users looked at by control: a rig retired or brought back, a run a rig may now publish the live lines of | Every 5 s; written and reloaded only when they changed | Fixed |
+| The message bus's server certificate looked at by control, at the same look | Made anew when its names change, when control's authority changed, or 30 days before its end; it is valid for 397 days, the authority for 10 years | Fixed |
 | One line of the live view | 8,000 characters: a longer line, such as a long reply, is cut and ends with `[cut]` | Fixed |
 | The model route checked on control | Every 30 s. With the message bus, not asked: it comes in the rig's config as control writes it, and on this beat the supervisor only hands its harness again what it lost | `THERMITE_MODEL_ROUTE_POLL_SECONDS` |
 | Control's look at each rig's config on the message bus | Every 5 s: a key is written only when its value changed | Fixed |

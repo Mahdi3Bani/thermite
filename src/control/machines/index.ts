@@ -11,9 +11,11 @@ export {
   MAX_RIG_GPUS,
   manageScript,
   type RigAction,
+  type RigBus,
   type RigPlan,
   type RigSecrets,
   readCheck,
+  SUPERVISOR_BUS_CA,
   updateScript,
 } from "./deploy.ts";
 export { CHECK_SCRIPT, factsLine, type MachineFacts, missing, parseFacts } from "./facts.ts";

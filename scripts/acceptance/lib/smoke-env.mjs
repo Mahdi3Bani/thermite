@@ -8,7 +8,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 export const compose = (process.env.COMPOSE ?? "podman compose").split(" ");
-// THERMITE_PROJECT and THERMITE_CONTROL_PORT let a second stack (a long run) run beside the usual one.
+// THERMITE_PROJECT and THERMITE_CONTROL_PORT let a second stack (a long run) run beside the usual
+// one, with THERMITE_NATS_PUBLISH for its message bus's port (such as 127.0.0.1:4223).
 export const control = `http://127.0.0.1:${process.env.THERMITE_CONTROL_PORT ?? "8800"}`;
 const project = process.env.THERMITE_PROJECT ? ["-p", process.env.THERMITE_PROJECT] : [];
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -37,6 +38,24 @@ export function cleanEngine() {
 }
 
 export const secret = (n) => readFileSync(join(".dev", "secrets", n), "utf8").trim();
+
+/**
+ * The message bus's server as compose.yaml runs it: its image and its command, for a stack that
+ * starts the server beside a control of its own (the cluster acceptance), so that both run it
+ * one way. Read from compose.yaml, where it is kept.
+ */
+export function natsService() {
+  const text = readFileSync("compose.yaml", "utf8");
+  const service = text.slice(text.indexOf("\n  nats:\n"));
+  const image = /\n {4}image: (\S+)/.exec(service)?.[1];
+  const lines = [];
+  for (const line of service.slice(service.indexOf("      - |\n")).split("\n").slice(1)) {
+    if (!line.startsWith("        ")) break;
+    lines.push(line.slice(8));
+  }
+  if (!image || !lines.length) throw new Error("compose.yaml has no nats service to read");
+  return { image, command: ["sh", "-c", lines.join("\n")] };
+}
 
 export async function until(what, fn, timeoutMs = 180_000, everyMs = 1000) {
   const deadline = Date.now() + timeoutMs;

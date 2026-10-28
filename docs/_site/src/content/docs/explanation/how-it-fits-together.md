@@ -94,7 +94,7 @@ Each kit names the one kind of target it measures on, and a rig accepts only a k
 
 ## How they talk
 
-**Everything starts from the rig.** The supervisor dials out to control: it sends reports and asks for commands. Control never opens a connection to a rig's containers, and the supervisor listens on no port. A rig only has to be able to reach control, so it can sit behind a home router or a firewall that lets connections out but not in.
+**Everything starts from the rig.** The supervisor dials out to control: it sends reports and asks for commands. Control never opens a connection to a rig's containers, and the supervisor listens on no port. A rig only has to be able to reach control, at its address for rigs and at its message bus's port beside it, so it can sit behind a home router or a firewall that lets connections out but not in.
 
 ```mermaid
 sequenceDiagram

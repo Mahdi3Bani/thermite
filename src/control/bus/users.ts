@@ -14,8 +14,13 @@ import type { BusIdentityName, ControlStore } from "../store/index.ts";
  * (BusUsers). Control's own two keys are made here on first use and kept sealed in its store.
  */
 
-/** The setting that names the users file control writes for the bus's server. */
-export const BUS_USERS_FILE_SETTING = "THERMITE_NATS_USERS_FILE";
+/**
+ * The setting that names the folder control writes the bus's server's files to: its users, and its
+ * TLS certificate and key (tls.ts). The server's configuration includes them.
+ */
+export const BUS_CONFIG_DIR_SETTING = "THERMITE_NATS_CONFIG_DIR";
+/** The users file's name in that folder. */
+export const BUS_USERS_FILE = "users.conf";
 
 /**
  * How often control brings the users file to its store: for a rig retired, a run a rig may now
@@ -25,16 +30,17 @@ export const BUS_USERS_FILE_SETTING = "THERMITE_NATS_USERS_FILE";
 export const BUS_USERS_SYNC_MS = 5_000;
 
 /**
- * The users file's path, from its setting. Control needs one when it runs the bus: the server
- * then knows only the users control writes there. Not set stops control at start.
+ * The folder of the server's files, from its setting. Control needs one when it runs the bus: the
+ * server then knows only the users control writes there, and serves the certificate it writes
+ * there. Not set stops control at start.
  */
-export function busUsersFile(env: Record<string, string | undefined>): string {
-  const file = env[BUS_USERS_FILE_SETTING]?.trim();
-  if (!file)
+export function busConfigDir(env: Record<string, string | undefined>): string {
+  const dir = env[BUS_CONFIG_DIR_SETTING]?.trim();
+  if (!dir)
     throw new Error(
-      `with THERMITE_NATS_URL set, ${BUS_USERS_FILE_SETTING} names the file control writes the bus's users to, which the server's configuration includes`,
+      `with THERMITE_NATS_URL set, ${BUS_CONFIG_DIR_SETTING} names the folder control writes the bus's users and TLS certificate to, which the server's configuration includes`,
     );
-  return file;
+  return dir;
 }
 
 /** The users file's mode: it holds public keys and permissions, which the server reads. */
@@ -88,8 +94,13 @@ export interface BusUsersOptions {
   store: ControlStore;
   /** Seals control's own keys in its store. */
   secrets: SecretBox;
-  /** The users file the server's configuration includes (THERMITE_NATS_USERS_FILE). */
+  /** The users file the server's configuration includes, in THERMITE_NATS_CONFIG_DIR. */
   file: string;
+  /**
+   * The server's certificate and key, written beside the users when they must be made anew (true
+   * then); none: the server has no TLS of control's.
+   */
+  tls?: { write(): boolean } | undefined;
   /** Asks the server to read the users file again, signed in as control's system user. */
   reload: (systemSeed: Uint8Array) => Promise<void>;
 }
@@ -141,9 +152,10 @@ export class BusUsers {
   }
 
   /**
-   * Brings the users file to the store: writes it when its text changed, and asks the server to
-   * reload it then, or when the last reload failed. Waits for a sync under way first. It never
-   * throws: a file not written or a reload that failed is logged, and tried again at the next sync.
+   * Brings the users file to the store, and the server's certificate up to date: writes each when
+   * it changed, and asks the server to reload them then, or when the last reload failed. Waits for
+   * a sync under way first. It never throws: a file not written or a reload that failed is logged,
+   * and tried again at the next sync.
    */
   sync(): Promise<void> {
     this.last = this.last.then(() => this.syncNow());
@@ -154,6 +166,8 @@ export class BusUsers {
     const where = { file: this.o.file };
     let text: string;
     try {
+      // The certificate first: the server starts once the users file is there.
+      if (this.o.tls?.write()) this.reloaded = false;
       text = this.text();
       if (text !== this.written) {
         writeAtomic(this.o.file, text, USERS_FILE_MODE);
@@ -164,7 +178,7 @@ export class BusUsers {
     } catch (err) {
       const error = errorText(err);
       const level = this.failing ? "debug" : "error";
-      log("control", "the bus's users not written; trying again", { ...where, error }, level);
+      log("control", "the bus's files not written; trying again", { ...where, error }, level);
       this.failing = true;
       return;
     }

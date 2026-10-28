@@ -4,7 +4,7 @@ import type { BusView } from "./bus/index.ts";
 import { type ClusterKubectl, realKubectl } from "./clusters/index.ts";
 import type { KitRepos } from "./kits/index.ts";
 import { RunpodDriver } from "./lifecycle.ts";
-import { type MachineSsh, openSsh } from "./machines/index.ts";
+import { type MachineSsh, openSsh, type RigBus } from "./machines/index.ts";
 import { McpServers } from "./mcp-servers/index.ts";
 import { ChatGPTLogins, PlanUsageReader } from "./providers/index.ts";
 import type { RigImages } from "./rigs/index.ts";
@@ -28,6 +28,11 @@ export interface ControlParts {
   publicUrl?: string | undefined;
   /** The images control deploys rigs from (none: control can't set rigs up). */
   rigImages?: RigImages | undefined;
+  /**
+   * The message bus as the rigs control sets up reach it: its address, and control's authority
+   * they trust its server through. None: those rigs keep to HTTP.
+   */
+  rigBus?: RigBus | undefined;
   /** How control reaches machines over SSH. */
   machineSsh: MachineSsh;
   /** How control reaches Kubernetes clusters. */
@@ -67,6 +72,7 @@ export interface PartsOptions {
   kits?: KitRepos | undefined;
   publicUrl?: string | undefined;
   rigImages?: RigImages | undefined;
+  rigBus?: RigBus | undefined;
   machineSsh?: MachineSsh | undefined;
   clusterKubectl?: ClusterKubectl | undefined;
   providerFetch?: typeof fetch | undefined;
@@ -115,6 +121,7 @@ export function controlParts(
       .toString(),
     publicUrl: opts.publicUrl,
     rigImages: opts.rigImages,
+    rigBus: opts.rigBus,
     machineSsh: opts.machineSsh ?? openSsh,
     kube: opts.clusterKubectl ?? realKubectl,
     secrets,

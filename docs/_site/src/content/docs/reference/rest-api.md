@@ -70,7 +70,7 @@ All of these take the owner's token, except where the table says otherwise. `<ri
 
 | Route | Token | What it does | Request | Answer |
 | --- | --- | --- | --- | --- |
-| `GET /v1/health` | None | Says control is up | None | `{"ok":true}` |
+| `GET /v1/health` | None | Says control is up, and how it holds the [message bus](../how-to/operate/message-bus.md#check-it): `off`, `connected` (it holds a connection to the bus's server now) or `away` (it holds none, and tries again). It answers 200 whatever the bus does | None | `{"ok":true,"bus":"connected"}` |
 
 ### Rigs and their history
 
@@ -538,7 +538,7 @@ Each refusal is in the audit log as `refused`, with the route's path and why; ea
 | Route | Token | What it does | Request | Answer |
 | --- | --- | --- | --- | --- |
 | `POST /v1/rigs/<rig>/key/accept` | Owner | Accepts the report key a rig is waiting with, if its fingerprint matches | `fingerprint` in the query: the first 16 hexadecimal characters of the SHA-256 of the key's PEM text | `{"accepted":true}`. 404 `{"error":"no pending key"}`, also for a wrong fingerprint |
-| `POST /v1/rigs` | Owner | Enrolls a rig: control makes its token, returns it once and keeps only its SHA-256. A retired rig enrolled again comes back | `{"rig":"<name>"}` and nothing else. A name is 2 to 40 characters of `a-z`, `0-9` and `-`, and starts and ends with a letter or digit | 201 `{rig, token, control_public_key, control_fingerprint}`. 409 `rig <rig> is already enrolled` or `rig <rig> has its token in control's rig tokens file; change it there`. 400 `invalid request` for a bad name |
+| `POST /v1/rigs` | Owner | Enrolls a rig: control makes its token, returns it once and keeps only its SHA-256. A retired rig enrolled again comes back | `{"rig":"<name>"}` and nothing else. A name is 2 to 40 characters of `a-z`, `0-9` and `-`, and starts and ends with a letter or digit | 201 `{rig, token, control_public_key, control_fingerprint, bus}`: `bus` is `{url, ca}`, the message bus's address for rigs and the certificate of control's authority for it, or `null` when control runs no bus for rigs. 409 `rig <rig> is already enrolled` or `rig <rig> has its token in control's rig tokens file; change it there`. 400 `invalid request` for a bad name |
 | `POST /v1/rigs/<rig>/token` | Owner | Gives an enrolled rig a new token. The old one stops working at once | None | `{rig, token}`. 409 for a rig in the rig tokens file. 404 `rig <rig> is not enrolled` |
 | `POST /v1/rigs/<rig>/retire` | Owner | Retires any rig: enrolled, in the rig tokens file, or one that only reported. It leaves the lists, its reports are refused and a token control made ends. Nothing stops on the machine | None | `{rig, retired:true}`, plus `note: "its token is in control's rig tokens file: remove it there too"` for a rig in that file. 404 `no rig <rig>` |
 | `POST /v1/rigs/<rig>/bring-back` | Owner | Brings a retired rig back into the lists. A token control made stays ended | None | `{rig, retired:false}`. 404 `rig <rig> is not retired` |

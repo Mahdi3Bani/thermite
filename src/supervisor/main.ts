@@ -14,7 +14,7 @@ import { modelStallMs } from "../agents/model/index.ts";
 import { controlClient } from "../common/api/control.ts";
 import { harnessClient } from "../common/api/harness.ts";
 import { buildInfo } from "../common/build-info.ts";
-import { busUrl, natsBus } from "../common/bus.ts";
+import { busTrust, busUrl, natsBus } from "../common/bus.ts";
 import { log, optionalSecretFromFile, requireEnv, secretFromFile } from "../common/env.ts";
 import { startLogging } from "../common/log.ts";
 import {
@@ -121,19 +121,23 @@ async function main(): Promise<void> {
   // The message bus (goal 168): with THERMITE_NATS_URL, reports go there instead of to control's
   // ingest route, and commands and the rig's config come from there; a bad address stops the
   // supervisor here. It signs in with the rig's own key, which control learns from the
-  // supervisor's figures with the seal key its config is sealed to.
+  // supervisor's figures with the seal key its config is sealed to, over TLS, trusting the server
+  // through control's authority (THERMITE_NATS_CA or THERMITE_NATS_CA_FILE).
   const natsUrl = busUrl(env);
+  const trust = natsUrl ? busTrust(env) : undefined;
   const key = natsUrl ? busKey(home) : undefined;
   const bus =
     natsUrl && key
       ? natsBus(natsUrl, `supervisor ${rig}`, {
           seed: key.seed,
           inboxPrefix: rigInboxPrefix(rig),
+          trust,
         })
       : undefined;
   if (natsUrl)
     log("supervisor", "reports, commands, live lines and the rig's config go over the bus", {
       bus: new URL(natsUrl).host,
+      trusts: trust ? ("caFile" in trust ? trust.caFile : "THERMITE_NATS_CA") : "the system's",
     });
   // The live lines it published to the bus and dropped there, and the config updates it took
   // and refused, by subject, for its figures; and the rig's config as the bus gave it.

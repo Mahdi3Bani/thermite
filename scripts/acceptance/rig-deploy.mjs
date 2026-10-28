@@ -5,7 +5,9 @@
 // machine's key, the owner trusts the host key, lingering is turned on after the owner's yes,
 // then Rigs › Add a rig enrolls a CPU rig, writes its files and Quadlet units, starts it, and the
 // rig's first report must reach control. Then its services are stopped, started and removed.
-// The rig's images are the ones compose builds, loaded into the machine's rootless Podman.
+// The rig's images are the ones compose builds, loaded into the machine's rootless Podman. The
+// rig's supervisor reports over the message bus (compose's nats service, on the same network), over
+// TLS, trusting control's authority, which control hands it with its files.
 // Usage: COMPOSE="podman compose" node scripts/acceptance/rig-deploy.mjs (Podman only).
 import { execSync } from "node:child_process";
 import { acceptanceChecks } from "./lib/checks.mjs";
@@ -22,6 +24,8 @@ const harnessImage = "docker.io/library/thermite-harness:latest";
 const supervisorImage = "docker.io/library/thermite-supervisor:latest";
 const env = {
   THERMITE_CONTROL_PUBLIC_URL: "http://control:8800",
+  // The machine is on control's compose network: it reaches the bus's server by its service name.
+  THERMITE_NATS_PUBLIC_URL: "nats://nats:4222",
   THERMITE_RIG_HARNESS_IMAGE: harnessImage,
   THERMITE_RIG_SUPERVISOR_IMAGE: supervisorImage,
 };
@@ -29,7 +33,7 @@ const env = {
 sh("node", ["scripts/dev/init.mjs"]);
 console.log("compose: build the images and start control; build the stand-in machine");
 dc(env, "build", "control", "harness", "supervisor");
-dc(env, "up", "-d", "control");
+dc(env, "up", "-d", "control", "nats");
 sh("podman", ["build", "-q", "-t", "thermite-test-host", "containers/test-host"]);
 const cleanup = () => {
   try {
@@ -164,6 +168,18 @@ try {
       /Files and units written, images ready, services started/.test(reported) &&
       /First report reached control/.test(reported),
     reported.length < 400 ? reported : undefined,
+  );
+  check(
+    "the rig's supervisor registered its key on the bus, and its units name the bus and control's authority",
+    /Its key on the message bus registered/.test(reported) &&
+      /THERMITE_NATS_URL=nats:\/\/nats:4222/.test(
+        onHost(
+          "cat /home/thermite/.config/containers/systemd/thermite-box-rig-1-supervisor.container",
+        ),
+      ) &&
+      /BEGIN CERTIFICATE/.test(
+        onHost("cat /home/thermite/.local/share/thermite/rigs/box-rig-1/bus/bus-ca.pem"),
+      ),
   );
   check(
     "the rig's services run as the machine user's systemd units",

@@ -1,4 +1,4 @@
-import { gpuSplit } from "../machines/index.ts";
+import { gpuSplit, type RigBus } from "../machines/index.ts";
 
 /**
  * A rig on a Kubernetes cluster, as the objects control applies with `kubectl apply -f -`: the
@@ -35,6 +35,12 @@ export interface ClusterRigPlan {
   /** The rig's CPUs and memory (a slot's quota, say); none: the namespace's defaults apply. */
   resources?: { cpus: number; memoryGi: number } | undefined;
   controlPublicKey: string;
+  /**
+   * The message bus for its supervisor; none: it keeps to HTTP. Control's authority goes in the
+   * supervisor's environment, so that every apply of the deployments (an update, a resize) carries
+   * the one control has now.
+   */
+  bus?: RigBus | undefined;
 }
 
 type Resources = { requests: Record<string, string>; limits: Record<string, string> };
@@ -291,6 +297,7 @@ export function clusterRigObjects(p: ClusterRigPlan, s: ClusterRigSecrets): Obj[
             CONTROL_URL: p.controlUrl.replace(/\/$/, ""),
             THERMITE_HARNESS_TOKEN_FILE: "/run/secrets/harness-supervisor-token",
             THERMITE_CONTROL_TOKEN_FILE: "/run/secrets/control-rig-token",
+            ...(p.bus ? { THERMITE_NATS_URL: p.bus.url, THERMITE_NATS_CA: p.bus.ca } : {}),
           }),
           securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: ["ALL"] } },
           ...(res ? { resources: res.supervisor } : {}),

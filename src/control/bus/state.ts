@@ -35,7 +35,7 @@ export const BUS_STATE_TIMEOUT_MS = 5_000;
 export interface BusView {
   /** The server's host and port. */
   server: string;
-  bus: Pick<Bus, "streams">;
+  bus: Pick<Bus, "streams" | "connected">;
   live: LiveTaken;
   config: ConfigWritten;
 }
@@ -83,6 +83,14 @@ export function liveState(store: ControlStore, taken: LiveTaken) {
     rigs,
   };
 }
+
+/**
+ * The bus in control's health answer: off, connected (control holds a connection to its server
+ * now) or away (it holds none, and tries again). Control's own routes serve either way, so the
+ * answer stays 200: a restart of control mends nothing on the bus.
+ */
+export const busHealth = (view: BusView | undefined): "off" | "connected" | "away" =>
+  view ? (view.bus.connected() ? "connected" : "away") : "off";
 
 /** The bus's state now; with the bus off, only that it is off. */
 export async function busState(store: ControlStore, view: BusView | undefined) {

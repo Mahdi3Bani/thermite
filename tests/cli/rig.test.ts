@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { promisify } from "node:util";
 import { serve } from "@hono/node-server";
+import { type Enrolled, writeRigFiles } from "../../src/cli/rig.ts";
 import { fingerprint } from "../../src/control/store/index.ts";
 import { controlOnly } from "../helpers/control-stack.ts";
 
@@ -80,6 +81,33 @@ describe("thermite rig", () => {
     } finally {
       server.close();
     }
+  });
+
+  test("add, with control's message bus on: the rig's files name the bus and hold control's authority", async () => {
+    const bus = { url: "nats://control.example.com:4222", ca: "-----BEGIN CERTIFICATE-----\nca\n" };
+    const { api } = controlOnly({ tokens: TOKENS, options: { rigBus: bus } });
+    const r = await api("POST", "/v1/rigs", { rig: "gpu-2" });
+    assert.equal(r.status, 201);
+    const enrolled = (await r.json()) as Enrolled;
+    assert.deepEqual(enrolled.bus, bus);
+    const out = join(mkdtempSync(join(tmpdir(), "thermite-rig-bus-")), "rig");
+    const files = writeRigFiles(out, enrolled, "https://control.example.com");
+    assert.ok(files.includes("keys/bus-ca.pem"));
+    assert.equal(readFileSync(join(out, "keys/bus-ca.pem"), "utf8"), bus.ca);
+    assert.equal(
+      readFileSync(join(out, "rig.env"), "utf8"),
+      "THERMITE_RIG_ID=gpu-2\nCONTROL_URL=https://control.example.com\nTHERMITE_NATS_URL=nats://control.example.com:4222\n",
+    );
+    assert.match(readFileSync(join(out, "README.txt"), "utf8"), /THERMITE_NATS_CA_FILE/);
+    // Without the bus: no bus in the answer or the files.
+    const off = controlOnly({ tokens: TOKENS });
+    const plain = (await (await off.api("POST", "/v1/rigs", { rig: "gpu-3" })).json()) as Enrolled;
+    assert.equal(plain.bus, null);
+    const out2 = join(mkdtempSync(join(tmpdir(), "thermite-rig-bus-")), "rig");
+    assert.ok(
+      !writeRigFiles(out2, plain, "https://control.example.com").includes("keys/bus-ca.pem"),
+    );
+    assert.doesNotMatch(readFileSync(join(out2, "rig.env"), "utf8"), /NATS/);
   });
 
   test("list shows each rig's state and versions against control's, with what to do", async () => {

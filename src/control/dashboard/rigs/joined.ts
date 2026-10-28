@@ -103,6 +103,7 @@ export function joinedRigRoutes(app: Hono, dash: Dashboard): void {
           root,
           controlPublicKey: parts.controlPublicKey,
           controlFingerprint: fingerprint(parts.controlPublicKey),
+          bus: parts.rigBus,
         },
         secrets,
       );
@@ -122,6 +123,7 @@ export function joinedRigRoutes(app: Hono, dash: Dashboard): void {
           storageClass: s.storageClass,
           storageGi: s.storageGi ?? 100,
           controlPublicKey: parts.controlPublicKey,
+          bus: parts.rigBus,
         },
         secrets,
       );

@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { promisify } from "node:util";
 import { LOCAL_TOKEN_FILES } from "../../src/cli/local-init.ts";
+import { BUS_TLS_FILES, BUS_USERS_FILE } from "../../src/control/bus/index.ts";
 import {
   type BundleInput,
   COMPOSE_NEEDS,
@@ -134,6 +135,42 @@ describe("the release bundle", () => {
       ).join(),
       /thermite-rig:latest/,
     );
+  });
+
+  test("the message bus runs beside control by default, over TLS, and can be turned off", () => {
+    for (const compose of [COMPOSE, render(TEMPLATE, placeholders(input()), COMPOSE_NEEDS)]) {
+      assert.equal(
+        serviceKey(compose, "nats", "profiles"),
+        undefined,
+        "no profile: it always runs",
+      );
+      assert.match(
+        serviceKey(compose, "nats", "image") ?? "",
+        /^docker\.io\/library\/nats:[\d.]+-alpine@sha256:[0-9a-f]{64}$/,
+      );
+      // NATS's own port, on this machine's loopback unless .env names another address.
+      assert.match(
+        serviceKey(compose, "nats", "ports") ?? "",
+        /^\["\$\{THERMITE_NATS_PUBLISH:-127\.0\.0\.1:4222\}:4222"\]$/,
+      );
+      // It reads the certificate's key through control's group.
+      assert.equal(serviceKey(compose, "nats", "user"), '"0:10001"');
+      // The files control writes for it, by the names control's code gives them.
+      const dir = "/etc/nats/thermite";
+      assert.ok(compose.includes(`cert_file: "${dir}/${BUS_TLS_FILES.cert}"`));
+      assert.ok(compose.includes(`key_file: "${dir}/${BUS_TLS_FILES.key}"`));
+      assert.ok(compose.includes(`include thermite/${BUS_USERS_FILE}`));
+      for (const name of [BUS_USERS_FILE, BUS_TLS_FILES.cert, BUS_TLS_FILES.key])
+        assert.ok(compose.includes(`[ -s ${dir}/${name} ]`), `it waits for ${name}`);
+      // Its health check: the server answers, with JetStream on.
+      assert.match(compose, /healthz\?js-enabled-only=true/);
+      // Control and both rigs' supervisors are on it unless THERMITE_NATS_URL is set to nothing.
+      const on = /THERMITE_NATS_URL: "\$\{THERMITE_NATS_URL-nats:\/\/nats:4222\}"/g;
+      assert.equal(compose.match(on)?.length, 3);
+      assert.equal(compose.split("THERMITE_NATS_CA_FILE: /keys/bus-ca.pem").length - 1, 2);
+      assert.match(compose, /THERMITE_NATS_CA_EXPORT: \/keys\/bus-ca\.pem/);
+      assert.match(compose, /THERMITE_NATS_CONFIG_DIR: \/nats-config/);
+    }
   });
 
   test("the readme names the version, the images and their tags", () => {

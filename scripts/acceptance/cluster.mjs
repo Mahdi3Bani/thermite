@@ -10,14 +10,16 @@ import { execFileSync } from "node:child_process";
 // slot's rig is also moved onto new images (control restarted with other image tags): it must
 // report again from them, with its volume and secret unchanged. Then the slot gets a quota, and
 // the rig moves from the namespace's defaults onto more CPUs and memory within it (goal 118): it
-// must report again, with the new limits and its volume and secret unchanged.
+// must report again, with the new limits and its volume and secret unchanged. Beside control runs
+// the message bus's server, as compose.yaml runs it, at another fixed address: each rig's supervisor
+// reports over it, over TLS, trusting control's authority, which its deployment carries.
 // Usage: COMPOSE="podman compose" node scripts/acceptance/cluster.mjs (Podman and kind needed).
 import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { acceptanceChecks } from "./lib/checks.mjs";
-import { cleanEngine, compose, dc, secret, sh, until } from "./lib/smoke-env.mjs";
+import { cleanEngine, compose, dc, natsService, secret, sh, until } from "./lib/smoke-env.mjs";
 
 const { check, results } = acceptanceChecks();
 if (compose[0] !== "podman") {
@@ -36,15 +38,22 @@ const supervisorImage = "docker.io/library/thermite-supervisor:latest";
 // The same images under another tag, as a later control would deploy them.
 const updated = (image) => image.replace(/:latest$/, ":accept-update");
 const controlData = "thermite-kind-control-data";
+// The message bus's server, and the folder control writes its users and certificate to.
+const bus = "thermite-kind-nats";
+const busVolumes = { config: "thermite-kind-nats-config", data: "thermite-kind-nats-data" };
 const work = mkdtempSync(join(tmpdir(), "thermite-cluster-"));
 
 const cleanup = () => {
-  try {
-    sh("podman", ["rm", "-f", "-t", "3", ctl]);
-  } catch {}
-  try {
-    sh("podman", ["volume", "rm", "-f", controlData]);
-  } catch {}
+  for (const box of [ctl, bus]) {
+    try {
+      sh("podman", ["rm", "-f", "-t", "3", box]);
+    } catch {}
+  }
+  for (const volume of [controlData, busVolumes.config, busVolumes.data]) {
+    try {
+      sh("podman", ["volume", "rm", "-f", volume]);
+    } catch {}
+  }
   for (const image of [harnessImage, supervisorImage]) {
     try {
       sh("podman", ["rmi", updated(image)]);
@@ -84,6 +93,9 @@ try {
     .find((s) => /^\d+\.\d+\.\d+\.0\/24$/.test(s));
   if (!subnet) throw new Error("kind's network has no IPv4 /24 subnet");
   const ip = subnet.replace(/\.0\/24$/, ".250");
+  // The bus's server, at the next address: control and the rig pods reach it there.
+  const busIp = subnet.replace(/\.0\/24$/, ".251");
+  const busUrl = `nats://${busIp}:4222`;
   const admin = secret("control-admin-token");
   const control = "http://127.0.0.1:8802";
   let cookie = "";
@@ -104,6 +116,14 @@ try {
       "127.0.0.1:8802:8800",
       "-v",
       `${controlData}:/var/lib/thermite-control`,
+      "-v",
+      `${busVolumes.config}:/nats-config`,
+      "-e",
+      `THERMITE_NATS_URL=${busUrl}`,
+      "-e",
+      `THERMITE_NATS_PUBLIC_URL=${busUrl}`,
+      "-e",
+      "THERMITE_NATS_CONFIG_DIR=/nats-config",
       "-e",
       "THERMITE_CONTROL_DIR=/var/lib/thermite-control",
       "-e",
@@ -128,6 +148,37 @@ try {
     csrf = /name="csrf" value="([0-9a-f]+)"/.exec(await get("/ui/settings"))?.[1] ?? "";
   };
   await startControl(harnessImage, supervisorImage);
+  // The bus's server, started once: it waits for control's files, and stays when control restarts.
+  const nats = natsService();
+  sh("podman", [
+    "run",
+    "-d",
+    "--name",
+    bus,
+    "--network",
+    "kind",
+    "--ip",
+    busIp,
+    "--user",
+    "0:10001",
+    "--cap-drop",
+    "ALL",
+    "--cap-add",
+    "CHOWN",
+    "--security-opt",
+    "no-new-privileges:true",
+    "-v",
+    `${busVolumes.config}:/etc/nats/thermite`,
+    "-v",
+    `${busVolumes.data}:/data`,
+    nats.image,
+    ...nats.command,
+  ]);
+  await until(
+    "control's health says the bus is connected",
+    async () => (await (await fetch(`${control}/v1/health`)).json()).bus === "connected",
+    120_000,
+  );
   const post = async (path, form) => {
     const r = await fetch(`${control}${path}`, {
       method: "POST",
@@ -199,6 +250,21 @@ try {
     "a rig in a namespace of its own was applied, started and reported",
     created === "reported",
     created,
+  );
+  check(
+    "its supervisor registered its key on the bus, and reports over it with control's authority",
+    /Its key on the message bus registered/.test(await get("/ui/rigs/kind-rig-1")) &&
+      /THERMITE_NATS_CA/.test(
+        kc(
+          "get",
+          "deploy",
+          "thermite-kind-rig-1-supervisor",
+          "-n",
+          "thermite-kind-rig-1",
+          "-o",
+          "json",
+        ),
+      ),
   );
   check(
     "its namespace holds its two deployments and network rules",

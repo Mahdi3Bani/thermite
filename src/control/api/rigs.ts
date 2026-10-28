@@ -52,6 +52,7 @@ export function rigRoutes(app: Hono, api: ApiContext): void {
         token: t.token,
         control_public_key: publicKeyPem,
         control_fingerprint: fingerprint(publicKeyPem),
+        bus: parts.rigBus ?? null,
       },
       201,
     );

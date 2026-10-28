@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { createUser, fromSeed } from "@nats-io/nkeys";
 import {
-  BUS_USERS_FILE_SETTING,
+  BUS_CONFIG_DIR_SETTING,
+  BUS_USERS_FILE,
   BUS_USERS_SYNC_MS,
   BusUsers,
-  busUsersFile,
+  busConfigDir,
   takeRigBusKey,
 } from "../../../src/control/bus/users.ts";
 import { STEP_WORDS } from "../../../src/control/rigs/setup.ts";
@@ -199,6 +200,53 @@ describe("each rig's key on the message bus", () => {
     assert.equal(s.server.calls.length, calls + 1);
   });
 
+  test("the server's certificate is written before its users, and a new one is reloaded", async () => {
+    const file = usersPath();
+    const server = new FakeServer();
+    const order: string[] = [];
+    let renew = true;
+    const tls = {
+      write: () => {
+        order.push(existsSync(file) ? "certificate after the users" : "certificate");
+        const wrote = renew;
+        renew = false;
+        return wrote;
+      },
+    };
+    const store = new ControlStore(":memory:");
+    const users = new BusUsers({
+      store,
+      secrets: SecretBox.ephemeral(),
+      file,
+      tls,
+      reload: server.reload,
+    });
+    await users.sync();
+    assert.deepEqual(order, ["certificate"]);
+    assert.equal(server.calls.length, 1);
+    // Nothing new: no reload.
+    await users.sync();
+    assert.equal(server.calls.length, 1);
+    // A certificate made anew, as near its end: the server reads it again, with the same users.
+    renew = true;
+    await users.sync();
+    assert.equal(server.calls.length, 2);
+    // A certificate that can't be written is logged, and the users wait for it.
+    const broken = new BusUsers({
+      store: new ControlStore(":memory:"),
+      secrets: SecretBox.ephemeral(),
+      file: usersPath(),
+      tls: {
+        write: () => {
+          throw new Error("EACCES: permission denied");
+        },
+      },
+      reload: server.reload,
+    });
+    await broken.sync();
+    assert.equal(server.calls.length, 2);
+  });
+
   test("the runs control's run registry gives a rig open their live subjects to its user", async () => {
     const s = setup();
     const key = user();
@@ -272,21 +320,19 @@ describe("each rig's key on the message bus", () => {
     store.db.close();
   });
 
-  test("a key is recorded without the bus too; with the bus, the users file must be named", () => {
+  test("a key is recorded without the bus too; with the bus, the server's folder must be named", () => {
     const store = new ControlStore(":memory:");
     const key = user();
     assert.equal(takeRigBusKey(store, "rig-a", key), "new");
     assert.equal(takeRigBusKey(store, "rig-a", key), "same");
     assert.equal(takeRigBusKey(store, "rig-a", user()), "changed");
-    assert.equal(BUS_USERS_FILE_SETTING, "THERMITE_NATS_USERS_FILE");
-    assert.equal(
-      busUsersFile({ THERMITE_NATS_USERS_FILE: " /nats-users/users.conf " }),
-      "/nats-users/users.conf",
-    );
-    for (const env of [{}, { THERMITE_NATS_USERS_FILE: " " }])
+    assert.equal(BUS_CONFIG_DIR_SETTING, "THERMITE_NATS_CONFIG_DIR");
+    assert.equal(BUS_USERS_FILE, "users.conf");
+    assert.equal(busConfigDir({ THERMITE_NATS_CONFIG_DIR: " /nats-config " }), "/nats-config");
+    for (const env of [{}, { THERMITE_NATS_CONFIG_DIR: " " }])
       assert.throws(
-        () => busUsersFile(env),
-        /^Error: with THERMITE_NATS_URL set, THERMITE_NATS_USERS_FILE names the file control writes the bus's users to, which the server's configuration includes$/,
+        () => busConfigDir(env),
+        /^Error: with THERMITE_NATS_URL set, THERMITE_NATS_CONFIG_DIR names the folder control writes the bus's users and TLS certificate to, which the server's configuration includes$/,
       );
   });
 });

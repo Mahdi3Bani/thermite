@@ -8,6 +8,7 @@ import {
 import {
   asList,
   type ClusterRigPlan,
+  clusterRigDeployments,
   clusterRigObjects,
 } from "../../../src/control/clusters/manifests.ts";
 
@@ -162,6 +163,35 @@ describe("rigs on Kubernetes", () => {
     assert.throws(
       () => clusterRigObjects({ ...plan, gpuMode: "dra", gpus: 1 }, secrets),
       /device class/,
+    );
+  });
+
+  test("with the message bus, the supervisor's environment carries its address and control's authority", () => {
+    const bus = { url: "nats://control.example.com:4222", ca: "-----BEGIN CERTIFICATE-----\nca\n" };
+    const env = (objs: Obj[], name: string) =>
+      Object.fromEntries(
+        (
+          (pod(objs, name).containers as { env: { name: string; value: string }[] }[])[0]?.env ?? []
+        ).map((e) => [e.name, e.value]),
+      );
+    const objs = clusterRigObjects({ ...plan, bus }, secrets) as Obj[];
+    const sup = env(objs, "thermite-k8s-a-1-supervisor");
+    assert.equal(sup.THERMITE_NATS_URL, bus.url);
+    assert.equal(sup.THERMITE_NATS_CA, bus.ca);
+    assert.equal(sup.THERMITE_NATS_CA_FILE, undefined);
+    assert.ok(!Object.keys(env(objs, "thermite-k8s-a-1-harness")).some((k) => k.includes("NATS")));
+    // The secret is the same: the authority is no secret, and an update applies the deployments
+    // alone, which carry it.
+    assert.deepEqual(
+      find(objs, "Secret"),
+      find(clusterRigObjects(plan, secrets) as Obj[], "Secret"),
+    );
+    const updated = clusterRigDeployments({ ...plan, bus }) as Obj[];
+    assert.equal(env(updated, "thermite-k8s-a-1-supervisor").THERMITE_NATS_CA, bus.ca);
+    assert.ok(
+      !Object.keys(
+        env(clusterRigObjects(plan, secrets) as Obj[], "thermite-k8s-a-1-supervisor"),
+      ).some((k) => k.includes("NATS")),
     );
   });
 

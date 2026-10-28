@@ -7,7 +7,7 @@ import type { ClusterKubectl } from "../clusters/index.ts";
 import { Credential } from "../credential.ts";
 import type { KitRepos } from "../kits/index.ts";
 import type { DeploymentDriver } from "../lifecycle.ts";
-import type { MachineSsh } from "../machines/index.ts";
+import type { MachineSsh, RigBus } from "../machines/index.ts";
 import type { McpServers } from "../mcp-servers/index.ts";
 import type { MountPages } from "../pages.ts";
 import { type ControlParts, controlParts } from "../parts.ts";
@@ -92,6 +92,8 @@ export interface ControlOptions {
   machineSsh?: MachineSsh | undefined;
   /** The images control deploys rigs from on machines. */
   rigImages?: RigImages | undefined;
+  /** The message bus as the rigs control sets up reach it (none: they keep to HTTP). */
+  rigBus?: RigBus | undefined;
   /** How control reaches Kubernetes clusters (tests give their own). */
   clusterKubectl?: ClusterKubectl | undefined;
   /** How often a draining rig's report is looked at (goal 079; tests make it short). */
