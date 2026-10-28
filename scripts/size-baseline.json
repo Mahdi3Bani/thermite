@@ -40,10 +40,10 @@
       "lines": 985
     },
     "src/harness/agents/codex.ts": {
-      "lines": 909
+      "lines": 905
     },
     "src/harness/agents/opencode.ts": {
-      "lines": 997
+      "lines": 927
     },
     "src/harness/agents/planner.ts": {
       "lines": 1277

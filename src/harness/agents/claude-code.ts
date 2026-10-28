@@ -19,6 +19,17 @@ import {
   writeClaudePrompt,
 } from "./claude-code/shell.ts";
 import {
+  AFTER_SUBMIT_MS,
+  agentPath,
+  breachError,
+  CarriedMessages,
+  CHECK_ROLE,
+  limitsNote,
+  NUDGE,
+  ownerLines,
+  takeUsage,
+} from "./cli/common.ts";
+import {
   CliCompactions,
   type FoundCompaction,
   type KeptAt,
@@ -32,18 +43,7 @@ import type { MessageInbox, TrialProgress } from "./live-session.ts";
 import { claudeMcpConfig, type McpAccess, mcpLine } from "./mcp-tools.ts";
 import type { ModelConfig } from "./model.ts";
 import type { RigCheckReport } from "./model-check.ts";
-import {
-  AFTER_SUBMIT_MS,
-  agentPath,
-  breachError,
-  CarriedMessages,
-  CHECK_ROLE,
-  limitsNote,
-  NUDGE,
-  ownerLines,
-  readNew,
-  takeUsage,
-} from "./opencode.ts";
+import { OPENCODE_MEMORY, readNew } from "./opencode.ts";
 import { type PlanWindows, type RateLimitInfo, windowsOf } from "./plan-windows.ts";
 import {
   afterProgramFailure,
@@ -615,7 +615,7 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
   // Failed model calls in a row, rate limits in a row, and since when the calls fail (goal 079).
   const count: FailureCount = { failures: 0, rateWaits: 0 };
   const maxTurns = spec.maxTurns;
-  let message = `${WORKER_CLAUDE_CODE_SYSTEM}${mcp ? `\n\n${mcpLine(spec.mcpServers)}` : ""}\n\n${limitsNote(limits).replace(/OpenCode/g, "Claude Code")}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. ${trialBudget(minutes, maxTurns, "each model reply is one", deadline)}`;
+  let message = `${WORKER_CLAUDE_CODE_SYSTEM}${mcp ? `\n\n${mcpLine(spec.mcpServers)}` : ""}\n\n${limitsNote(limits, "Claude Code", OPENCODE_MEMORY)}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. ${trialBudget(minutes, maxTurns, "each model reply is one", deadline)}`;
   let offset = 0;
   const carried = new CarriedMessages(deps.messages);
   const pump = () => {
@@ -726,10 +726,10 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
       result.error = `the Claude subscription's usage window is full until ${tally.limitedUntil}`;
       break;
     }
-    const breach = breachError(outcome, limits);
+    const breach = breachError(outcome, limits, "Claude Code");
     if (breach) {
       result.stopped = "error";
-      result.error = breach.replace(/OpenCode/g, "Claude Code");
+      result.error = breach;
       break;
     }
     if (outcome.killedFor === "timeout" || Date.now() >= deadline) {

@@ -8,6 +8,17 @@ import { type LiveKind, liveText, summarizeArgs } from "../../core/live.ts";
 import { type CallUsage, callUsage } from "../../core/usage.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import {
+  AFTER_SUBMIT_MS,
+  agentPath,
+  breachError,
+  CarriedMessages,
+  CHECK_ROLE,
+  limitsNote,
+  NUDGE,
+  ownerLines,
+  takeUsage,
+} from "./cli/common.ts";
+import {
   CliCompactions,
   codexCompactPrompt,
   compactionTokens,
@@ -22,19 +33,7 @@ import type { MessageInbox, TrialProgress } from "./live-session.ts";
 import { gatewayUrl, type McpAccess, mcpLine } from "./mcp-tools.ts";
 import { CHATGPT_LIMIT_CODE, type ModelConfig } from "./model.ts";
 import type { RigCheckReport } from "./model-check.ts";
-import {
-  AFTER_SUBMIT_MS,
-  agentPath,
-  breachError,
-  CarriedMessages,
-  CHECK_ROLE,
-  limitsNote,
-  NUDGE,
-  type OpencodeOnceDeps,
-  ownerLines,
-  readNew,
-  takeUsage,
-} from "./opencode.ts";
+import { type OpencodeOnceDeps, readNew } from "./opencode.ts";
 import {
   afterProgramFailure,
   type FailureCount,
@@ -466,10 +465,7 @@ export function codexEnv(o: {
 }
 
 /** The lane's limits as the agent must know them: Codex and its commands share them. */
-export const codexLimitsNote = (limits: LaneLimitValues) =>
-  limitsNote(limits)
-    .replace(" (it uses about 500 MiB)", "")
-    .replace(/OpenCode/g, "Codex");
+export const codexLimitsNote = (limits: LaneLimitValues) => limitsNote(limits, "Codex");
 
 export interface CodexTrialDeps extends ProviderLink {
   runner: Runner;
@@ -684,10 +680,10 @@ export async function runCodexTrial(spec: TrialSpec, deps: CodexTrialDeps): Prom
       result.error = `the ChatGPT plan's usage is full (${CHATGPT_LIMIT_CODE}): the agents try again after ${until}`;
       break;
     }
-    const breach = breachError(outcome, limits);
+    const breach = breachError(outcome, limits, "Codex");
     if (breach) {
       result.stopped = "error";
-      result.error = breach.replace(/OpenCode/g, "Codex");
+      result.error = breach;
       break;
     }
     if (outcome.killedFor === "timeout" || Date.now() >= deadline) {

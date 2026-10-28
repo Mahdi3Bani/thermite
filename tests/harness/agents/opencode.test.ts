@@ -14,6 +14,7 @@ import {
   CHECK_ROLE,
   limitsNote,
   newTally,
+  OPENCODE_MEMORY,
   opencodeConfig,
   opencodeModelCheck,
   opencodeModelId,
@@ -409,9 +410,11 @@ describe("the OpenCode harness", () => {
         limits: { run_rss_mib: 4096, workspace_mib: 16384, processes: 2048 },
       },
     });
-    assert.match(limitsNote(limits), /Memory: 4096 MiB .*OpenCode itself included/);
-    assert.match(limitsNote(limits), /command that takes it over the limit is killed/);
-    assert.equal(breachError({ killedFor: "timeout", peakRssBytes: 0 }, limits), undefined);
+    const note = limitsNote(limits, "OpenCode", OPENCODE_MEMORY);
+    assert.match(note, /Memory: 4096 MiB .*OpenCode itself included \(it uses about 500 MiB\)/);
+    assert.match(note, /command that takes it over the limit is killed/);
+    assert.doesNotMatch(limitsNote(limits, "Codex"), /it uses|OpenCode/);
+    assert.equal(breachError({ killedFor: "timeout", peakRssBytes: 0 }, limits, "X"), undefined);
     const area = mkdtempSync(join(tmpdir(), "thermite-oc-"));
     const runner = {
       run: async (req: RunRequest): Promise<RunOutcome> =>
@@ -473,6 +476,7 @@ describe("the OpenCode harness", () => {
     const disk = breachError(
       { killedFor: "disk", peakDiskBytes: 300 * 1024 ** 2, peakEntries: 50_000 },
       limits,
+      "OpenCode",
     );
     assert.match(String(disk), /300 MiB in 50000 files, over 16384 MiB/);
   });
