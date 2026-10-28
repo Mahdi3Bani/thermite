@@ -200,6 +200,7 @@ jobs:
             ^kits/smoke-cpu/
             ^src/(control|harness)/api(\.ts|/)
             ^src/(control|harness|supervisor)/main\.ts$
+            ^src/harness/controller/
             ^src/supervisor/relay(\.ts|/)
             ^scripts/(compose-smoke|stage-smoke)\.mjs$
             ^scripts/lib/
