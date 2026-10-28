@@ -21,15 +21,6 @@
     "src/control/store.ts": {
       "lines": 3672
     },
-    "src/control/ui/operator.ts": {
-      "lines": 1485
-    },
-    "src/control/ui/style.ts": {
-      "lines": 1165
-    },
-    "src/control/ui/words.ts": {
-      "lines": 914
-    },
     "src/control/views.ts": {
       "lines": 2191
     },
