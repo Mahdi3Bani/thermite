@@ -1,8 +1,8 @@
 import type { AgentsContext } from "../../core/compaction.ts";
 import type { OwnModel } from "../campaign-context.ts";
-import type { McpServer } from "../mcp-servers.ts";
-import type { GitAccess } from "../store.ts";
-import { podStopped, type RigView } from "../views.ts";
+import type { McpServer } from "../mcp-servers/index.ts";
+import type { GitAccess } from "../store/index.ts";
+import { podStopped, type RigView } from "../views/index.ts";
 import { type BriefDraft, briefPane } from "./campaign-brief.ts";
 import { contextFields, fieldValues } from "./campaign-context.ts";
 import { esc, infoLabel } from "./components.ts";

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { SecretBox } from "../../src/control/secrets.ts";
-import type { ControlStore } from "../../src/control/store.ts";
+import type { ControlStore } from "../../src/control/store/index.ts";
 import { PRICE_CORE_JS } from "../../src/control/ui/providers-client.ts";
 import { bars, dayEdges, PRICE_WORDS } from "../../src/control/ui/usage.ts";
 import { callUsage, startOfDay } from "../../src/core/usage.ts";

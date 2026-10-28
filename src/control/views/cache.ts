@@ -1,5 +1,5 @@
 import { logDebug } from "../../common/log.ts";
-import type { ControlStore } from "../store.ts";
+import type { ControlStore } from "../store/index.ts";
 import { RigFold } from "./fold/index.ts";
 import { eachEvent, type RigRow, readRig, rigInputs, type ViewOptions } from "./rig.ts";
 import type { RigView } from "./types.ts";

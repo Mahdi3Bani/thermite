@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { ControlStore } from "../../../src/control/store.ts";
-import { FoldCache, keepFolds, rigView } from "../../../src/control/views.ts";
+import { ControlStore } from "../../../src/control/store/index.ts";
+import { FoldCache, keepFolds, rigView } from "../../../src/control/views/index.ts";
 import { controlOnly } from "../../helpers/control-stack.ts";
 import { uniforms } from "../../helpers/property.ts";
 import {

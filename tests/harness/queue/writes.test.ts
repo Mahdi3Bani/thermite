@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { describe, test } from "node:test";
 import { Registry } from "../../../src/harness/agents/registry.ts";
-import { createHarnessApi } from "../../../src/harness/api.ts";
+import { createHarnessApi } from "../../../src/harness/api/index.ts";
 import { RUN, setup } from "./setup.ts";
 
 /**

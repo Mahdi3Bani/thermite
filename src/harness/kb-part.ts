@@ -8,7 +8,7 @@ import {
   metaOf,
   sameItem,
 } from "../core/kb-index.ts";
-import type { Ledger } from "./ledger.ts";
+import type { Ledger } from "./ledger/index.ts";
 
 /**
  * A rig's runs' part of their campaigns' folders (goal 065), for an export: the items this

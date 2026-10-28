@@ -347,7 +347,7 @@ function checkSettings(page, texts) {
 const schemas = {
   contract: (await import("../src/core/contract.ts")).ContractSchema,
   kit: (await import("../src/harness/kit.ts")).KitSchema,
-  advisors: (await import("../src/supervisor/advisors.ts")).AdvisorsConfig,
+  advisors: (await import("../src/supervisor/advisors/index.ts")).AdvisorsConfig,
 };
 function exampleKind(title) {
   if (/\(part\)/i.test(title)) return null;

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { describe, test } from "node:test";
 import { Credential } from "../../../src/control/credential.ts";
-import { ControlStore } from "../../../src/control/store.ts";
+import { ControlStore } from "../../../src/control/store/index.ts";
 import { generateSigningKeys } from "../../../src/core/commands.ts";
 import { ADMIN, controlOnly, controlStack, signIn } from "../../helpers/control-stack.ts";
 import { stack } from "./stack.ts";

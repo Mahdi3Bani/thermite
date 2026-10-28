@@ -1,4 +1,4 @@
-import type { RigExport } from "../store.ts";
+import type { RigExport } from "../store/index.ts";
 import { ago, esc, infoLabel } from "./components.ts";
 
 /**

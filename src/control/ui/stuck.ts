@@ -1,12 +1,12 @@
 import { clockUtc, commandProgress } from "../command-progress.ts";
-import type { ControlStore } from "../store.ts";
+import type { ControlStore } from "../store/index.ts";
+import type { RigView, RunView } from "../views/index.ts";
 import { workOf } from "../views/work.ts";
-import type { RigView, RunView } from "../views.ts";
 import { ago, esc, fmtInt, icon, runHref } from "./components.ts";
 import { lastDone } from "./drain.ts";
 import { card } from "./need-card.ts";
-import type { Forms, Need } from "./operator.ts";
-import { clip, span } from "./words.ts";
+import type { Forms, Need } from "./operator/index.ts";
+import { clip, span } from "./words/index.ts";
 
 /**
  * A stuck trial (goal 143): one quiet for longer than its rig's quiet setting (none by default),

@@ -10,7 +10,7 @@ import {
   type PlannerInput,
   plannerContext,
   validatePlan,
-} from "../../../../src/harness/agents/planner.ts";
+} from "../../../../src/harness/agents/planner/index.ts";
 import { base } from "./setup.ts";
 
 describe("planner", () => {

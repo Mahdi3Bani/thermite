@@ -1,4 +1,4 @@
-import { type CampaignView, newestRun, type RigView, type RunView } from "../views.ts";
+import { type CampaignView, newestRun, type RigView, type RunView } from "../views/index.ts";
 import {
   ago,
   esc,
@@ -10,7 +10,7 @@ import {
   runHref,
 } from "./components.ts";
 import { infoLabel } from "./new-campaign.ts";
-import { runProgress, waitingOn } from "./operator.ts";
+import { runProgress, waitingOn } from "./operator/index.ts";
 
 /** The smoke checks control runs on each new rig make campaigns of their own: hidden by default. */
 export const isRigCheck = (name: string) => name.startsWith("rig-check-");

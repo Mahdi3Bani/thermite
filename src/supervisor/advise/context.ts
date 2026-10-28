@@ -45,7 +45,7 @@ import {
   type AdvisorUsage,
   advisorFetcher,
   withRunContext,
-} from "../advisors.ts";
+} from "../advisors/index.ts";
 import type { AdvisorCode } from "../code-tools.ts";
 import type { PastSearch } from "../past-mcp.ts";
 import type { AdvisorResearch } from "../research-tools.ts";

@@ -1,4 +1,4 @@
-import type { IngestReport } from "../../src/control/store.ts";
+import type { IngestReport } from "../../src/control/store/index.ts";
 
 // What the demo's parts share: its clock (every made-up time is some hours before now), its
 // seeded random sequences, and a rig whose events the demo makes up.

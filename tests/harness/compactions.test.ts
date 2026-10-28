@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { KB_BODY_MAX } from "../../src/core/kb-index.ts";
 import { Registry } from "../../src/harness/agents/registry.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
+import { createHarnessApi } from "../../src/harness/api/index.ts";
 import { LocalRunner } from "../../src/harness/broker/runner.ts";
 import { Compactions, compactionOf } from "../../src/harness/compactions.ts";
 import { knowledgePart } from "../../src/harness/kb-part.ts";

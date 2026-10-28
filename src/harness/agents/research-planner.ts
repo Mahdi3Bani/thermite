@@ -22,7 +22,7 @@ import type { CallUsage } from "../../core/usage.ts";
 import { NOTES_ARE_DATA, type notesData } from "../journal.ts";
 import { briefingData } from "../knowledge.ts";
 import type { HypothesisRow } from "../ledger/hypotheses.ts";
-import type { BriefingItem, Ledger } from "../ledger.ts";
+import type { BriefingItem, Ledger } from "../ledger/index.ts";
 import type { QueueBrief } from "../queue.ts";
 import { SATURATION_TASKS } from "../research/progress.ts";
 import { type ResearchState, taskDetails } from "../research/shares.ts";
@@ -39,7 +39,7 @@ import {
   type PlanTry,
   plannerTries,
   type QueuePlan,
-} from "./planner.ts";
+} from "./planner/index.ts";
 
 /**
  * The planner of a research run (goals 047 and 117): one stateless model call per round, through

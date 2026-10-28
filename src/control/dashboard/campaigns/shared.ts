@@ -6,9 +6,9 @@ import { isRigCheck, workCard } from "../../ui/campaigns.ts";
 import { icon, modeName, num, pct, runLiveHref } from "../../ui/components.ts";
 import { bestGainWords } from "../../ui/gains.ts";
 import type { ChecksSource } from "../../ui/goal-checks.ts";
-import { runBrief } from "../../ui/operator.ts";
+import { runBrief } from "../../ui/operator/index.ts";
 import { currentChampion } from "../../views/facts.ts";
-import type { CampaignView, RigView, RunView } from "../../views.ts";
+import type { CampaignView, RigView, RunView } from "../../views/index.ts";
 import type { Ctx, Dashboard } from "../context.ts";
 
 /** A campaign's headline figure: its best run's gain, goals met or verified claims. */

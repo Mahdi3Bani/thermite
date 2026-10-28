@@ -10,7 +10,7 @@ import {
   newClaudeTally,
   readClaudeEvents,
   runClaudeTrial,
-} from "../../../src/harness/agents/claude-code.ts";
+} from "../../../src/harness/agents/claude-code/index.ts";
 import {
   type CliCompacted,
   CliCompactions,
@@ -24,18 +24,18 @@ import {
   newCodexTally,
   readCodexEvents,
   runCodexTrial,
-} from "../../../src/harness/agents/codex.ts";
+} from "../../../src/harness/agents/codex/index.ts";
 import {
   OPENCODE_PLUGIN,
   opencodeConfig,
   opencodeOnce,
   runOpencodeTrial,
-} from "../../../src/harness/agents/opencode.ts";
+} from "../../../src/harness/agents/opencode/index.ts";
 import type {
   OpencodeCompaction,
   OpencodePluginContext,
 } from "../../../src/harness/agents/opencode-plugin.ts";
-import type { TrialSpec } from "../../../src/harness/agents/worker.ts";
+import type { TrialSpec } from "../../../src/harness/agents/worker/index.ts";
 import type { Runner, RunOutcome, RunRequest } from "../../../src/harness/broker/runner.ts";
 
 /**

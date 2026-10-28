@@ -5,7 +5,7 @@ import type {
   ResearchVerdicts,
 } from "../../../core/api/harness/research.ts";
 import { questionName } from "../../../core/research-check.ts";
-import type { Ledger } from "../../ledger.ts";
+import type { Ledger } from "../../ledger/index.ts";
 import { checkCited } from "../checks.ts";
 import { type ResearchPackage, toDecide } from "./package.ts";
 import { clip, type Row } from "./shared.ts";

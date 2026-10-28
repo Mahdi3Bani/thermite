@@ -9,11 +9,11 @@ import {
   sizeOf,
   sizeWords,
 } from "../cluster-resources.ts";
-import { issueCommand } from "../issue.ts";
+import { issueCommand } from "../issue/index.ts";
 import type { ControlParts } from "../parts.ts";
 import { controlAddress } from "../rigs/setup.ts";
-import type { Cluster, ClusterRig, ClusterRigResize, ClusterRigSize } from "../store.ts";
-import { rigSettingsOf } from "../views.ts";
+import type { Cluster, ClusterRig, ClusterRigResize, ClusterRigSize } from "../store/index.ts";
+import { rigSettingsOf } from "../views/index.ts";
 import { type ClusterFacts, type SlotQuota, slotQuota } from "./facts.ts";
 import { kubeError } from "./kubectl.ts";
 import { asList, clusterNames, clusterRigResized } from "./manifests.ts";

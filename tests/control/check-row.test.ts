@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { checkRow } from "../../src/control/command-progress.ts";
-import type { CommandRow } from "../../src/control/store.ts";
-import type { RigCheckView } from "../../src/control/views.ts";
+import type { CommandRow } from "../../src/control/store/index.ts";
+import type { RigCheckView } from "../../src/control/views/index.ts";
 
 const cmd = (id: string, at: string): CommandRow => ({
   id: "c-1",

@@ -11,13 +11,13 @@ import type { BuildInfo } from "../../core/version.ts";
 import type { Credential } from "../credential.ts";
 import type { KitRepos } from "../kit-repos.ts";
 import type { DeploymentDriver, RunpodDriver } from "../lifecycle.ts";
-import type { McpServers } from "../mcp-servers.ts";
+import type { McpServers } from "../mcp-servers/index.ts";
 import type { ControlParts } from "../parts.ts";
 import type { RunpodRigs } from "../runpod-rigs.ts";
 import type { RunpodTests } from "../runpod-tests.ts";
 import { keyHint } from "../secrets.ts";
-import type { ControlStore } from "../store.ts";
-import { type RigView, rigView } from "../views.ts";
+import type { ControlStore } from "../store/index.ts";
+import { type RigView, rigView } from "../views/index.ts";
 
 /**
  * What MCP's tools share: control's options for MCP, the caller's role, and the context built once

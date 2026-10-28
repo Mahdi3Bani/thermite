@@ -2,7 +2,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { errorText } from "../../../common/errors.ts";
 import { readRunpod } from "../../runpod.ts";
-import type { ProviderType } from "../../store.ts";
+import type { ProviderType } from "../../store/index.ts";
 import type { Dashboard } from "../context.ts";
 
 /** A name as the owner typed it, made to fit the rule: lowercase, with dashes for spaces. */

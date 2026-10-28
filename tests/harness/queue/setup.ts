@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { ControlStore } from "../../../src/control/store.ts";
-import { rigView } from "../../../src/control/views.ts";
+import { ControlStore } from "../../../src/control/store/index.ts";
+import { rigView } from "../../../src/control/views/index.ts";
 import type { CommandKind } from "../../../src/core/commands.ts";
 import type { LedgerEvent } from "../../../src/harness/ledger/rows.ts";
 import { makeHarnessEnv } from "../../helpers/harness-env.ts";
@@ -28,7 +28,7 @@ export async function setup(over: Record<string, unknown> = {}) {
   return { env, q: env.service.queue, command, events };
 }
 
-/** The run's queue as control builds it from the rig's events (src/control/views.ts). */
+/** The run's queue as control builds it from the rig's events (src/control/views/). */
 export function controlQueue(events: LedgerEvent[]) {
   const store = new ControlStore(":memory:");
   store.rigEvents.ingest({

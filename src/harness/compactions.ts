@@ -3,7 +3,7 @@ import { COMPACTIONS_DIR, compactionFile } from "../core/compaction.ts";
 import { KB_BODY_MAX } from "../core/kb-index.ts";
 import type { LiveLog } from "../core/live.ts";
 import type { CliCompacted, KeptAt } from "./agents/cli-compaction.ts";
-import type { Ledger } from "./ledger.ts";
+import type { Ledger } from "./ledger/index.ts";
 
 /**
  * The harness's record of each compaction (goal 070), whichever harness the agent runs in. The

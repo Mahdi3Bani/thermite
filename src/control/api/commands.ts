@@ -2,7 +2,7 @@ import type { Hono } from "hono";
 import { redact } from "../../common/env.ts";
 import { errorText, jsonBody } from "../../common/errors.ts";
 import { ISSUE } from "../../core/api/control/owner.ts";
-import { issueWaking, WakeRefused } from "../issue.ts";
+import { issueWaking, WakeRefused } from "../issue/index.ts";
 import { type ApiContext, clampLimit } from "./context.ts";
 
 /** Signed commands from the owner's token: one issued, and the newest listed. */

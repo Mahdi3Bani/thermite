@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { ControlStore } from "../../../src/control/store.ts";
+import { ControlStore } from "../../../src/control/store/index.ts";
 import { commandRow, commandStatus } from "../../../src/control/ui/commands.ts";
 import type { SignedCommand } from "../../../src/core/commands.ts";
 

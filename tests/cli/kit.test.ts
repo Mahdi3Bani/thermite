@@ -11,7 +11,7 @@ import { KitRepos } from "../../src/control/kit-repos.ts";
 import { controlOnly } from "../helpers/control-stack.ts";
 
 const run = promisify(execFile);
-const CLI = join(import.meta.dirname, "../../src/cli/thermite.ts");
+const CLI = join(import.meta.dirname, "../../src/cli/thermite/main.ts");
 const CONTRACT = join(import.meta.dirname, "../../examples/contracts/smoke-cpu-goal.json");
 const KIT_JSON = join(import.meta.dirname, "../../kits/smoke-cpu/kit.json");
 

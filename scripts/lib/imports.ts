@@ -63,11 +63,7 @@ export function partOf(path: string): string | null {
 
 /** Page code: the dashboard's pages and the routes that serve them. */
 export function isPage(path: string): boolean {
-  return (
-    path.startsWith("src/control/ui/") ||
-    path === "src/control/dashboard.ts" ||
-    path.startsWith("src/control/dashboard/")
-  );
+  return path.startsWith("src/control/ui/") || path.startsWith("src/control/dashboard/");
 }
 
 /** The rule one import breaks, if it breaks one. Only production code (`src/`) is held to it. */

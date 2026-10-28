@@ -13,7 +13,7 @@ import {
   type RelayState,
   type ReportBus,
   relayOnce,
-} from "../../../src/supervisor/relay.ts";
+} from "../../../src/supervisor/relay/index.ts";
 import { controlStack } from "../../helpers/control-stack.ts";
 import { makeHarnessEnv } from "../../helpers/harness-env.ts";
 import { appendOther } from "../../helpers/kinds.ts";

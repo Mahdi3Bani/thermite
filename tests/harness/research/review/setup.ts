@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 import type { TestContext } from "node:test";
 import type { ResearchTrialSpec } from "../../../../src/harness/agents/research-worker.ts";
-import { Scheduler } from "../../../../src/harness/agents/scheduler.ts";
+import { Scheduler } from "../../../../src/harness/agents/scheduler/index.ts";
 import { LocalRunner } from "../../../../src/harness/broker/runner.ts";
-import type { Research } from "../../../../src/harness/research/research.ts";
+import type { Research } from "../../../../src/harness/research/research/index.ts";
 import {
   RESEARCH_REVIEW,
   type ResearchPackage,
   type ResearchVerdicts,
   researchPackage,
   researchReviewDue,
-} from "../../../../src/harness/research/review.ts";
+} from "../../../../src/harness/research/review/index.ts";
 import { Reviews } from "../../../../src/harness/reviews.ts";
 import { fillResearch, makeResearchRun, writeCards } from "../../../helpers/research-run.ts";
 

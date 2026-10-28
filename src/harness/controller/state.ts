@@ -11,9 +11,9 @@ import { join } from "node:path";
 import { log } from "../../common/log.ts";
 import { generateSigningKeys } from "../../core/commands.ts";
 import type { PromotionPolicy } from "../judge/judge.ts";
-import { Ledger } from "../ledger.ts";
+import { Ledger } from "../ledger/index.ts";
 import { lanesFromEnv, RigSettingsStore, trialMinutesFromEnv } from "../rig-settings.ts";
-import { NOT_BEFORE_FILE, wipeIfRequested } from "../service.ts";
+import { NOT_BEFORE_FILE, wipeIfRequested } from "../service/index.ts";
 import type { ControllerContext } from "./context.ts";
 
 /**

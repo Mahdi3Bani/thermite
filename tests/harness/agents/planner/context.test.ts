@@ -5,7 +5,7 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { plan, plannerContext } from "../../../../src/harness/agents/planner.ts";
+import { plan, plannerContext } from "../../../../src/harness/agents/planner/index.ts";
 import { startFakeModel } from "../../../helpers/fake-model.ts";
 import { base, model } from "./setup.ts";
 

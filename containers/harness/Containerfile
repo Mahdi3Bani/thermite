@@ -75,7 +75,7 @@ COPY --from=node /usr/local/bin/node /usr/local/bin/node
 # projects (an inference engine, for example); Python 3 with numpy for kit run and check scripts.
 # The broker needs prlimit (process limits), setpriv (a dedicated development card's groups) and
 # taskset (timed runs on the judge card's local CPUs). No bubblewrap: the agents and the advisors
-# run Claude Code with its own sandbox off (src/harness/agents/claude-code.ts says why).
+# run Claude Code with its own sandbox off (src/harness/agents/claude-code/index.ts says why).
 # The base's system packages are upgraded first, so each build takes the distribution's fixes
 # (goal 125).
 RUN apt-get update \
@@ -159,4 +159,4 @@ ENV THERMITE_IMAGE_ID=${THERMITE_IMAGE_ID}
 # The broker runs as root so it can start lane, builder and run processes as separate users. It
 # needs only CHOWN, DAC_OVERRIDE, FOWNER, KILL, SETGID and SETUID (compose.yaml drops the rest).
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["node", "/opt/thermite/dist/harness/broker.js"]
+CMD ["node", "/opt/thermite/dist/harness/broker/main.js"]

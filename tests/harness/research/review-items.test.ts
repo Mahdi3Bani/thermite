@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import { describe, type TestContext, test } from "node:test";
 import { PROGRESS_STOPPED, RESEARCH_REVIEW } from "../../../src/core/research-check.ts";
 import type { ResearchTrialSpec } from "../../../src/harness/agents/research-worker.ts";
-import { Scheduler } from "../../../src/harness/agents/scheduler.ts";
+import { Scheduler } from "../../../src/harness/agents/scheduler/index.ts";
 import { LocalRunner } from "../../../src/harness/broker/runner.ts";
-import type { Ledger } from "../../../src/harness/ledger.ts";
-import type { PaperPackage } from "../../../src/harness/research/paper.ts";
+import type { Ledger } from "../../../src/harness/ledger/index.ts";
+import type { PaperPackage } from "../../../src/harness/research/paper/index.ts";
 import { SATURATION_TASKS, standingDecisions } from "../../../src/harness/research/progress.ts";
-import type { Research } from "../../../src/harness/research/research.ts";
+import type { Research } from "../../../src/harness/research/research/index.ts";
 import {
   ANSWERED,
   briefGaps,
@@ -16,7 +16,7 @@ import {
   type ResearchVerdicts,
   researchPackage,
   researchReviewDue,
-} from "../../../src/harness/research/review.ts";
+} from "../../../src/harness/research/review/index.ts";
 import { Reviews } from "../../../src/harness/reviews.ts";
 import { makeResearchRun } from "../../helpers/research-run.ts";
 

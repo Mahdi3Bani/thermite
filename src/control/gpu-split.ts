@@ -1,6 +1,6 @@
-import { issueCommand } from "./issue.ts";
-import type { ControlStore } from "./store.ts";
-import type { RigView } from "./views.ts";
+import { issueCommand } from "./issue/index.ts";
+import type { ControlStore } from "./store/index.ts";
+import type { RigView } from "./views/index.ts";
 
 /**
  * The GPU split a campaign's deployment asks for on its rig (a rig is a set of GPUs; what is

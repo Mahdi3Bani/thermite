@@ -1,7 +1,7 @@
 import { HELD_OUT_OWNER_WORDS, type HeldOutKind } from "../../../core/held-out.ts";
 import { BROKEN_VERDICTS, WON_VERDICTS } from "../../../core/verdicts.ts";
 import { listText } from "../../../core/words.ts";
-import type { StoredEvent } from "../../views.ts";
+import type { StoredEvent } from "../../views/index.ts";
 import { jobText, portWords } from "../judge-words.ts";
 import { verdictText } from "../verdict-words.ts";
 import type { Sentence, SentenceContext } from "./context.ts";

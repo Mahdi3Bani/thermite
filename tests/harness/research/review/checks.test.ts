@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { CheckedReviewer } from "../../../../src/harness/research/review.ts";
+import type { CheckedReviewer } from "../../../../src/harness/research/review/index.ts";
 import { Reviews } from "../../../../src/harness/reviews.ts";
 import { goodReviewer } from "../../../helpers/research-paper.ts";
 import { answered, type H, type Ids, open, RUN, reviewer, setup } from "./setup.ts";

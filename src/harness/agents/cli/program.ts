@@ -10,7 +10,7 @@ import type { ModelConfig } from "../model.ts";
 import type { PlanWindows } from "../plan-windows.ts";
 import type { ProviderLink } from "../provider-errors.ts";
 import type { ResearchTrialSpec } from "../research-worker.ts";
-import type { SubmitOutcome, TrialResult, TrialSpec } from "../worker.ts";
+import type { SubmitOutcome, TrialResult, TrialSpec } from "../worker/index.ts";
 
 /**
  * The agent programs that run as command-line programs (OpenCode, Claude Code, Codex), as one

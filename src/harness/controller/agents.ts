@@ -12,15 +12,15 @@ import {
   researchRefusal,
   type TrialLink,
 } from "../agents/programs.ts";
-import { Scheduler } from "../agents/scheduler.ts";
+import { Scheduler } from "../agents/scheduler/index.ts";
 import { laneCacheEnv } from "../agents/workspace.ts";
 import { effectiveGpuLists } from "../broker/devices.ts";
 import { Compactions, compactionOf } from "../compactions.ts";
-import type { Ledger } from "../ledger.ts";
+import type { Ledger } from "../ledger/index.ts";
 import { ResearchFolder, SAVED_LANES_DIR } from "../research/folder.ts";
-import { Research } from "../research/research.ts";
+import { Research } from "../research/research/index.ts";
 import type { RigSettingsStore } from "../rig-settings.ts";
-import type { HarnessService } from "../service.ts";
+import type { HarnessService } from "../service/index.ts";
 import { routeOf } from "../usage.ts";
 import type { ControllerContext } from "./context.ts";
 import type { Targets } from "./targets.ts";

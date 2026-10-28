@@ -4,13 +4,13 @@ import { request as httpsRequest } from "node:https";
 import { log } from "../common/env.ts";
 import { errorText, Refusal } from "../common/errors.ts";
 import { RIG_ID } from "../core/ids.ts";
-import { harnessConfirmed, issueCommand } from "./issue.ts";
+import { harnessConfirmed, issueCommand } from "./issue/index.ts";
 import { exportLeft, resultsLeft } from "./results-left.ts";
 import { runpodResetRefusal } from "./runpod-lifecycle.ts";
 import type { RunpodRigView } from "./runpod-rig-view.ts";
 import type { RunpodRigs } from "./runpod-rigs.ts";
-import type { ControlStore } from "./store.ts";
-import { type RigView, rigView } from "./views.ts";
+import type { ControlStore } from "./store/index.ts";
+import { type RigView, rigView } from "./views/index.ts";
 
 /**
  * Lifecycle: restarting a rig's containers, and the owner's full reset. Pause and resume are

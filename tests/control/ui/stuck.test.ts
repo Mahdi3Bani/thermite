@@ -281,7 +281,7 @@ test("a trial that asks again and again for a refused page is stuck too (goals 1
 });
 
 test("History says a streak of the same calls in words (goal 143)", async () => {
-  const { sentence } = await import("../../../src/control/ui/words.ts");
+  const { sentence } = await import("../../../src/control/ui/words/index.ts");
   const said = sentence(
     { judge: { jobs: [] }, runs: [] } as never,
     {

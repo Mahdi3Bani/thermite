@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { AdvisorKeeper } from "../advisors.ts";
+import type { AdvisorKeeper } from "../advisors/index.ts";
 import { clip } from "./shared.ts";
 
 /** A name safe for a file: other characters become dashes. */

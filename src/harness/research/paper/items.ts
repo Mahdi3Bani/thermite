@@ -6,7 +6,7 @@ import {
   checkedPanel,
   type Dissent,
   requiredHypotheses,
-} from "../review.ts";
+} from "../review/index.ts";
 import type { PaperItems } from "./appended.ts";
 import type { PapersContext } from "./context.ts";
 

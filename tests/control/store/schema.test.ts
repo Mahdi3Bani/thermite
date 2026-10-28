@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, test } from "node:test";
 import { copiesOf } from "../../../src/common/db-copy.ts";
-import { ControlStore } from "../../../src/control/store.ts";
+import { ControlStore } from "../../../src/control/store/index.ts";
 
 const V010 = readFileSync(
   join(import.meta.dirname, "..", "..", "helpers", "data", "control-v0.1.0.sql"),

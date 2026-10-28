@@ -18,7 +18,7 @@ import { canonicalJson, sha256Hex } from "../../core/canonical.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import { exportTree } from "../git.ts";
 import type { Kit } from "../kit.ts";
-import type { Ledger } from "../ledger.ts";
+import type { Ledger } from "../ledger/index.ts";
 
 /**
  * The build store. The builder user builds each (commit, kit) pair once in a fresh scratch

@@ -10,7 +10,7 @@ import {
   type UsageSums,
 } from "../../core/usage.ts";
 import { HARNESS_NAMES } from "../rig-model.ts";
-import type { Harness, ProviderModel } from "../store.ts";
+import type { Harness, ProviderModel } from "../store/index.ts";
 import { campaignHref, esc, icon, infoLabel, modeAvatar } from "./components.ts";
 
 /**

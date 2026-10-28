@@ -15,7 +15,7 @@ import { LocalRunner } from "../../../src/harness/broker/runner.ts";
 import { BuildStore, toolchainOf } from "../../../src/harness/judge/builds.ts";
 import { outputProblems } from "../../../src/harness/judge/measure.ts";
 import { KitSchema } from "../../../src/harness/kit.ts";
-import { Ledger } from "../../../src/harness/ledger.ts";
+import { Ledger } from "../../../src/harness/ledger/index.ts";
 
 function setup(buildScript: string, outputs: string[], timeoutS = 30) {
   const root = mkdtempSync(join(tmpdir(), "thermite-builds-"));

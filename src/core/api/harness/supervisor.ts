@@ -5,7 +5,7 @@ import { ControlRoute } from "../model-route.ts";
 import type { Route } from "../route.ts";
 
 /**
- * The harness's API as its rig's supervisor uses it for itself (src/harness/api.ts answers it):
+ * The harness's API as its rig's supervisor uses it for itself (src/harness/api/ answers it):
  * the rig's reports and live lines to relay, the commands it delivers, the model route and the MCP
  * servers control gives the rig, past research for the runs' folders, the outbox, the rig's
  * settings and which advisors decide. The advisors' own routes are in advisors.ts beside this.

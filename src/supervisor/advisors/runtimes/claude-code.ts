@@ -8,7 +8,7 @@ import {
   claudeExe,
   claudeHookSettings,
   claudeResultUsage,
-} from "../../../harness/agents/claude-code.ts";
+} from "../../../harness/agents/claude-code/index.ts";
 import {
   claudeCompactions,
   claudeOwn,

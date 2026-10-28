@@ -1,6 +1,6 @@
 import type { ResearchContract } from "../../../core/contract.ts";
 import { ANSWERED, PROGRESS_STOPPED, questionLabel } from "../../../core/research-check.ts";
-import type { Ledger } from "../../ledger.ts";
+import type { Ledger } from "../../ledger/index.ts";
 import type { StandingDecision } from "../progress.ts";
 import {
   type CheckedHypothesis,

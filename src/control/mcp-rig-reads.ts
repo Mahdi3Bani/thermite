@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { rigSetupView, SETUP_STEPS } from "./rig-setup-view.ts";
 import type { RunpodRigs } from "./runpod-rigs.ts";
-import type { ControlStore } from "./store.ts";
+import type { ControlStore } from "./store/index.ts";
 import {
   TRIAL_SESSION_INPUT,
   TRIAL_SESSION_WORDS,

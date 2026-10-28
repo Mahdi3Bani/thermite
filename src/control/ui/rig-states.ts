@@ -1,10 +1,10 @@
 import type { BuildInfo } from "../../core/version.ts";
 import { rigVersionWords, UPDATE_STEP_WORDS } from "../rig-update.ts";
-import type { RigView } from "../views.ts";
+import type { RigView } from "../views/index.ts";
 import { ago, esc, icon } from "./components.ts";
 import { infoLabel } from "./new-campaign.ts";
-import type { TimelineRow } from "./operator.ts";
-import { span } from "./words.ts";
+import type { TimelineRow } from "./operator/index.ts";
+import { span } from "./words/index.ts";
 
 /**
  * A rig's state on its page (goal 012): reporting, stale or offline, and its version against

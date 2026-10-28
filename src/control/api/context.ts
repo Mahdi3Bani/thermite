@@ -7,7 +7,7 @@ import { Credential } from "../credential.ts";
 import type { KitRepos } from "../kit-repos.ts";
 import type { DeploymentDriver } from "../lifecycle.ts";
 import type { MachineSsh } from "../machines/ssh.ts";
-import type { McpServers } from "../mcp-servers.ts";
+import type { McpServers } from "../mcp-servers/index.ts";
 import { type ControlParts, controlParts } from "../parts.ts";
 import type { probeRepository, readKitManifest } from "../repo-probe.ts";
 import type { RigUpdates } from "../rig-update.ts";
@@ -15,7 +15,7 @@ import type { RigImages } from "../rigs/setup.ts";
 import type { RunpodRigs } from "../runpod-rigs.ts";
 import type { RunpodTests } from "../runpod-tests.ts";
 import type { SecretBox } from "../secrets.ts";
-import type { ControlStore } from "../store.ts";
+import type { ControlStore } from "../store/index.ts";
 import type { ControlTunnels } from "../tunnel.ts";
 import { checkRig, recheckRefusals } from "../versions.ts";
 

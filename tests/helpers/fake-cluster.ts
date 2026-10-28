@@ -1,7 +1,7 @@
 import type { ClusterKubectl } from "../../src/control/clusters/kubectl.ts";
 import { PRIVATE_RANGES } from "../../src/control/clusters/netcheck.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
-import type { ControlStore } from "../../src/control/store.ts";
+import type { ControlStore } from "../../src/control/store/index.ts";
 import { ADMIN, controlOnly, mcpClient, type Requester, signIn } from "./control-stack.ts";
 
 /**

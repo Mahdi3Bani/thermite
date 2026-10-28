@@ -5,20 +5,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, type TestContext, test } from "node:test";
 import { signEnvelope } from "../../src/core/commands.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
+import { createHarnessApi } from "../../src/harness/api/index.ts";
 import {
   type AdviseConfig,
   adviseOnce,
   emptyAdviseState,
   teachersCalled,
-} from "../../src/supervisor/advise.ts";
+} from "../../src/supervisor/advise/index.ts";
 import {
   AdvisorsConfig,
   AuditAnswer,
   advisorPrompt,
   PanelAnswer,
   TeacherReview,
-} from "../../src/supervisor/advisors.ts";
+} from "../../src/supervisor/advisors/index.ts";
 import { startFakeModel } from "../helpers/fake-model.ts";
 import { FAST_KERNEL, makeJudgeEnv } from "../helpers/judge-env.ts";
 

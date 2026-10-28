@@ -8,7 +8,7 @@ import { parseContract } from "../../../src/core/contract.ts";
 import { runResearchTrial } from "../../../src/harness/agents/research-worker.ts";
 import { LocalRunner } from "../../../src/harness/broker/runner.ts";
 import { ResearchFolder } from "../../../src/harness/research/folder.ts";
-import { Research } from "../../../src/harness/research/research.ts";
+import { Research } from "../../../src/harness/research/research/index.ts";
 import { startFakeModel } from "../../helpers/fake-model.ts";
 import { researchFixture } from "../../helpers/fixtures.ts";
 import { makeHarnessEnv } from "../../helpers/harness-env.ts";

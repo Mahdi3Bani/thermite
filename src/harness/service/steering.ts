@@ -4,10 +4,10 @@ import { StructuredDirective } from "../../core/commands.ts";
 import { researchDirectionRefusal } from "../../core/directions.ts";
 import { ideaWords, ruleRefusal } from "../../core/queue-target.ts";
 import { labelledQuestion, measurementIn, measurementRefusal } from "../../core/research-check.ts";
-import { LedgerError } from "../ledger.ts";
+import { LedgerError } from "../ledger/index.ts";
 import type { AdvisorRole } from "../messages.ts";
 import type { Experiment } from "../queue.ts";
-import type { HarnessService } from "../service.ts";
+import type { HarnessService } from "./index.ts";
 import { conflictCheck, unknownIn } from "./rules.ts";
 import { openRun, requireRun } from "./runs.ts";
 

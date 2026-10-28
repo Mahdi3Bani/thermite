@@ -1,4 +1,4 @@
-import type { Ledger } from "../../ledger.ts";
+import type { Ledger } from "../../ledger/index.ts";
 
 /**
  * Trials that stop before their end (goals 079 and 136): each trial of a run that is no longer

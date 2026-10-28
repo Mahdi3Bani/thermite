@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import type { ModelConfig } from "../../../src/harness/agents/model.ts";
 import { ModelSource } from "../../../src/harness/agents/model-source.ts";
-import { Scheduler } from "../../../src/harness/agents/scheduler.ts";
+import { Scheduler } from "../../../src/harness/agents/scheduler/index.ts";
 import { LocalRunner } from "../../../src/harness/broker/runner.ts";
 import { makeJudgeEnv } from "../../helpers/judge-env.ts";
 import { form, recipients } from "./page.ts";

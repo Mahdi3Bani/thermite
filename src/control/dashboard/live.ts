@@ -1,7 +1,7 @@
 import type { Hono } from "hono";
 import { errorText } from "../../common/errors.ts";
 import { commandFollowUrl, commandProgress, notSent } from "../command-progress.ts";
-import { issueCommand, nobodyReads, panelReviews } from "../issue.ts";
+import { issueCommand, nobodyReads, panelReviews } from "../issue/index.ts";
 import { HARNESS_NAMES } from "../rig-model.ts";
 import { lastActivity } from "../ui/campaigns.ts";
 import {
@@ -24,10 +24,10 @@ import {
   runEntryHtml,
   runLinesHtml,
 } from "../ui/live.ts";
-import { waitingOn } from "../ui/operator.ts";
-import { clip, signed } from "../ui/words.ts";
+import { waitingOn } from "../ui/operator/index.ts";
+import { clip, signed } from "../ui/words/index.ts";
 import { currentChampion, runCampaign } from "../views/facts.ts";
-import { podStopped, type RigView, type RunView } from "../views.ts";
+import { podStopped, type RigView, type RunView } from "../views/index.ts";
 import { type Dashboard, wantsJson } from "./context.ts";
 
 /**

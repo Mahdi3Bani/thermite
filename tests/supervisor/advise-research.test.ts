@@ -5,11 +5,15 @@ import { join } from "node:path";
 import { describe, type TestContext, test } from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { createHarnessApi } from "../../src/harness/api.ts";
-import { Research } from "../../src/harness/research/research.ts";
-import type { HarnessService } from "../../src/harness/service.ts";
-import { type AdviseConfig, adviseOnce, emptyAdviseState } from "../../src/supervisor/advise.ts";
-import { AdvisorsConfig } from "../../src/supervisor/advisors.ts";
+import { createHarnessApi } from "../../src/harness/api/index.ts";
+import { Research } from "../../src/harness/research/research/index.ts";
+import type { HarnessService } from "../../src/harness/service/index.ts";
+import {
+  type AdviseConfig,
+  adviseOnce,
+  emptyAdviseState,
+} from "../../src/supervisor/advise/index.ts";
+import { AdvisorsConfig } from "../../src/supervisor/advisors/index.ts";
 import { serveAdvisorTools } from "../../src/supervisor/past-mcp.ts";
 import { startFakeModel } from "../helpers/fake-model.ts";
 import { makeJudgeEnv } from "../helpers/judge-env.ts";

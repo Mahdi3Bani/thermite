@@ -1,4 +1,4 @@
-import { LedgerError } from "../ledger.ts";
+import { LedgerError } from "../ledger/index.ts";
 
 /** The checks of a set of rules (directives) the owner or an advisor sends, moved out of service.ts. */
 

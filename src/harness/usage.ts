@@ -7,7 +7,7 @@ import {
   type UsageRoute,
 } from "../core/usage.ts";
 import type { ModelConfig } from "./agents/model.ts";
-import { type Ledger, LedgerError } from "./ledger.ts";
+import { type Ledger, LedgerError } from "./ledger/index.ts";
 
 /**
  * The rig's record of its agents' model usage (goal 075): one `model_call` event for each record,

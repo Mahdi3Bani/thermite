@@ -8,7 +8,7 @@ import {
   leftOut,
   type SnapshotArea,
   snapshotAreas,
-} from "../../../../src/harness/broker/snapshot.ts";
+} from "../../../../src/harness/broker/snapshot/index.ts";
 
 /**
  * Where the rig's live state and its snapshot are: the folders apart, the rig image's settings,

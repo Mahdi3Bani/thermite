@@ -10,7 +10,7 @@ import {
   runQueue,
 } from "../run-lists.ts";
 import { modelUsage } from "../usage.ts";
-import { currentChampion, leaderboard } from "../views.ts";
+import { currentChampion, leaderboard } from "../views/index.ts";
 import type { ToolContext } from "./context.ts";
 
 /**

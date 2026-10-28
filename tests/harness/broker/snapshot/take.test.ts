@@ -20,7 +20,7 @@ import {
   SEALED,
   type SnapshotArea,
   takeSnapshot,
-} from "../../../../src/harness/broker/snapshot.ts";
+} from "../../../../src/harness/broker/snapshot/index.ts";
 import {
   fixture,
   gid,

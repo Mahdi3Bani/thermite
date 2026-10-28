@@ -20,7 +20,12 @@ import { ANTHROPIC_BASE, capWords, isOpencodeOwn } from "../../providers.ts";
 import { HARNESS_NAMES } from "../../rig-model.ts";
 import { type RunpodFacts, runpodLine } from "../../runpod.ts";
 import { cheapestGpu, DEFAULT_DISK_GB, type TestView } from "../../runpod-tests.ts";
-import { HARNESSES, type Machine, type ModelProvider, type ProviderType } from "../../store.ts";
+import {
+  HARNESSES,
+  type Machine,
+  type ModelProvider,
+  type ProviderType,
+} from "../../store/index.ts";
 import { ago, esc } from "../../ui/components.ts";
 import { infoLabel } from "../../ui/new-campaign.ts";
 import { checkFollowUrl, modelCheckHtml } from "../../ui/rig-checks.ts";

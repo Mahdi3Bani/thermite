@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { propagateChampion } from "../../src/control/issue.ts";
+import { propagateChampion } from "../../src/control/issue/index.ts";
 import {
   advanceResets,
   ComposeDriver,
@@ -14,10 +14,10 @@ import {
   inClusterApi,
   KubernetesDriver,
 } from "../../src/control/lifecycle.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { leaderboard } from "../../src/control/views.ts";
+import { ControlStore } from "../../src/control/store/index.ts";
+import { leaderboard } from "../../src/control/views/index.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
-import { WIPE_MARKER, wipeIfRequested } from "../../src/harness/service.ts";
+import { WIPE_MARKER, wipeIfRequested } from "../../src/harness/service/index.ts";
 import { controlStack } from "../helpers/control-stack.ts";
 import { FAST_KERNEL, makeJudgeEnv } from "../helpers/judge-env.ts";
 
@@ -191,7 +191,7 @@ describe("full reset", () => {
     assert.ok(wipeIfRequested(env.paths, ["rig-signing.key", "rig-signing.key.pub"]));
     assert.ok(!existsSync(join(env.paths.stateDir, "builds")));
     assert.ok(!existsSync(join(env.paths.stateDir, "ledger", "ledger.db")));
-    const { Ledger } = await import("../../src/harness/ledger.ts");
+    const { Ledger } = await import("../../src/harness/ledger/index.ts");
     const fresh = Ledger.open(join(env.paths.stateDir, "ledger", "ledger.db"));
     assert.notEqual(fresh.ledgerId(), before);
     fresh.close();

@@ -2,9 +2,9 @@ import { z } from "zod";
 import { errorText } from "../common/errors.ts";
 import { CommandPayloads } from "../core/commands.ts";
 import { MAX_LANES } from "../core/contract.ts";
-import { issueCommand } from "./issue.ts";
-import type { ControlStore } from "./store.ts";
-import { type RigSettingsView, rigSettingsOf } from "./views.ts";
+import { issueCommand } from "./issue/index.ts";
+import type { ControlStore } from "./store/index.ts";
+import { type RigSettingsView, rigSettingsOf } from "./views/index.ts";
 
 /**
  * A rig's own settings from outside the dashboard (goal 029): REST's `POST /v1/rigs/<rig>/settings`

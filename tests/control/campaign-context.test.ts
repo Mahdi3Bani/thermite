@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import type { CampaignDraft } from "../../src/control/campaign-builder.ts";
-import { issueCommand } from "../../src/control/issue.ts";
+import { issueCommand } from "../../src/control/issue/index.ts";
 import { KitRepos } from "../../src/control/kit-repos.ts";
 import { startCampaign } from "../../src/control/new-campaign.ts";
 import { SecretBox } from "../../src/control/secrets.ts";

@@ -17,10 +17,10 @@ import {
   newClaudeTally,
   readClaudeEvents,
   runClaudeTrial,
-} from "../../../src/harness/agents/claude-code.ts";
+} from "../../../src/harness/agents/claude-code/index.ts";
 import { modelConfigFromEnv } from "../../../src/harness/agents/model.ts";
 import { ControlRoute } from "../../../src/harness/agents/model-source.ts";
-import type { TrialSpec } from "../../../src/harness/agents/worker.ts";
+import type { TrialSpec } from "../../../src/harness/agents/worker/index.ts";
 import type { Runner, RunOutcome, RunRequest } from "../../../src/harness/broker/runner.ts";
 import { fakeProgramRunner } from "../../helpers/fake-program.ts";
 

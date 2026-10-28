@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { copiesOf } from "../../../src/common/db-copy.ts";
-import { ControlStore } from "../../../src/control/store.ts";
+import { ControlStore } from "../../../src/control/store/index.ts";
 
 const fresh = () => join(mkdtempSync(join(tmpdir(), "thermite-store-")), "control.db");
 

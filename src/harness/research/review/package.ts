@@ -1,6 +1,6 @@
 import type { ResearchContract } from "../../../core/contract.ts";
 import { MEASURES_NOTHING, questionLabel } from "../../../core/research-check.ts";
-import type { Ledger } from "../../ledger.ts";
+import type { Ledger } from "../../ledger/index.ts";
 import { type CardGap, cardsOf, rubricOf } from "../cards.ts";
 import { registrableDomain } from "../fetcher.ts";
 import { itemsState, requiredHypotheses } from "./items.ts";

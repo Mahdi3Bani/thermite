@@ -6,8 +6,8 @@ import {
   isolationSelftest,
   isolationSummary,
   oneContainerTargets,
-} from "../selftest.ts";
-import type { HarnessService } from "../service.ts";
+} from "../selftest/index.ts";
+import type { HarnessService } from "../service/index.ts";
 import { checksDir, smokeCheck } from "../smoke-check.ts";
 import type { TargetDriver } from "../targets/driver.ts";
 import type { AgentLinks } from "./agents.ts";

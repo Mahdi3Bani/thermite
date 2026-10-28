@@ -1,11 +1,11 @@
 import { cutSaid } from "../../../core/kb-index.ts";
 import { hypothesisStatusWords, questionLabel } from "../../../core/research-check.ts";
 import type { ClaimRow, FindingRow } from "../../ledger/claims.ts";
-import { LedgerError } from "../../ledger.ts";
+import { LedgerError } from "../../ledger/index.ts";
 import { answersSection } from "../cards.ts";
 import { claimNumbers, numbersIn } from "../checks.ts";
-import { Papers } from "../paper.ts";
-import { answerSections, checkLine, researchEnd } from "../review.ts";
+import { Papers } from "../paper/index.ts";
+import { answerSections, checkLine, researchEnd } from "../review/index.ts";
 import { clockOf } from "./clock.ts";
 import { claimKey, type ResearchContext } from "./context.ts";
 import { claimDomains, statsOf } from "./stats.ts";

@@ -1,4 +1,4 @@
-import type { ControlStore } from "../../src/control/store.ts";
+import type { ControlStore } from "../../src/control/store/index.ts";
 import { PAPER_ACCEPTED, PAPER_REFUSED, PAPER_REQUESTED } from "../../src/core/research-check.ts";
 import { seedDemo } from "./control-demo.ts";
 import { researchRunEvents } from "./research-reviews.ts";

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, type TestContext, test } from "node:test";
-import type { Ledger } from "../../../src/harness/ledger.ts";
+import type { Ledger } from "../../../src/harness/ledger/index.ts";
 import {
   ceilingOf,
   floorOf,

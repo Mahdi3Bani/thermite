@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { issueCommand } from "../../src/control/issue.ts";
-import { STYLE } from "../../src/control/ui/style.ts";
+import { issueCommand } from "../../src/control/issue/index.ts";
+import { STYLE } from "../../src/control/ui/style/index.ts";
 import { parseContract } from "../../src/core/contract.ts";
 import { ADMIN, controlOnly, mcpClient, signIn } from "../helpers/control-stack.ts";
 

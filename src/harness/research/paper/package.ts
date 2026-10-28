@@ -10,7 +10,7 @@ import {
   type ResearchEnd,
   researchEnd,
   verifiedClaims,
-} from "../review.ts";
+} from "../review/index.ts";
 import type { PapersContext } from "./context.ts";
 import { paperItems, proposedHypotheses } from "./items.ts";
 import { clip } from "./markdown.ts";

@@ -1,7 +1,7 @@
 import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import { transaction } from "../../common/sqlite.ts";
 import type { AppendEvent } from "../../core/events/bodies.ts";
-import type { Ledger } from "../ledger.ts";
+import type { Ledger } from "./index.ts";
 
 /**
  * What every module of the ledger shares (goal 125, T6): each module owns its tables and their

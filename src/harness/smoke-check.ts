@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { git as gitRun, gitText } from "../common/git.ts";
 import { JUDGED_LIFECYCLES } from "../core/verdicts.ts";
 import type { RigCheckReport } from "./agents/model-check.ts";
-import type { HarnessService } from "./service.ts";
+import type { HarnessService } from "./service/index.ts";
 
 /**
  * The smoke check: a judge-only campaign on the rig's own target, from the smoke kit and project

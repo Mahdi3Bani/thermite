@@ -9,7 +9,7 @@ import {
 } from "../../../core/directions.ts";
 import { NOTES_ARE_DATA, type notesData } from "../../journal.ts";
 import { briefingData, type KnowledgeSearch } from "../../knowledge.ts";
-import type { BriefingItem } from "../../ledger.ts";
+import type { BriefingItem } from "../../ledger/index.ts";
 import type { QueueBrief } from "../../queue.ts";
 import type { Evidence, FamilyView } from "../registry.ts";
 

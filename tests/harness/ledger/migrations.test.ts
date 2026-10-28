@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, test } from "node:test";
 import { copiesOf } from "../../../src/common/db-copy.ts";
+import { Ledger } from "../../../src/harness/ledger/index.ts";
 import { LEDGER_MIGRATIONS } from "../../../src/harness/ledger/migrations.ts";
-import { Ledger } from "../../../src/harness/ledger.ts";
 
 const V010 = readFileSync(
   join(import.meta.dirname, "..", "..", "helpers", "data", "ledger-v0.1.0.sql"),

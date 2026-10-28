@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { sentence } from "../../src/control/ui/words.ts";
-import type { RigView, StoredEvent } from "../../src/control/views.ts";
+import { sentence } from "../../src/control/ui/words/index.ts";
+import type { RigView, StoredEvent } from "../../src/control/views/index.ts";
 import { at, researchControl, researchRunEvents } from "../helpers/research-reviews.ts";
 
 /**

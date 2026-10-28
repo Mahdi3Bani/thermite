@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { Ledger } from "../../../src/harness/ledger.ts";
+import { Ledger } from "../../../src/harness/ledger/index.ts";
 import { appendOther } from "../../helpers/kinds.ts";
 
 test("the ledger's events, read by kind: the newest, a list, a count, the last id; old kinds under new names (goal 125, T6)", () => {

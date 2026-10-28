@@ -21,7 +21,7 @@ import {
   inspectSnapshotFolder,
   SEALED,
   SNAPSHOT_RECORD,
-} from "../../src/harness/broker/snapshot.ts";
+} from "../../src/harness/broker/snapshot/index.ts";
 import {
   callsBusy,
   containerChecks,
@@ -43,7 +43,7 @@ import {
   stateSnapshotCheck,
   supervisorGpuCheck,
   supervisorUserCheck,
-} from "../../src/harness/selftest.ts";
+} from "../../src/harness/selftest/index.ts";
 
 /** A made-up /proc: each process's parent, command line, ids and environment. */
 function fakeProc(

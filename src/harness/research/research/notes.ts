@@ -1,4 +1,4 @@
-import { LedgerError } from "../../ledger.ts";
+import { LedgerError } from "../../ledger/index.ts";
 import { foldText } from "../checks.ts";
 import type { ResearchContext } from "./context.ts";
 

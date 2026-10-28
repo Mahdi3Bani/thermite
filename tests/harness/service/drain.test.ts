@@ -4,14 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { parseContract } from "../../../src/core/contract.ts";
-import { Ledger } from "../../../src/harness/ledger.ts";
+import { Ledger } from "../../../src/harness/ledger/index.ts";
 import {
   drainSpans,
   endDrainAtStart,
   RESTARTED,
   workNow,
 } from "../../../src/harness/service/drain.ts";
-import { HarnessService } from "../../../src/harness/service.ts";
+import { HarnessService } from "../../../src/harness/service/index.ts";
 import { researchFixture } from "../../helpers/fixtures.ts";
 import { makeHarnessEnv } from "../../helpers/harness-env.ts";
 import { makeJudgeEnv } from "../../helpers/judge-env.ts";

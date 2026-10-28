@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { Registry } from "../../../src/harness/agents/registry.ts";
-import { createHarnessApi } from "../../../src/harness/api.ts";
+import { createHarnessApi } from "../../../src/harness/api/index.ts";
 import { researchEnv } from "../../helpers/research-run.ts";
 
 describe("research API", () => {

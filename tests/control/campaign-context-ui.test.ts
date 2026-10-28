@@ -14,7 +14,7 @@ import {
 import { KitRepos } from "../../src/control/kit-repos.ts";
 import { startCampaign } from "../../src/control/new-campaign.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
-import { ControlStore } from "../../src/control/store.ts";
+import { ControlStore } from "../../src/control/store/index.ts";
 import { CAMPAIGN_CONTEXT_JS, CC_CORE_JS } from "../../src/control/ui/campaign-context-client.ts";
 import { agentsContextRefusal } from "../../src/core/compaction.ts";
 import { controlOnly, signIn } from "../helpers/control-stack.ts";

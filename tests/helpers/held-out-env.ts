@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { Registry } from "../../src/harness/agents/registry.ts";
-import { relayOnce } from "../../src/supervisor/relay.ts";
+import { relayOnce } from "../../src/supervisor/relay/index.ts";
 import { ADMIN, controlStack, mcpClient, signIn } from "./control-stack.ts";
 import { makeJudgeEnv } from "./judge-env.ts";
 

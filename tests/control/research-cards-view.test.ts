@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { ControlStore } from "../../src/control/store.ts";
-import { sentence } from "../../src/control/ui/words.ts";
-import { rigEvents, rigView } from "../../src/control/views.ts";
+import { ControlStore } from "../../src/control/store/index.ts";
+import { sentence } from "../../src/control/ui/words/index.ts";
+import { rigEvents, rigView } from "../../src/control/views/index.ts";
 
 /**
  * Goal 117 on control's side: a research run's answer cards reach control as `card_written`

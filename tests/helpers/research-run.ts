@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { parseContract } from "../../src/core/contract.ts";
 import { LocalRunner } from "../../src/harness/broker/runner.ts";
 import { ResearchFolder, SAVED_LANES_DIR } from "../../src/harness/research/folder.ts";
-import { Research, startingHypotheses } from "../../src/harness/research/research.ts";
+import { Research, startingHypotheses } from "../../src/harness/research/research/index.ts";
 import { researchFixture } from "./fixtures.ts";
 import { makeHarnessEnv } from "./harness-env.ts";
 

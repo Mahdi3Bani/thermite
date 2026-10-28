@@ -13,7 +13,7 @@ import {
 } from "./runpod.ts";
 import { PROBE_CMD, PROBE_PORT, probeEnv } from "./runpod-probe.ts";
 import type { SecretBox } from "./secrets.ts";
-import type { ControlStore, StoredRunpodTest } from "./store.ts";
+import type { ControlStore, StoredRunpodTest } from "./store/index.ts";
 
 /**
  * Test pods on RunPod, started by the owner or an operator (dashboard, REST or MCP): one pod of

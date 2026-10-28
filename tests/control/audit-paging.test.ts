@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { ControlStore } from "../../src/control/store.ts";
+import { ControlStore } from "../../src/control/store/index.ts";
 import { controlOnly, signIn } from "../helpers/control-stack.ts";
 
 /** Every entry, one page at a time, following one cursor until it ends. */

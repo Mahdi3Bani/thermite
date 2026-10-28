@@ -21,7 +21,7 @@ import {
   EXPORT_PIECE_MAX,
 } from "../core/api/control/rigs.ts";
 import { canonicalJson } from "../core/canonical.ts";
-import type { ControlStore, RigExport } from "./store.ts";
+import type { ControlStore, RigExport } from "./store/index.ts";
 import { type TarEntry, tarGz } from "./tar-gz.ts";
 
 /**

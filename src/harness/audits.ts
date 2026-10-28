@@ -1,6 +1,6 @@
 import type { Contract } from "../core/contract.ts";
 import { toFraction } from "../core/stats.ts";
-import { type Ledger, LedgerError } from "./ledger.ts";
+import { type Ledger, LedgerError } from "./ledger/index.ts";
 
 /**
  * Audits. The judge flags a promotable result for audit (open known flaws, a gain above the

@@ -1,5 +1,5 @@
 import { championValues } from "../metric-values.ts";
-import type { ControlStore } from "../store.ts";
+import type { ControlStore } from "../store/index.ts";
 import { rigView } from "./cache.ts";
 import { currentChampion } from "./facts.ts";
 

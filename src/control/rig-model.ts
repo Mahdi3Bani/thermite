@@ -20,7 +20,7 @@ import {
   HARNESSES,
   type Harness,
   type ModelProvider,
-} from "./store.ts";
+} from "./store/index.ts";
 
 /**
  * Each agent's model on a rig, from outside the dashboard (goals 029, 070 and 074): REST's

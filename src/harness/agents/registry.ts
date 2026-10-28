@@ -1,6 +1,6 @@
 import { heldOutWords } from "../judge/held-out.ts";
+import { type Ledger, LedgerError } from "../ledger/index.ts";
 import type { EpochSource, FamilyStatus } from "../ledger/trials.ts";
-import { type Ledger, LedgerError } from "../ledger.ts";
 import { shownViolations, violationsOf } from "../v0.ts";
 
 /**

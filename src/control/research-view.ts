@@ -1,5 +1,5 @@
 import { SATURATION_TASKS } from "../harness/research/progress.ts";
-import type { ExperimentView, RunView, StoredEvent } from "./views.ts";
+import type { ExperimentView, RunView, StoredEvent } from "./views/index.ts";
 
 /** A question's last tasks that show it saturated (the harness's rule), for the dashboard's words. */
 export { SATURATION_TASKS };

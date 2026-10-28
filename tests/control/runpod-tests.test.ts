@@ -3,7 +3,7 @@ import { describe, test } from "node:test";
 import { PROBE_CMD, PROBE_JS } from "../../src/control/runpod-probe.ts";
 import { findings, RunpodTests } from "../../src/control/runpod-tests.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
-import { ControlStore } from "../../src/control/store.ts";
+import { ControlStore } from "../../src/control/store/index.ts";
 import { controlOnly, mcpClient, signIn } from "../helpers/control-stack.ts";
 
 const KEY = "rpa_test-key-0123456789abcdef";

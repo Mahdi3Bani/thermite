@@ -11,7 +11,7 @@ import {
   type SignedReport,
 } from "../core/link/report.ts";
 import { type BuildInfo, buildFromHeaders, readBuild } from "../core/version.ts";
-import type { ControlStore } from "./store.ts";
+import type { ControlStore } from "./store/index.ts";
 import { checkRig } from "./versions.ts";
 
 /**

@@ -93,7 +93,7 @@ writeFileSync(contractFile, `${JSON.stringify(contract, null, 2)}\n`);
 const payload = execFileSync(
   "node",
   [
-    "dist/cli/thermite.js",
+    "dist/cli/thermite/main.js",
     "assign-payload",
     "--contract",
     contractFile,

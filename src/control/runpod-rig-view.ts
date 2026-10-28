@@ -1,5 +1,5 @@
 import type { RigOp } from "./runpod-lifecycle.ts";
-import type { StoredRunpodRig, TunnelRig } from "./store.ts";
+import type { StoredRunpodRig, TunnelRig } from "./store/index.ts";
 
 /**
  * A rig the owner launched on a GPU cloud, as control keeps it (runpod-rigs.ts): what it was

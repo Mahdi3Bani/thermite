@@ -3,8 +3,8 @@ import type { DevRuns } from "../agents/devrun.ts";
 import type { GpuCard } from "../broker/devices.ts";
 import { Judge, type PromotionPolicy } from "../judge/judge.ts";
 import { jobsAtStart } from "../judge/lease.ts";
-import type { Ledger } from "../ledger.ts";
-import type { HarnessService } from "../service.ts";
+import type { Ledger } from "../ledger/index.ts";
+import type { HarnessService } from "../service/index.ts";
 import type { TargetDriver } from "../targets/driver.ts";
 import type { ControllerContext } from "./context.ts";
 

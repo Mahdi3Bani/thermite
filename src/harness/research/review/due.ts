@@ -1,6 +1,6 @@
 import type { ResearchContract } from "../../../core/contract.ts";
 import { ANSWERED } from "../../../core/research-check.ts";
-import type { Ledger } from "../../ledger.ts";
+import type { Ledger } from "../../ledger/index.ts";
 import { cardsOf } from "../cards.ts";
 import { researchEnd } from "./end.ts";
 import { itemsMarker, itemsState, researchReviews, waitingReview } from "./items.ts";

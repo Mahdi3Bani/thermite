@@ -3,7 +3,7 @@ import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { laneLimits, parseContract } from "../../../src/core/contract.ts";
 import { NoteLimit, type NoteRequest } from "../../../src/harness/agents/notes-tool.ts";
-import { runTrial } from "../../../src/harness/agents/worker.ts";
+import { runTrial } from "../../../src/harness/agents/worker/index.ts";
 import { prepareWorkspace } from "../../../src/harness/agents/workspace.ts";
 import { LocalRunner } from "../../../src/harness/broker/runner.ts";
 import { startFakeModel } from "../../helpers/fake-model.ts";

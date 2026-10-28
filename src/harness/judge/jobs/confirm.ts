@@ -2,7 +2,7 @@ import { logWarn } from "../../../common/log.ts";
 import type { HillClimbContract } from "../../../core/contract.ts";
 import { toLog } from "../../../core/stats.ts";
 import { Audits, auditTrigger } from "../../audits.ts";
-import type { JobRow } from "../../ledger.ts";
+import type { JobRow } from "../../ledger/index.ts";
 import { baselineOf, guardTotals } from "../baseline.ts";
 import { runBlocks } from "../blocks.ts";
 import { type Finish, FixedInfraError, InfraError, type JudgeContext, Stop } from "../context.ts";

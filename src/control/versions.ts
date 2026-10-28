@@ -4,7 +4,7 @@ import {
   incompatibility,
   type ReportedBuild,
 } from "../core/version.ts";
-import type { ControlStore, RigComponent, RigRefusal, StoredBuild } from "./store.ts";
+import type { ControlStore, RigComponent, RigRefusal, StoredBuild } from "./store/index.ts";
 
 /**
  * Control's view of each rig's builds against its own: it records what the rig's harness and

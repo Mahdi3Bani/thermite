@@ -1,4 +1,4 @@
-import { type Ledger, LedgerError } from "../ledger.ts";
+import { type Ledger, LedgerError } from "../ledger/index.ts";
 
 /** A run as the service's operations take it: one that exists, is open, or may still be decided. */
 

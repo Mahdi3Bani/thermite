@@ -4,8 +4,8 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, type TestContext, test } from "node:test";
 import { Registry } from "../../src/harness/agents/registry.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
-import { Research } from "../../src/harness/research/research.ts";
+import { createHarnessApi } from "../../src/harness/api/index.ts";
+import { Research } from "../../src/harness/research/research/index.ts";
 import {
   ANSWER_CHARS,
   DIGEST_CHARS,

@@ -11,8 +11,8 @@ import type {
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { cleanMcpError } from "../../common/mcp-client.ts";
 import { sha256Hex } from "../../core/canonical.ts";
-import type { McpServers } from "../mcp-servers.ts";
-import type { ControlStore } from "../store.ts";
+import type { ControlStore } from "../store/index.ts";
+import type { McpServers } from "./index.ts";
 import { type ServerTable, str } from "./table.ts";
 
 /**

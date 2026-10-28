@@ -1,5 +1,5 @@
 import { questionName, RESEARCH_REVIEW } from "../../../core/research-check.ts";
-import type { StoredEvent } from "../../views.ts";
+import type { StoredEvent } from "../../views/index.ts";
 import type { Sentence, SentenceContext } from "./context.ts";
 import { clip } from "./shared.ts";
 

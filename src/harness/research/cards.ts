@@ -15,7 +15,7 @@ import type { ResearchContract } from "../../core/contract.ts";
 import { MEASURES_NOTHING, questionLabel } from "../../core/research-check.ts";
 import type { CardRow } from "../ledger/cards.ts";
 import type { ClaimRow } from "../ledger/claims.ts";
-import { type Ledger, LedgerError } from "../ledger.ts";
+import { type Ledger, LedgerError } from "../ledger/index.ts";
 import { checkCited } from "./checks.ts";
 import { registrableDomain } from "./fetcher.ts";
 

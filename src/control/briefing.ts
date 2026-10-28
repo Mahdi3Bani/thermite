@@ -1,6 +1,6 @@
 import { log } from "../common/env.ts";
 import { briefingSeedOf } from "./kb.ts";
-import type { ControlStore } from "./store.ts";
+import type { ControlStore } from "./store/index.ts";
 
 /**
  * A run's briefing from past research (assign_campaign.briefing, goal 065) carries the knowledge

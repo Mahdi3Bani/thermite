@@ -1,11 +1,11 @@
 import { log, redact } from "../common/env.ts";
 import { errorText } from "../common/errors.ts";
-import { harnessConfirmed, issueCommand } from "./issue.ts";
+import { harnessConfirmed, issueCommand } from "./issue/index.ts";
 import { exportLeft, resultsLeft } from "./results-left.ts";
 import { getPod, podAction, type RunpodPod, RunpodRefused, terminatePod } from "./runpod.ts";
 import { type RigState, spentBy } from "./runpod-rig-view.ts";
-import type { ControlStore, StoredRunpodRig } from "./store.ts";
-import { rigView } from "./views.ts";
+import type { ControlStore, StoredRunpodRig } from "./store/index.ts";
+import { rigView } from "./views/index.ts";
 
 /**
  * The lifecycle of a rig on RunPod (goal 023): stop, start, restart and terminate, mapped to

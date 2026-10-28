@@ -6,9 +6,13 @@ import { describe, type TestContext, test } from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { STE_SHORT_RULES } from "../../src/agents/roles/final-writer.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
-import { type AdviseConfig, adviseOnce, emptyAdviseState } from "../../src/supervisor/advise.ts";
-import { AdvisorsConfig } from "../../src/supervisor/advisors.ts";
+import { createHarnessApi } from "../../src/harness/api/index.ts";
+import {
+  type AdviseConfig,
+  adviseOnce,
+  emptyAdviseState,
+} from "../../src/supervisor/advise/index.ts";
+import { AdvisorsConfig } from "../../src/supervisor/advisors/index.ts";
 import { serveAdvisorTools } from "../../src/supervisor/past-mcp.ts";
 import { startFakeModel } from "../helpers/fake-model.ts";
 import { cardsUpToDate } from "../helpers/research-cards.ts";

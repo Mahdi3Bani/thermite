@@ -12,7 +12,7 @@ import { CLAUDE_MODELS, listModels, providerBase } from "../../providers.ts";
 import { probeRepository } from "../../repo-probe.ts";
 import { readRunpod } from "../../runpod.ts";
 import { keyHint } from "../../secrets.ts";
-import { harnessOf, type ModelProvider, type ProviderType } from "../../store.ts";
+import { harnessOf, type ModelProvider, type ProviderType } from "../../store/index.ts";
 import { PRICE_NUMBER, PRICE_WORDS } from "../../ui/usage.ts";
 import { setModelPrice } from "../../usage.ts";
 import { type Ctx, type Dashboard, wantsJson } from "../context.ts";

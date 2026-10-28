@@ -4,9 +4,9 @@ import { z } from "zod";
 import { jsonBody } from "../../common/errors.ts";
 import { CHAMPION_PATCH, KB, KB_NOT_ASSIGNED, REPORTS } from "../../core/api/control/rigs.ts";
 import { type ExportFiles, mountExports } from "../exports.ts";
-import { propagateChampion } from "../issue.ts";
+import { propagateChampion } from "../issue/index.ts";
 import { resultsLeft } from "../results-left.ts";
-import { leaderboard } from "../views.ts";
+import { leaderboard } from "../views/index.ts";
 import { type ApiContext, clampLimit } from "./context.ts";
 
 /**

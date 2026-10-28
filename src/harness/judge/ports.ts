@@ -1,8 +1,8 @@
 import { errorText } from "../../common/errors.ts";
 import { EXPERIMENT_DETAILS } from "../../core/commands.ts";
 import { readableDiff } from "../git.ts";
-import type { Ledger } from "../ledger.ts";
-import type { HarnessService } from "../service.ts";
+import type { Ledger } from "../ledger/index.ts";
+import type { HarnessService } from "../service/index.ts";
 import { startingPoint } from "./baseline.ts";
 
 /**

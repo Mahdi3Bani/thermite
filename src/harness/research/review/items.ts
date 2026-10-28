@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { REQUIRED_HYPOTHESES, RESEARCH_REVIEW } from "../../../core/research-check.ts";
-import type { Ledger } from "../../ledger.ts";
+import type { Ledger } from "../../ledger/index.ts";
 import { cardsOf } from "../cards.ts";
 import {
   hypothesisEnded,

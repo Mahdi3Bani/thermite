@@ -30,8 +30,8 @@ import {
 import type { Role, Runner } from "../broker/runner.ts";
 import { countsText, type Knowledge } from "../knowledge.ts";
 import type { HypothesisRow } from "../ledger/hypotheses.ts";
+import type { Ledger } from "../ledger/index.ts";
 import type { LaneFileChange } from "../ledger/lane-files.ts";
-import type { Ledger } from "../ledger.ts";
 import { cardFile, cardHistory } from "./cards.ts";
 
 /** The order hypotheses are listed in: those that need a verdict first (goal 117). */

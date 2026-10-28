@@ -1,5 +1,5 @@
 import { log } from "../../common/env.ts";
-import type { Ledger } from "../ledger.ts";
+import type { Ledger } from "../ledger/index.ts";
 
 /**
  * The judge's jobs and their leases around builds and restarts. A build of a large project, or

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import { CampaignDraft } from "../../src/control/campaign-builder.ts";
-import { assignRefusal } from "../../src/control/issue.ts";
+import { assignRefusal } from "../../src/control/issue/index.ts";
 import { CommandPayloads, MESSAGE_TARGET } from "../../src/core/commands.ts";
 import {
   LANE_PROCESSES,
@@ -11,11 +11,11 @@ import {
   MAX_LANES_REASON,
   parseContract,
 } from "../../src/core/contract.ts";
-import { CHECK_ROLE, PLANNER_ROLE } from "../../src/harness/agents/opencode.ts";
+import { CHECK_ROLE, PLANNER_ROLE } from "../../src/harness/agents/opencode/index.ts";
 import { IDS, RoleSchema, RunRequest, roleIds } from "../../src/harness/broker/runner.ts";
 import { ALL_ROLES, nprocFor } from "../../src/harness/broker/server.ts";
 import { lanesFromEnv } from "../../src/harness/rig-settings.ts";
-import { probedRoles } from "../../src/harness/selftest.ts";
+import { probedRoles } from "../../src/harness/selftest/index.ts";
 
 /** A small valid research contract with the given lane count. */
 const research = (count: number) => ({

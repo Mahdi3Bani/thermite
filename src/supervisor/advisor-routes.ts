@@ -4,7 +4,7 @@ import { EFFORTS } from "../core/agents.ts";
 import { ADVISOR_ROUTES, type AdvisorRoute, TEACHERS_MAX } from "../core/api/control/rigs.ts";
 import type { AnswerOf } from "../core/api/route.ts";
 import { COMPACT_AT_MAX, COMPACT_AT_MIN } from "../core/compaction.ts";
-import { type AdvisorRuntime, AdvisorsConfig } from "./advisors.ts";
+import { type AdvisorRuntime, AdvisorsConfig } from "./advisors/index.ts";
 
 /**
  * The advisors' models that control gives a rig (the owner's choice for each role on the rig's

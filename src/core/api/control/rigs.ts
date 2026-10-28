@@ -6,7 +6,7 @@ import { MCP_SERVERS_MAX } from "../harness/supervisor.ts";
 import type { Route } from "../route.ts";
 
 /**
- * Control's API for a rig's supervisor (src/control/api.ts answers it), each route with the rig's
+ * Control's API for a rig's supervisor (src/control/api/ answers it), each route with the rig's
  * own token and only for that rig (`:rig`): its reports, live lines and figures, the commands
  * waiting for it and their outcomes, the model routes and MCP servers control gives it, past
  * research for its runs, its results (champion patches and exports, for a rig with no results

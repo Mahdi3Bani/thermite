@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, test } from "node:test";
-import { ControlStore } from "../../../src/control/store.ts";
+import { ControlStore } from "../../../src/control/store/index.ts";
 
 /** A store from before goal 074: its advisors' roles under their new names, opened once. */
 

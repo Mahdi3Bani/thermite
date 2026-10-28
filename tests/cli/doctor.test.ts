@@ -12,7 +12,7 @@ import {
   type HttpResult,
   type Probes,
   type RunResult,
-} from "../../src/cli/doctor.ts";
+} from "../../src/cli/doctor/index.ts";
 
 /**
  * Stand-ins for the machine: programs by their command line (a program not listed is not
@@ -688,7 +688,7 @@ describe("thermite doctor", () => {
 
   test("the command: its usage names it, and a bad port is refused before any check", async () => {
     const run = promisify(execFile);
-    const cli = join(import.meta.dirname, "../../src/cli/thermite.ts");
+    const cli = join(import.meta.dirname, "../../src/cli/thermite/main.ts");
     const node = (...args: string[]) =>
       run(process.execPath, ["--experimental-strip-types", "--no-warnings", cli, ...args]);
     assert.match(

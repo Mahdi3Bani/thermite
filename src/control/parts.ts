@@ -5,15 +5,15 @@ import { type ClusterKubectl, realKubectl } from "./clusters/kubectl.ts";
 import type { KitRepos } from "./kit-repos.ts";
 import { RunpodDriver } from "./lifecycle.ts";
 import { type MachineSsh, openSsh } from "./machines/ssh.ts";
-import { McpServers } from "./mcp-servers.ts";
+import { McpServers } from "./mcp-servers/index.ts";
 import { PlanUsageReader } from "./plan-usage.ts";
 import type { RigImages } from "./rigs/setup.ts";
 import { RunpodRigs } from "./runpod-rigs.ts";
 import { RunpodTests } from "./runpod-tests.ts";
 import { SecretBox } from "./secrets.ts";
-import type { ControlStore } from "./store.ts";
+import type { ControlStore } from "./store/index.ts";
 import { ControlTunnels } from "./tunnel.ts";
-import { keepFolds, type RigView } from "./views.ts";
+import { keepFolds, type RigView } from "./views/index.ts";
 
 /**
  * What control is made of, built once in createControlApi (goal 125, T5): the dashboard, REST

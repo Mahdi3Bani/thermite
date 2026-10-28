@@ -28,7 +28,7 @@ import {
   startRunAnswer,
   startRunRequest,
 } from "../start-run.ts";
-import { rigView } from "../views.ts";
+import { rigView } from "../views/index.ts";
 import type { ApiContext } from "./context.ts";
 
 /**

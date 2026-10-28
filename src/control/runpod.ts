@@ -10,7 +10,7 @@
 import { redact } from "../common/env.ts";
 import { errorText } from "../common/errors.ts";
 import type { SecretBox } from "./secrets.ts";
-import type { ControlStore } from "./store.ts";
+import type { ControlStore } from "./store/index.ts";
 
 export const RUNPOD_API = "https://api.runpod.io";
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { rigSetupView, SETUP_STEPS } from "../../src/control/rig-setup-view.ts";
-import type { ControlStore } from "../../src/control/store.ts";
+import type { ControlStore } from "../../src/control/store/index.ts";
 
 test("rig_setup gives a rig's newest steps, oldest first, and how many there are (goal 138)", () => {
   const events = Array.from({ length: 90 }, (_, i) => ({

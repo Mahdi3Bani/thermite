@@ -1,6 +1,6 @@
 import type { GoalContract } from "../core/contract.ts";
 import { PROMOTABLE_VERDICTS, SCREENED_VERDICTS } from "../core/verdicts.ts";
-import { type Ledger, LedgerError } from "./ledger.ts";
+import { type Ledger, LedgerError } from "./ledger/index.ts";
 
 /**
  * "Not possible" endings for goal campaigns. The harness proposes one only where the contract

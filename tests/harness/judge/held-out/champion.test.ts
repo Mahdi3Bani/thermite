@@ -7,7 +7,7 @@ import {
   goalReport as agentsGoalReport,
   waitingForConfirmation,
 } from "../../../../src/harness/agents/scheduler/goal.ts";
-import { Scheduler } from "../../../../src/harness/agents/scheduler.ts";
+import { Scheduler } from "../../../../src/harness/agents/scheduler/index.ts";
 import { LocalRunner } from "../../../../src/harness/broker/runner.ts";
 import { heldOutCellsOf } from "../../../../src/harness/judge/held-out.ts";
 import {

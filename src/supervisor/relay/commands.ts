@@ -3,8 +3,8 @@ import { log } from "../../common/env.ts";
 import { errorText } from "../../common/errors.ts";
 import type { SignedCommand } from "../../core/commands.ts";
 import { COMMAND_STREAM, commandConsumerConfig, readCommand } from "../../core/link/commands.ts";
-import { deliverCommand, type RelayConfig } from "../relay.ts";
 import { SUPERVISOR_NUMBERS, supervisorMs } from "../settings.ts";
+import { deliverCommand, type RelayConfig } from "./index.ts";
 
 /**
  * A rig's commands from the message bus (goal 168, step 1). The supervisor takes each from its

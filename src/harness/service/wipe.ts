@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { z } from "zod";
 import { Refusal } from "../../common/errors.ts";
 import type { CommandPayloads } from "../../core/commands.ts";
-import type { HarnessPaths, HarnessService } from "../service.ts";
+import type { HarnessPaths, HarnessService } from "./index.ts";
 
 /** A full reset's wipe: the command that asks for it, and the wipe at the next start. */
 

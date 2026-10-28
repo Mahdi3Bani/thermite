@@ -4,11 +4,11 @@ import { type AgentsContext, agentsContextRefusal } from "../core/compaction.ts"
 import { IdSchema, parseContract } from "../core/contract.ts";
 import { NAME_WORDS } from "../core/ids.ts";
 import { type McpUse, McpUses, sameUses, usesWords } from "../core/mcp.ts";
-import { researchMcpRefusal } from "./mcp-servers.ts";
+import { researchMcpRefusal } from "./mcp-servers/index.ts";
 import type { ControlParts } from "./parts.ts";
-import type { CampaignSources, ControlStore, CopiedFrom } from "./store.ts";
+import type { CampaignSources, ControlStore, CopiedFrom } from "./store/index.ts";
 import { isRigCheck } from "./ui/campaigns.ts";
-import { campaignModes } from "./views.ts";
+import { campaignModes } from "./views/index.ts";
 
 /**
  * Copy a campaign (goal 069): a new campaign with another name, the same contract and the same

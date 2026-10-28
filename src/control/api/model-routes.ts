@@ -11,7 +11,7 @@ import {
   type Effort,
   type Harness,
   type ModelProvider,
-} from "../store.ts";
+} from "../store/index.ts";
 import type { ApiContext } from "./context.ts";
 
 /**

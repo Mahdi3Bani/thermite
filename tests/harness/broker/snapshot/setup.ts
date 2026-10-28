@@ -18,7 +18,7 @@ import {
   type SnapshotArea,
   type SnapshotManifest,
   takeSnapshot,
-} from "../../../../src/harness/broker/snapshot.ts";
+} from "../../../../src/harness/broker/snapshot/index.ts";
 
 export const uid = process.getuid?.() ?? 0;
 export const gid = process.getgid?.() ?? 0;

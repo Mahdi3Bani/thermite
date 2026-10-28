@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "@earendil-works/pi-ai";
 import { TrialClock, trialBudget } from "../../../src/harness/agents/trial-clock.ts";
-import { runTrial } from "../../../src/harness/agents/worker.ts";
+import { runTrial } from "../../../src/harness/agents/worker/index.ts";
 import { prepareWorkspace } from "../../../src/harness/agents/workspace.ts";
 import { LocalRunner } from "../../../src/harness/broker/runner.ts";
 import { startFakeModel } from "../../helpers/fake-model.ts";

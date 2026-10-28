@@ -1,5 +1,5 @@
 import { errorText } from "../../common/errors.ts";
-import type { Ledger } from "../ledger.ts";
+import type { Ledger } from "../ledger/index.ts";
 import { FetchRefused } from "./fetcher.ts";
 
 /**

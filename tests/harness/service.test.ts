@@ -16,7 +16,7 @@ import { describe, test } from "node:test";
 import { parseContract } from "../../src/core/contract.ts";
 import { ModelSource } from "../../src/harness/agents/model-source.ts";
 import { Registry } from "../../src/harness/agents/registry.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
+import { createHarnessApi } from "../../src/harness/api/index.ts";
 import { resolveInbox } from "../../src/harness/imports.ts";
 import { knowledgePart } from "../../src/harness/kb-part.ts";
 import { NOISY_TIMING_NOTE, smokeReport } from "../../src/harness/smoke-check.ts";

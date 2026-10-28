@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { MEASURES_NOTHING } from "../../../../src/core/research-check.ts";
-import { createHarnessApi } from "../../../../src/harness/api.ts";
-import { researchPackage } from "../../../../src/harness/research/review.ts";
+import { createHarnessApi } from "../../../../src/harness/api/index.ts";
+import { researchPackage } from "../../../../src/harness/research/review/index.ts";
 import { Reviews } from "../../../../src/harness/reviews.ts";
 import { researchFixture } from "../../../helpers/fixtures.ts";
 import { RESEARCH_QUESTIONS } from "../../../helpers/research-run.ts";

@@ -5,14 +5,18 @@ import { join } from "node:path";
 import { describe, type TestContext, test } from "node:test";
 import { parseContract } from "../../src/core/contract.ts";
 import { MEASURES_NOTHING } from "../../src/core/research-check.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
-import { type AdviseConfig, adviseOnce, emptyAdviseState } from "../../src/supervisor/advise.ts";
+import { createHarnessApi } from "../../src/harness/api/index.ts";
+import {
+  type AdviseConfig,
+  adviseOnce,
+  emptyAdviseState,
+} from "../../src/supervisor/advise/index.ts";
 import {
   AdvisorsConfig,
   ResearchOpportunity,
   researchOpportunityExperiment,
   teacherRound,
-} from "../../src/supervisor/advisors.ts";
+} from "../../src/supervisor/advisors/index.ts";
 import { startFakeModel } from "../helpers/fake-model.ts";
 import { researchFixture } from "../helpers/fixtures.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";

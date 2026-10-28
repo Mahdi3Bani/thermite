@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { Ledger } from "../../src/harness/ledger.ts";
+import { Ledger } from "../../src/harness/ledger/index.ts";
 import { statusEvents } from "../../src/harness/run-status.ts";
 import { appendOther } from "../helpers/kinds.ts";
 

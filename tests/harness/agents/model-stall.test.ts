@@ -18,7 +18,11 @@ import {
   classifyProviderError,
   type FailureCount,
 } from "../../../src/harness/agents/provider-errors.ts";
-import { keepGoing, type ProviderWait, runTrial } from "../../../src/harness/agents/worker.ts";
+import {
+  keepGoing,
+  type ProviderWait,
+  runTrial,
+} from "../../../src/harness/agents/worker/index.ts";
 import { LocalRunner } from "../../../src/harness/broker/runner.ts";
 import { startFakeModel } from "../../helpers/fake-model.ts";
 import { makeHarnessEnv } from "../../helpers/harness-env.ts";

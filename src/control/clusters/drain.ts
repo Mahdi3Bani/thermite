@@ -1,5 +1,5 @@
 import { inBackground } from "../background.ts";
-import { issueCommand } from "../issue.ts";
+import { issueCommand } from "../issue/index.ts";
 import type { ControlParts } from "../parts.ts";
 import { updateRigImages } from "./images.ts";
 import { applyResize } from "./resize.ts";

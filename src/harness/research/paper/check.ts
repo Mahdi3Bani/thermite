@@ -1,4 +1,4 @@
-import type { Ledger } from "../../ledger.ts";
+import type { Ledger } from "../../ledger/index.ts";
 import { checkCited, numbersIn, withoutReferences } from "../checks.ts";
 import { CITE, clip, FENCE, fold, HEADING, LIST_ITEM, TABLE_ROW } from "./markdown.ts";
 import type { PaperFigures } from "./request.ts";

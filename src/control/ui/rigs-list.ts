@@ -2,12 +2,12 @@ import type { BuildInfo } from "../../core/version.ts";
 import { rigVersionWords } from "../rig-update.ts";
 import type { RunpodRigView } from "../runpod-rig-view.ts";
 import { runCampaign } from "../views/facts.ts";
-import type { RigView } from "../views.ts";
+import type { RigView } from "../views/index.ts";
 import { esc, hardwareLine, runHref } from "./components.ts";
 import { infoLabel } from "./new-campaign.ts";
-import { runFigure } from "./operator.ts";
+import { runFigure } from "./operator/index.ts";
 import { podRuns } from "./runpod-rig.ts";
-import { span } from "./words.ts";
+import { span } from "./words/index.ts";
 
 /**
  * The Rigs list (goals 012 and 022): one row for each rig, to scan. Its state, where it runs and

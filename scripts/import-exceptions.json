@@ -5,11 +5,11 @@
   "src/cli/thermite/local.ts": [
     "src/control/credential.ts",
     "src/harness/broker/devices.ts",
-    "src/harness/selftest.ts"
+    "src/harness/selftest/index.ts"
   ],
   "src/cli/thermite/runpod.ts": ["src/control/runpod-rig-view.ts"],
   "src/control/agent-view.ts": ["src/harness/goal-checks.ts"],
-  "src/control/api.ts": ["src/control/dashboard.ts"],
+  "src/control/api/index.ts": ["src/control/dashboard/index.ts"],
   "src/control/campaign-builder.ts": ["src/harness/kit.ts"],
   "src/control/campaign-context.ts": ["src/control/ui/campaigns.ts"],
   "src/control/command-progress.ts": ["src/control/ui/exports.ts"],
@@ -32,9 +32,9 @@
   "src/supervisor/advise/state.ts": ["src/harness/mcp-gateway.ts"],
   "src/supervisor/advisor-cli.ts": [
     "src/harness/agents/cli-compaction.ts",
-    "src/harness/agents/codex.ts",
+    "src/harness/agents/codex/index.ts",
     "src/harness/agents/model.ts",
-    "src/harness/agents/opencode.ts"
+    "src/harness/agents/opencode/index.ts"
   ],
   "src/supervisor/advisor-proxy.ts": [
     "src/harness/agents/model-stall.ts",
@@ -45,20 +45,20 @@
   "src/supervisor/advisors/fetcher.ts": ["src/harness/research/fetcher.ts"],
   "src/supervisor/advisors/review-panel.ts": ["src/harness/agents/notes-tool.ts"],
   "src/supervisor/advisors/runtimes/claude-code.ts": [
-    "src/harness/agents/claude-code.ts",
+    "src/harness/agents/claude-code/index.ts",
     "src/harness/agents/cli-conversation.ts",
     "src/harness/agents/mcp-tools.ts"
   ],
   "src/supervisor/advisors/runtimes/cli.ts": [
-    "src/harness/agents/claude-code.ts",
+    "src/harness/agents/claude-code/index.ts",
     "src/harness/agents/cli-conversation.ts"
   ],
   "src/supervisor/advisors/runtimes/opencode-codex.ts": [
     "src/harness/agents/cli-conversation.ts",
-    "src/harness/agents/codex.ts",
+    "src/harness/agents/codex/index.ts",
     "src/harness/agents/mcp-tools.ts",
     "src/harness/agents/model.ts",
-    "src/harness/agents/opencode.ts"
+    "src/harness/agents/opencode/index.ts"
   ],
   "src/supervisor/advisors/runtimes/pi.ts": [
     "src/harness/agents/compaction.ts",
@@ -71,5 +71,5 @@
     "src/harness/research/shares.ts"
   ],
   "src/supervisor/main.ts": ["src/harness/agents/model-stall.ts", "src/harness/mcp-gateway.ts"],
-  "src/supervisor/ste-checker.ts": ["src/harness/research/paper.ts"]
+  "src/supervisor/ste-checker.ts": ["src/harness/research/paper/index.ts"]
 }

@@ -5,7 +5,7 @@ import * as proposer from "../../../src/core/api/harness/proposer.ts";
 import { RESEARCH_KINDS } from "../../../src/core/api/harness/research.ts";
 import * as supervisor from "../../../src/core/api/harness/supervisor.ts";
 import { pathOf, type Route } from "../../../src/core/api/route.ts";
-import { createHarnessApi } from "../../../src/harness/api.ts";
+import { createHarnessApi } from "../../../src/harness/api/index.ts";
 import { makeHarnessEnv } from "../../helpers/harness-env.ts";
 
 const tokens = { supervisor: "sup-token", proposer: "prop-token" };

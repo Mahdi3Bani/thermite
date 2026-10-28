@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { parseContract } from "../../src/core/contract.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
+import { createHarnessApi } from "../../src/harness/api/index.ts";
 import { GitError, patchBytes, readableDiff, treeFile, treeFiles } from "../../src/harness/git.ts";
 import { researchFixture } from "../helpers/fixtures.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";

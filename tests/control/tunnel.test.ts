@@ -6,10 +6,10 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { issueCommand } from "../../src/control/issue.ts";
-import { McpServers } from "../../src/control/mcp-servers.ts";
+import { issueCommand } from "../../src/control/issue/index.ts";
+import { McpServers } from "../../src/control/mcp-servers/index.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
-import { ControlStore, RIG_ID } from "../../src/control/store.ts";
+import { ControlStore, RIG_ID } from "../../src/control/store/index.ts";
 import { ControlTunnels, tunnelRouteAllowed } from "../../src/control/tunnel.ts";
 import { generateSigningKeys, type KeyPairPem } from "../../src/core/commands.ts";
 import {
@@ -20,10 +20,10 @@ import {
   signRequest,
   TUNNEL_MAX_REQUEST,
 } from "../../src/core/tunnel.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
+import { createHarnessApi } from "../../src/harness/api/index.ts";
 import { readEnrollment } from "../../src/harness/broker/one-container.ts";
 import { syncMcpServers } from "../../src/supervisor/mcp-sync.ts";
-import { relayCommandsOnce, relayOnce } from "../../src/supervisor/relay.ts";
+import { relayCommandsOnce, relayOnce } from "../../src/supervisor/relay/index.ts";
 import { PodTunnel, pullModeOptions, startPullMode } from "../../src/supervisor/tunnel-pod.ts";
 import { assigned } from "../helpers/assignments.ts";
 import { controlOnly, signIn } from "../helpers/control-stack.ts";

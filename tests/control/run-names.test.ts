@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { describe, test } from "node:test";
-import { issueCommand } from "../../src/control/issue.ts";
+import { issueCommand } from "../../src/control/issue/index.ts";
 import { nextRunName } from "../../src/control/run-names.ts";
-import { ControlStore } from "../../src/control/store.ts";
+import { ControlStore } from "../../src/control/store/index.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 
 /** A rig's report of these events, in `ledger`. */

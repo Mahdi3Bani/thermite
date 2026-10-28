@@ -1,5 +1,5 @@
 // Child process for the promotion race test: waits for a start time, then tries a CAS promotion.
-import { Ledger } from "../../src/harness/ledger.ts";
+import { Ledger } from "../../src/harness/ledger/index.ts";
 
 const [dbPath, attempt, startAt] = process.argv.slice(2) as [string, string, string];
 const ledger = Ledger.open(dbPath);

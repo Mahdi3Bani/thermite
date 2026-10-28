@@ -26,7 +26,7 @@ import type { ModelConfig } from "../../../../src/harness/agents/model.ts";
 import { opencodeProgram } from "../../../../src/harness/agents/opencode/program.ts";
 import type { PlanWindows } from "../../../../src/harness/agents/plan-windows.ts";
 import type { ResearchTrialSpec } from "../../../../src/harness/agents/research-worker.ts";
-import type { TrialSpec } from "../../../../src/harness/agents/worker.ts";
+import type { TrialSpec } from "../../../../src/harness/agents/worker/index.ts";
 import type { RunRequest } from "../../../../src/harness/broker/runner.ts";
 import { fakeProgramRunner, type Program } from "../../../helpers/fake-program.ts";
 

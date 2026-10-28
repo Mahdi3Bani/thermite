@@ -5,9 +5,9 @@ import { CLAIM_LIMITS_WORDS, researchTool } from "../../../src/agents/tools/rese
 import { Registry } from "../../../src/harness/agents/registry.ts";
 import { researchAgentTools } from "../../../src/harness/agents/research-agent-tools.ts";
 import { researchHelp, trialCli } from "../../../src/harness/agents/trial-cli.ts";
+import { createHarnessApi } from "../../../src/harness/api/index.ts";
 import { pathWords, REFUSAL_PROBLEMS, refusalWords } from "../../../src/harness/api/refusal.ts";
-import { createHarnessApi } from "../../../src/harness/api.ts";
-import { ClaimInput } from "../../../src/harness/research/research.ts";
+import { ClaimInput } from "../../../src/harness/research/research/index.ts";
 import { makeResearchRun } from "../../helpers/research-run.ts";
 
 /**

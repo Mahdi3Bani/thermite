@@ -1,4 +1,4 @@
-import type { ControlStore } from "../../src/control/store.ts";
+import type { ControlStore } from "../../src/control/store/index.ts";
 
 /**
  * A rig's results as control sees them, for tests: the harness's signed answer to an export, and

@@ -32,7 +32,7 @@ describe("the ledger's owners (goal 125, T6)", () => {
   test("no production code outside the ledger's modules queries its database", () => {
     const found = files(HARNESS)
       .map((path) => relative(ROOT, path))
-      .filter((path) => !path.startsWith("src/harness/ledger/") && path !== "src/harness/ledger.ts")
+      .filter((path) => !path.startsWith("src/harness/ledger/"))
       .filter((path) => !OWN_FILE.has(path))
       .flatMap((path) =>
         readFileSync(join(ROOT, path), "utf8")

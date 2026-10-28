@@ -1,7 +1,7 @@
 import type { GoalContract } from "../../core/contract.ts";
 import { meanInterval } from "../../core/stats.ts";
 import { patchBetween } from "../git.ts";
-import type { JobRow } from "../ledger.ts";
+import type { JobRow } from "../ledger/index.ts";
 import { Reviews } from "../reviews.ts";
 import type { JudgeContext } from "./context.ts";
 import { decideThresholdGoal, type GoalStatus } from "./decide.ts";

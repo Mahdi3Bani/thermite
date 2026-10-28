@@ -1,6 +1,6 @@
 import { log } from "../common/env.ts";
 import { errorText } from "../common/errors.ts";
-import type { ControlStore } from "./store.ts";
+import type { ControlStore } from "./store/index.ts";
 
 /** Where control set a rig up: each keeps its rig's state in a table of its own. */
 export type Placement = "machine" | "cluster" | "joined";

@@ -10,7 +10,7 @@ import type { Experiment, TaskYield } from "../../queue.ts";
 import { focusOf, limitsInForce, PLANNER, resultOf } from "../coordinator.ts";
 import { failedTooLong } from "../provider-errors.ts";
 import type { Assignment, EpochRecord } from "../registry.ts";
-import type { TrialResult } from "../worker.ts";
+import type { TrialResult } from "../worker/index.ts";
 import { prepareWorkspace } from "../workspace.ts";
 import { brief, withOwnerSections } from "./briefs.ts";
 import { directivesOf, type SchedulerContext } from "./context.ts";

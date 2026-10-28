@@ -7,12 +7,12 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { promisify } from "node:util";
 import { serve } from "@hono/node-server";
-import { issueCommand } from "../../src/control/issue.ts";
+import { issueCommand } from "../../src/control/issue/index.ts";
 import { parseContract } from "../../src/core/contract.ts";
 import { controlOnly } from "../helpers/control-stack.ts";
 
 const run = promisify(execFile);
-const CLI = join(import.meta.dirname, "../../src/cli/thermite.ts");
+const CLI = join(import.meta.dirname, "../../src/cli/thermite/main.ts");
 const EXAMPLES = join(import.meta.dirname, "../../examples/contracts");
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
 /** Control's tokens: the owner's, as the token files below hold it, and no rigs. */

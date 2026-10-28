@@ -13,10 +13,10 @@ import {
   triedCauses,
 } from "../evidence.ts";
 import { NOTES_ARE_DATA, notesData } from "../journal.ts";
-import { LedgerError } from "../ledger.ts";
+import { LedgerError } from "../ledger/index.ts";
 import { researchState, stateBrief } from "../research/shares.ts";
-import type { HarnessService } from "../service.ts";
 import { backgroundFor } from "./decisions.ts";
+import type { HarnessService } from "./index.ts";
 import { requireRun } from "./runs.ts";
 
 /**

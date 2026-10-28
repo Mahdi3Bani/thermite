@@ -1,11 +1,11 @@
 import type { Hono } from "hono";
 import { archiveResponse } from "../exports.ts";
-import { cursorOf } from "../store.ts";
+import { cursorOf } from "../store/index.ts";
 import { commandRow } from "../ui/commands.ts";
 import { ago, avatar, esc, icon, meter, pct, runHref } from "../ui/components.ts";
 import { exportsBody } from "../ui/exports.ts";
 import { valuesPairWords } from "../ui/gains.ts";
-import { leaderboard } from "../views.ts";
+import { leaderboard } from "../views/index.ts";
 import type { Dashboard } from "./context.ts";
 
 /** The Commands, Audit, Leaderboard, Exports (goal 103) and Reports pages. */

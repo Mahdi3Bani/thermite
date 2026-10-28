@@ -4,8 +4,8 @@ import type { CommandPayloads } from "../../core/commands.ts";
 import { Audits } from "../audits.ts";
 import { updateRef } from "../git.ts";
 import { portReplaced } from "../judge/ports.ts";
-import { type Ledger, LedgerError } from "../ledger.ts";
-import type { HarnessService } from "../service.ts";
+import { type Ledger, LedgerError } from "../ledger/index.ts";
+import type { HarnessService } from "./index.ts";
 import { decidingRun, requireRun } from "./runs.ts";
 
 /**

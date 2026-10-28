@@ -6,7 +6,7 @@ import { CallUsage } from "../../../src/core/usage.ts";
 import { summarizer } from "../../../src/harness/agents/compaction.ts";
 import { buildModel, type ModelConfig } from "../../../src/harness/agents/model.ts";
 import { PiMeter, UsageSender } from "../../../src/harness/agents/usage-meter.ts";
-import { runTrial } from "../../../src/harness/agents/worker.ts";
+import { runTrial } from "../../../src/harness/agents/worker/index.ts";
 import { prepareWorkspace } from "../../../src/harness/agents/workspace.ts";
 import { LocalRunner } from "../../../src/harness/broker/runner.ts";
 import { type ScriptedTurn, startFakeModel } from "../../helpers/fake-model.ts";

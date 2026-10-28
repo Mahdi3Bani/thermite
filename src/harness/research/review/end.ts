@@ -1,5 +1,5 @@
 import { ANSWERED, PROGRESS_STOPPED, RESEARCH_STOPPED } from "../../../core/research-check.ts";
-import type { Ledger } from "../../ledger.ts";
+import type { Ledger } from "../../ledger/index.ts";
 import { acceptedReview, researchReviews } from "./items.ts";
 import type { Row } from "./shared.ts";
 

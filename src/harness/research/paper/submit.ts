@@ -1,7 +1,7 @@
 import type { PaperExperiment, PaperSubmission } from "../../../core/api/harness/research.ts";
 import { newExperimentId } from "../../../core/ids.ts";
 import { PAPER_ACCEPTED, PAPER_REFUSED } from "../../../core/research-check.ts";
-import { ANSWERED, researchEnd } from "../review.ts";
+import { ANSWERED, researchEnd } from "../review/index.ts";
 import { claimsAppendix, numberCitations, panelAppendix, referencesPart } from "./appended.ts";
 import { paperBasis } from "./basis.ts";
 import { checkPaper, type PaperProblem } from "./check.ts";

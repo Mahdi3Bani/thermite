@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { AdvisorsConfig, AdvisorTools } from "../advisors.ts";
+import type { AdvisorsConfig, AdvisorTools } from "../advisors/index.ts";
 
 /** One knowledge base's search over MCP, read only; the token is a bearer header, never in the URL. */
 function mcpSearch(url: string, token: () => string, tool: string) {

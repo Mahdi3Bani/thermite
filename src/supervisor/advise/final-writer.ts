@@ -2,7 +2,7 @@ import type { z } from "zod";
 import { PAPER, PAPER_CHECK, PAPERS_PENDING } from "../../core/api/harness/advisors.ts";
 import type { PaperExperiment } from "../../core/api/harness/research.ts";
 import type { AnswerOf } from "../../core/api/route.ts";
-import { writePaper } from "../advisors.ts";
+import { writePaper } from "../advisors/index.ts";
 import { NO_STE_CHECKER, steCheckerAt, steResultOf, steToolAnswer } from "../ste-checker.ts";
 import type { AdviseContext } from "./context.ts";
 import { clip, ifKnown } from "./shared.ts";

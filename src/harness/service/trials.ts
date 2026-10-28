@@ -7,10 +7,10 @@ import { stalledFor } from "../agents/model-stall.ts";
 import { KIND_WORDS, type ProviderErrorKind } from "../agents/provider-errors.ts";
 import { Registry } from "../agents/registry.ts";
 import { Journal } from "../journal.ts";
-import { LedgerError } from "../ledger.ts";
+import { LedgerError } from "../ledger/index.ts";
 import { messageText, type OwnerMessages } from "../messages.ts";
-import { NOTE_REPEATS } from "../research/research.ts";
-import type { HarnessService } from "../service.ts";
+import { NOTE_REPEATS } from "../research/research/index.ts";
+import type { HarnessService } from "./index.ts";
 import type { ReplyNow } from "./watch.ts";
 
 /**

@@ -1,5 +1,5 @@
 import type { RunpodRigs } from "./runpod-rigs.ts";
-import type { ControlStore } from "./store.ts";
+import type { ControlStore } from "./store/index.ts";
 
 /** Steps of a rig's setup and management given by default (goal 138): the newest. */
 export const SETUP_STEPS = 20;

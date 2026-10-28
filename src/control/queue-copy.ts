@@ -1,6 +1,6 @@
 import type { QueueSeed } from "./new-campaign.ts";
-import type { ControlStore } from "./store.ts";
-import type { RunView } from "./views.ts";
+import type { ControlStore } from "./store/index.ts";
+import type { RunView } from "./views/index.ts";
 
 /**
  * Copying a past run's untried experiments into a new run's queue (goals 064 and 067): what

@@ -7,7 +7,7 @@ import {
   type ProviderErrorKind,
   stopsAgents,
 } from "../provider-errors.ts";
-import type { TrialResult } from "../worker.ts";
+import type { TrialResult } from "../worker/index.ts";
 import type { SchedulerContext } from "./context.ts";
 
 /**

@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { laneLimits } from "../../../../src/core/contract.ts";
-import { runTrial } from "../../../../src/harness/agents/worker.ts";
+import { runTrial } from "../../../../src/harness/agents/worker/index.ts";
 import { prepareWorkspace } from "../../../../src/harness/agents/workspace.ts";
 import { LocalRunner } from "../../../../src/harness/broker/runner.ts";
 import { startFakeModel } from "../../../helpers/fake-model.ts";

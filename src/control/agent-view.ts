@@ -1,6 +1,6 @@
 import { HELD_OUT_KINDS, type HeldOutKind, heldOutWords } from "../core/held-out.ts";
 import { type GoalChecks, parseGoalChecks } from "../harness/goal-checks.ts";
-import type { AttemptView, HeldOutView, RunView, StoredEvent } from "./views.ts";
+import type { AttemptView, HeldOutView, RunView, StoredEvent } from "./views/index.ts";
 
 /**
  * What the agent token reads over MCP of a run's held-out checks (goal 082). The agents see only

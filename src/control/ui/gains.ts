@@ -8,9 +8,9 @@ import {
   valuesWords,
 } from "../metric-values.ts";
 import { currentChampion } from "../views/facts.ts";
-import type { RunView } from "../views.ts";
+import type { RunView } from "../views/index.ts";
 import { esc, infoLabel } from "./components.ts";
-import { signed } from "./words.ts";
+import { signed } from "./words/index.ts";
 
 /**
  * A hill climb's gains with the real values they come from (goal 133): a chip `+49.0%` and, beside

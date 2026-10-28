@@ -6,7 +6,7 @@ import {
   campaignsListBody,
   isRigCheck,
 } from "../../../../src/control/ui/campaigns.ts";
-import type { CampaignView, RunView } from "../../../../src/control/views.ts";
+import type { CampaignView, RunView } from "../../../../src/control/views/index.ts";
 import { rig, statusRun } from "./fixtures.ts";
 
 /**

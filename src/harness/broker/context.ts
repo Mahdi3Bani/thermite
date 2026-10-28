@@ -6,7 +6,7 @@ import { oneContainer } from "./one-container.ts";
 import { IDS } from "./runner.ts";
 import { takeSnapshotKey } from "./seal.ts";
 import { brokerNumbers } from "./settings.ts";
-import { type Snapshotter, snapshotDir } from "./snapshot.ts";
+import { type Snapshotter, snapshotDir } from "./snapshot/index.ts";
 
 /**
  * What the broker's parts share. broker.ts builds it once, at its start (brokerContext), and gives

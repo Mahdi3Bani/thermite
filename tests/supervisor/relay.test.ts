@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { describe, test } from "node:test";
-import { issueCommand } from "../../src/control/issue.ts";
-import { fingerprint } from "../../src/control/store.ts";
+import { issueCommand } from "../../src/control/issue/index.ts";
+import { fingerprint } from "../../src/control/store/index.ts";
 import { generateSigningKeys, signEnvelope } from "../../src/core/commands.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
-import { relayOnce } from "../../src/supervisor/relay.ts";
+import { createHarnessApi } from "../../src/harness/api/index.ts";
+import { relayOnce } from "../../src/supervisor/relay/index.ts";
 import { controlOnly, controlStack } from "../helpers/control-stack.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";
 import { appendOther } from "../helpers/kinds.ts";

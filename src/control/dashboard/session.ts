@@ -6,7 +6,7 @@ import { SESSION_DAYS } from "../settings.ts";
 import { CLIENT_JS } from "../ui/client.ts";
 import { FOLLOW_JS } from "../ui/follow-client.ts";
 import { APPLE_TOUCH_ICON, FAVICON_ICO, FAVICON_SVG, ICON_LINKS } from "../ui/icons.ts";
-import { STYLE } from "../ui/style.ts";
+import { STYLE } from "../ui/style/index.ts";
 import { type Ctx, type Dashboard, hashOf } from "./context.ts";
 
 const CSP =

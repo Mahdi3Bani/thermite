@@ -1,7 +1,7 @@
 import { LIVE } from "../core/api/control/rigs.ts";
 import { verifyJson } from "../core/commands.ts";
 import { liveBody, readLiveEntries } from "../core/live.ts";
-import type { ControlStore } from "./store.ts";
+import type { ControlStore } from "./store/index.ts";
 
 /**
  * A rig's live lines, as its supervisor posts them: the harness's, signed with the rig's pinned

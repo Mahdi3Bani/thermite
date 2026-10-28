@@ -10,8 +10,8 @@ import { goalChecks } from "../goal-checks.ts";
 import { importBundle, importFile } from "../imports.ts";
 import { type Kit, KitSchema, kitProblems } from "../kit.ts";
 import { ExperimentInput } from "../queue.ts";
-import { startingHypotheses } from "../research/research.ts";
-import type { HarnessService } from "../service.ts";
+import { startingHypotheses } from "../research/research/index.ts";
+import type { HarnessService } from "./index.ts";
 import { pauseOthers } from "./runs.ts";
 
 /**

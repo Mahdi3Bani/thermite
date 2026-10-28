@@ -1,4 +1,4 @@
-import type { ControlStore } from "./store.ts";
+import type { ControlStore } from "./store/index.ts";
 
 /**
  * Whether a rig's results have left it: what a terminate (goal 023) or a full reset waits for.

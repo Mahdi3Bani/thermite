@@ -22,7 +22,7 @@ import {
 } from "./research.ts";
 
 /**
- * The harness's API for its supervisor's advisors (src/harness/api.ts answers it): the runs and
+ * The harness's API for its supervisor's advisors (src/harness/api/ answers it): the runs and
  * their briefs, the run's code, evidence and research to read, the audits, reviews, cards and
  * papers that wait for an advisor, and where the advisors' answers go. None of these can set a
  * verdict, a contract or a champion. Every route takes the supervisor's token.

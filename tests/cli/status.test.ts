@@ -9,7 +9,7 @@ import { test } from "node:test";
 import { promisify } from "node:util";
 
 const run = promisify(execFile);
-const CLI = join(import.meta.dirname, "../../src/cli/thermite.ts");
+const CLI = join(import.meta.dirname, "../../src/cli/thermite/main.ts");
 
 test("thermite status exits non-zero when the harness answers with an error (goal 164)", async (t) => {
   const server = createServer((req, res) => {

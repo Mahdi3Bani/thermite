@@ -1,5 +1,5 @@
 import type { ResearchContract } from "../../../core/contract.ts";
-import { type Ledger, LedgerError } from "../../ledger.ts";
+import { type Ledger, LedgerError } from "../../ledger/index.ts";
 
 export type Row = Record<string, unknown>;
 

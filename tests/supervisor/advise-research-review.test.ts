@@ -3,17 +3,21 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, type TestContext, test } from "node:test";
-import { createHarnessApi } from "../../src/harness/api.ts";
+import { createHarnessApi } from "../../src/harness/api/index.ts";
 import {
   type CheckedReviewer,
   RESEARCH_REVIEW,
   researchPackage,
   researchReviewDue,
-} from "../../src/harness/research/review.ts";
+} from "../../src/harness/research/review/index.ts";
 import { Reviews } from "../../src/harness/reviews.ts";
-import type { HarnessService } from "../../src/harness/service.ts";
-import { type AdviseConfig, adviseOnce, emptyAdviseState } from "../../src/supervisor/advise.ts";
-import { AdvisorsConfig, researchPrompt, reviewOne } from "../../src/supervisor/advisors.ts";
+import type { HarnessService } from "../../src/harness/service/index.ts";
+import {
+  type AdviseConfig,
+  adviseOnce,
+  emptyAdviseState,
+} from "../../src/supervisor/advise/index.ts";
+import { AdvisorsConfig, researchPrompt, reviewOne } from "../../src/supervisor/advisors/index.ts";
 import { startFakeModel } from "../helpers/fake-model.ts";
 import { fillResearch, makeResearchRun, writeCards } from "../helpers/research-run.ts";
 

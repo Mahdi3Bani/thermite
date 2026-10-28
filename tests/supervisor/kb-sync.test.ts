@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { type KbItemWire, untoldKinds } from "../../src/core/kb.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
+import { createHarnessApi } from "../../src/harness/api/index.ts";
 import { itemPath } from "../../src/harness/knowledge.ts";
 import {
   emptyKbSyncState,

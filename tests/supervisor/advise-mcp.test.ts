@@ -3,12 +3,16 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, type TestContext, test } from "node:test";
-import { McpServers } from "../../src/control/mcp-servers.ts";
+import { McpServers } from "../../src/control/mcp-servers/index.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
 import type { McpUse } from "../../src/core/mcp.ts";
 import { McpGateway } from "../../src/harness/mcp-gateway.ts";
-import { type AdviseConfig, adviseOnce, emptyAdviseState } from "../../src/supervisor/advise.ts";
-import { AdvisorsConfig } from "../../src/supervisor/advisors.ts";
+import {
+  type AdviseConfig,
+  adviseOnce,
+  emptyAdviseState,
+} from "../../src/supervisor/advise/index.ts";
+import { AdvisorsConfig } from "../../src/supervisor/advisors/index.ts";
 import { syncMcpServers } from "../../src/supervisor/mcp-sync.ts";
 import { serveAdvisorTools } from "../../src/supervisor/past-mcp.ts";
 import { assigned } from "../helpers/assignments.ts";

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { ControlStore } from "../../src/control/store.ts";
+import { ControlStore } from "../../src/control/store/index.ts";
 import { modelUsage } from "../../src/control/usage.ts";
-import { rigView } from "../../src/control/views.ts";
+import { rigView } from "../../src/control/views/index.ts";
 import { callUsage } from "../../src/core/usage.ts";
 import { ADMIN, controlOnly, mcpClient } from "../helpers/control-stack.ts";
 

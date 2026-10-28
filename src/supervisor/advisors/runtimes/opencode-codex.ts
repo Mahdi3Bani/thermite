@@ -11,7 +11,7 @@ import {
   opencodeOwn,
   readUnder,
 } from "../../../harness/agents/cli-conversation.ts";
-import { codexBin, codexExe } from "../../../harness/agents/codex.ts";
+import { codexBin, codexExe } from "../../../harness/agents/codex/index.ts";
 import { mcpLine } from "../../../harness/agents/mcp-tools.ts";
 import type { ModelConfig } from "../../../harness/agents/model.ts";
 import {
@@ -20,7 +20,7 @@ import {
   opencodeBin,
   opencodeExe,
   opencodeKeepEnv,
-} from "../../../harness/agents/opencode.ts";
+} from "../../../harness/agents/opencode/index.ts";
 import {
   codexAdvisorArgs,
   codexAdvisorConfig,

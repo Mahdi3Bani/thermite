@@ -1,4 +1,4 @@
-import type { ControlStore } from "../../src/control/store.ts";
+import type { ControlStore } from "../../src/control/store/index.ts";
 import { iso, now } from "./shared.ts";
 
 // Live sessions: the planner, the judge, two workers and the supervisor on gpu-1.

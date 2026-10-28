@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { MIGRATIONS } from "../schema.ts";
+import { MIGRATIONS } from "../schema/index.ts";
 import { eventRunColumn } from "./runs.ts";
 
 /**

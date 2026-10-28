@@ -12,7 +12,7 @@ import { dirname, join } from "node:path";
 import { canonicalJson } from "../core/canonical.ts";
 import { patchBytes } from "./git.ts";
 import { knowledgePart } from "./kb-part.ts";
-import type { Ledger } from "./ledger.ts";
+import type { Ledger } from "./ledger/index.ts";
 import { championFiles } from "./propagation.ts";
 
 /** Whether an event is a run's (goal 170): the run the ledger recorded with it. */

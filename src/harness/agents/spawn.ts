@@ -5,7 +5,7 @@ import type { Role, Runner } from "../broker/runner.ts";
 import { MODEL_ENV_NAMES, type ModelConfig, modelEnv } from "./model.ts";
 import { STALL_SETTING } from "./model-stall.ts";
 import type { ResearchTrialSpec } from "./research-worker.ts";
-import type { TrialResult, TrialSpec } from "./worker.ts";
+import type { TrialResult, TrialSpec } from "./worker/index.ts";
 
 export type AnyTrial =
   | { kind: "code"; spec: TrialSpec }

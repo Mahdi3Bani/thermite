@@ -1,6 +1,6 @@
-import type { ControlStore } from "./store.ts";
+import type { ControlStore } from "./store/index.ts";
 import { currentChampion } from "./views/facts.ts";
-import { rigView } from "./views.ts";
+import { rigView } from "./views/index.ts";
 
 /**
  * Prometheus text exposition of control's view. Bounded series only: labelled by rig,

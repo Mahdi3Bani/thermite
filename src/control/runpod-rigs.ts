@@ -19,9 +19,9 @@ import {
   spentBy,
 } from "./runpod-rig-view.ts";
 import type { SecretBox } from "./secrets.ts";
-import type { ControlStore, StoredRunpodRig } from "./store.ts";
+import type { ControlStore, StoredRunpodRig } from "./store/index.ts";
 import type { ControlTunnels } from "./tunnel.ts";
-import { rigView } from "./views.ts";
+import { rigView } from "./views/index.ts";
 
 /**
  * Rigs on RunPod, launched by the owner alone (REST, MCP or the command line; goal 022). A launch

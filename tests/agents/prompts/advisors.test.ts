@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { researchPackage, researchReviewDue } from "../../../src/harness/research/review.ts";
+import { researchPackage, researchReviewDue } from "../../../src/harness/research/review/index.ts";
 import { Reviews } from "../../../src/harness/reviews.ts";
 import { FAST_KERNEL, makeJudgeEnv } from "../../helpers/judge-env.ts";
 import { cardsUpToDate, seedClaims, seedSources } from "../../helpers/research-cards.ts";

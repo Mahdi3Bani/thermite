@@ -12,7 +12,12 @@ import {
 import { exportLeft, removeWords, resultsLeft } from "../../results-left.ts";
 import { controlAddress, controlImages } from "../../rigs/setup.ts";
 import { MIN_IDLE_STOP_MINUTES } from "../../runpod-rigs.ts";
-import { type ClusterRig, fingerprint, type MachineRig, type TunnelRig } from "../../store.ts";
+import {
+  type ClusterRig,
+  fingerprint,
+  type MachineRig,
+  type TunnelRig,
+} from "../../store/index.ts";
 import { ago, esc, hardwareCard, icon, num, runHref } from "../../ui/components.ts";
 import { drainView } from "../../ui/drain.ts";
 import { exportMenu, exportsHref } from "../../ui/exports.ts";
@@ -24,7 +29,7 @@ import {
   type TimelineRow,
   timeline,
   waitingOn,
-} from "../../ui/operator.ts";
+} from "../../ui/operator/index.ts";
 import { checkRowHtml } from "../../ui/rig-checks.ts";
 import { stateBanners, stateRows, stateSummary, versionFact } from "../../ui/rig-states.ts";
 import {
@@ -35,9 +40,9 @@ import {
   podRuns,
   readySteps,
 } from "../../ui/runpod-rig.ts";
-import { span } from "../../ui/words.ts";
+import { span } from "../../ui/words/index.ts";
 import { runCampaign } from "../../views/facts.ts";
-import type { RigView } from "../../views.ts";
+import type { RigView } from "../../views/index.ts";
 import type { Ctx, Dashboard } from "../context.ts";
 import {
   gpuRoles,

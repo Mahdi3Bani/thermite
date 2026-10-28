@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { MCP_WAIT_MS, Scheduler } from "../../../src/harness/agents/scheduler.ts";
-import type { TrialSpec } from "../../../src/harness/agents/worker.ts";
+import { MCP_WAIT_MS, Scheduler } from "../../../src/harness/agents/scheduler/index.ts";
+import type { TrialSpec } from "../../../src/harness/agents/worker/index.ts";
 import { LocalRunner } from "../../../src/harness/broker/runner.ts";
 import { makeJudgeEnv } from "../../helpers/judge-env.ts";
 

@@ -1,6 +1,6 @@
 import { CARDS, CARDS_PENDING } from "../../core/api/harness/advisors.ts";
 import type { AnswerOf } from "../../core/api/route.ts";
-import { synthesizeCards } from "../advisors.ts";
+import { synthesizeCards } from "../advisors/index.ts";
 import type { AdviseContext } from "./context.ts";
 import { clip, ifKnown } from "./shared.ts";
 

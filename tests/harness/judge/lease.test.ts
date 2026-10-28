@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { parseContract } from "../../../src/core/contract.ts";
 import { jobsAtStart, whileLeased } from "../../../src/harness/judge/lease.ts";
-import { Ledger, MAX_LEASE_EXPIRIES } from "../../../src/harness/ledger.ts";
+import { Ledger, MAX_LEASE_EXPIRIES } from "../../../src/harness/ledger/index.ts";
 import { hillClimbFixture } from "../../helpers/fixtures.ts";
 
 test("a long build keeps its job's lease: renewed while it runs, and no more once it ends", async () => {

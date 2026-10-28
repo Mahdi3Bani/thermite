@@ -10,7 +10,7 @@ import { describe, test } from "node:test";
 import { serve } from "@hono/node-server";
 import { KitRepos } from "../../src/control/kit-repos.ts";
 import type { SignedCommand } from "../../src/core/commands.ts";
-import { relayOnce } from "../../src/supervisor/relay.ts";
+import { relayOnce } from "../../src/supervisor/relay/index.ts";
 import { type StageResult, stageCommand } from "../../src/supervisor/staging.ts";
 import { controlOnly, controlStack } from "../helpers/control-stack.ts";
 import { makeJudgeEnv } from "../helpers/judge-env.ts";

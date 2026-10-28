@@ -211,7 +211,7 @@ These rules give the code one shape, so a reader knows where a thing lives befor
 
 ## Testing
 
-- **Tests live in `tests/`,** never beside the code, so that the code is quick to read and to find. Its folders mirror `src/`: the tests of `src/control/store.ts` are in `tests/control/store.test.ts`. `npm test` runs every `tests/**/*.test.ts`, and stops if it finds a test file in `src/`.
+- **Tests live in `tests/`,** never beside the code, so that the code is quick to read and to find. Its folders mirror `src/`: the tests of `src/control/store/runs.ts` are in `tests/control/store/runs.test.ts`. `npm test` runs every `tests/**/*.test.ts`, and stops if it finds a test file in `src/`.
   - Shared scaffolding, fakes and helpers live in `tests/helpers/`.
   - A test that wires two or more parts together lives in `tests/system/`. A test of control's pages that is named for a feature lives in `tests/control/dashboard/`.
   - The stand-ins that run inside images (for agent programs, model APIs and devices) live in `tests/stand-ins/<name>/`.

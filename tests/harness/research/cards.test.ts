@@ -3,8 +3,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, type TestContext, test } from "node:test";
 import type { ResearchTrialSpec } from "../../../src/harness/agents/research-worker.ts";
-import { Scheduler } from "../../../src/harness/agents/scheduler.ts";
-import { createHarnessApi } from "../../../src/harness/api.ts";
+import { Scheduler } from "../../../src/harness/agents/scheduler/index.ts";
+import { createHarnessApi } from "../../../src/harness/api/index.ts";
 import { LocalRunner } from "../../../src/harness/broker/runner.ts";
 import {
   BRIEF_ANSWER_CHARS,
@@ -19,7 +19,7 @@ import {
   cardOf,
   cardsOf,
 } from "../../../src/harness/research/cards.ts";
-import type { Research } from "../../../src/harness/research/research.ts";
+import type { Research } from "../../../src/harness/research/research/index.ts";
 import {
   DOMAINS,
   SIX_QUESTIONS,

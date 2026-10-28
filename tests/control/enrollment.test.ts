@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { fingerprint } from "../../src/control/store.ts";
+import { fingerprint } from "../../src/control/store/index.ts";
 import { ADMIN, controlOnly } from "../helpers/control-stack.ts";
 
 const owner = { authorization: `Bearer ${ADMIN}`, "content-type": "application/json" };

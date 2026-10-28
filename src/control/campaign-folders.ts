@@ -1,6 +1,6 @@
 import { z } from "zod";
-import type { ControlStore } from "./store.ts";
-import { campaignModes, campaignViews, type RigView } from "./views.ts";
+import type { ControlStore } from "./store/index.ts";
+import { campaignModes, campaignViews, type RigView } from "./views/index.ts";
 
 /**
  * Archive a campaign, and folders for campaigns in the dashboard's left navigation (goal 077).

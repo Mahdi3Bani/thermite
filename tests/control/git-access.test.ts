@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { serve } from "@hono/node-server";
-import type { ControlOptions } from "../../src/control/api.ts";
+import type { ControlOptions } from "../../src/control/api/index.ts";
 import { KitRepos } from "../../src/control/kit-repos.ts";
 import { startCampaign } from "../../src/control/new-campaign.ts";
 import { SecretBox } from "../../src/control/secrets.ts";

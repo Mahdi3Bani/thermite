@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ControlStore } from "../../src/control/store.ts";
+import { ControlStore } from "../../src/control/store/index.ts";
 import { experimentsTab, plannerTab } from "../../src/control/ui/queue.ts";
-import { rigView } from "../../src/control/views.ts";
+import { rigView } from "../../src/control/views/index.ts";
 
 /** A rig whose run "r-1" reported these events (subject: the run), in order. */
 function rigWith(events: [string, string, Record<string, unknown>][]) {

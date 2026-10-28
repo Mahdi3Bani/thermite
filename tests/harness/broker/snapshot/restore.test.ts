@@ -22,7 +22,7 @@ import {
   SEALED,
   type SnapshotManifest,
   takeSnapshot,
-} from "../../../../src/harness/broker/snapshot.ts";
+} from "../../../../src/harness/broker/snapshot/index.ts";
 import { fixture, manifestOf, RIG, sealedOf, stagedBackup, typicalState, uid } from "./setup.ts";
 
 /**

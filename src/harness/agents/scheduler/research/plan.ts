@@ -1,13 +1,13 @@
 import { briefData } from "../../../../core/brief.ts";
 import type { ResearchContract } from "../../../../core/contract.ts";
 import { notesData } from "../../../journal.ts";
-import { LedgerError } from "../../../ledger.ts";
+import { LedgerError } from "../../../ledger/index.ts";
 import { messageText } from "../../../messages.ts";
 import type { Experiment } from "../../../queue.ts";
-import type { Research } from "../../../research/research.ts";
+import type { Research } from "../../../research/research/index.ts";
 import { researchState, stateWords, took } from "../../../research/shares.ts";
 import { focusOf, type Handout, PLANNER } from "../../coordinator.ts";
-import { attribute, causeWords, lanesOf } from "../../planner.ts";
+import { attribute, causeWords, lanesOf } from "../../planner/index.ts";
 import type { Assignment } from "../../registry.ts";
 import {
   plannerHypotheses,

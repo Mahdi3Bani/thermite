@@ -2,16 +2,16 @@ import type { StoredRule } from "../../../core/commands.ts";
 import type { Contract } from "../../../core/contract.ts";
 import type { CallUsage } from "../../../core/usage.ts";
 import type { Runner } from "../../broker/runner.ts";
-import type { Ledger } from "../../ledger.ts";
-import type { Research } from "../../research/research.ts";
-import type { HarnessService } from "../../service.ts";
+import type { Ledger } from "../../ledger/index.ts";
+import type { Research } from "../../research/research/index.ts";
+import type { HarnessService } from "../../service/index.ts";
 import type { CliHarness } from "../cli/program.ts";
 import type { OnceKeeping } from "../cli-compaction.ts";
 import { Coordinator, lanesAtWork, rulesInForce } from "../coordinator.ts";
 import type { ModelConfig } from "../model.ts";
 import { Registry } from "../registry.ts";
 import type { ResearchTrialSpec } from "../research-worker.ts";
-import type { TrialResult, TrialSpec } from "../worker.ts";
+import type { TrialResult, TrialSpec } from "../worker/index.ts";
 import { lastStopAsked } from "./stops.ts";
 
 /** How much of the judge's reasons a brief shows: for each of a lane's attempts, for each goal. */

@@ -6,7 +6,7 @@ import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import type { CompactionReport } from "../../../src/harness/agents/compaction.ts";
 import { runResearchTrial } from "../../../src/harness/agents/research-worker.ts";
-import { type CompactionLink, runTrial } from "../../../src/harness/agents/worker.ts";
+import { type CompactionLink, runTrial } from "../../../src/harness/agents/worker/index.ts";
 import { prepareWorkspace } from "../../../src/harness/agents/workspace.ts";
 import { LocalRunner } from "../../../src/harness/broker/runner.ts";
 import { startFakeModel } from "../../helpers/fake-model.ts";

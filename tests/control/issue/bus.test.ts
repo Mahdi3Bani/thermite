@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { COMMANDS_WAITING_MAX, sendCommandsOn } from "../../../src/control/issue/bus.ts";
-import { issueCommand } from "../../../src/control/issue.ts";
+import { issueCommand } from "../../../src/control/issue/index.ts";
 import { verifyCommand } from "../../../src/core/commands.ts";
 import {
   COMMAND_STREAM,

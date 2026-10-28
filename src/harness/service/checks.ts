@@ -3,8 +3,8 @@ import { log } from "../../common/env.ts";
 import { errorText, Refusal } from "../../common/errors.ts";
 import type { RigCheckReport } from "../agents/model-check.ts";
 import type { ControlRoute, ModelInfo } from "../agents/model-source.ts";
-import type { Ledger } from "../ledger.ts";
-import type { HarnessService } from "../service.ts";
+import type { Ledger } from "../ledger/index.ts";
+import type { HarnessService } from "./index.ts";
 
 /**
  * The rig checks (model, isolation, smoke): the controller wires in those the rig can run

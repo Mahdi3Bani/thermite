@@ -11,7 +11,7 @@ import {
   usageReport,
   usageSince,
 } from "../core/usage.ts";
-import type { ControlStore } from "./store.ts";
+import type { ControlStore } from "./store/index.ts";
 
 /**
  * The agents' model usage as control sums it (goal 075): for one run, for a campaign (all its runs

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { describe, test } from "node:test";
 import { signEnvelope } from "../../../../src/core/commands.ts";
-import { Scheduler } from "../../../../src/harness/agents/scheduler.ts";
+import { Scheduler } from "../../../../src/harness/agents/scheduler/index.ts";
 import { LocalRunner } from "../../../../src/harness/broker/runner.ts";
 import { makeJudgeEnv } from "../../../helpers/judge-env.ts";
 

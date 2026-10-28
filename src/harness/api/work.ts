@@ -6,7 +6,7 @@ import { ATTEMPT, ATTEMPTS } from "../../core/api/harness/proposer.ts";
 import { laneLimits } from "../../core/contract.ts";
 import { laneCacheEnv } from "../agents/workspace.ts";
 import { type Role, RunRequest } from "../broker/runner.ts";
-import { LedgerError } from "../ledger.ts";
+import { LedgerError } from "../ledger/index.ts";
 import { type ApiContext, allows, limitOf, trialToken, Unauthorized } from "./context.ts";
 
 /**

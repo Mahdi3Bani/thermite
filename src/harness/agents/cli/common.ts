@@ -4,7 +4,7 @@ import type { CallUsage } from "../../../core/usage.ts";
 import type { Role, RunOutcome } from "../../broker/runner.ts";
 import type { MessageInbox } from "../live-session.ts";
 import type { ProgramStep } from "../provider-errors.ts";
-import type { TrialResult } from "../worker.ts";
+import type { TrialResult } from "../worker/index.ts";
 
 /**
  * What the trial loops of the agent programs that run as command-line programs (OpenCode,

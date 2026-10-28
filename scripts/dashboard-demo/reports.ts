@@ -1,4 +1,4 @@
-import type { ControlStore } from "../../src/control/store.ts";
+import type { ControlStore } from "../../src/control/store/index.ts";
 import { iso, type Rig } from "./shared.ts";
 
 // Synthetic hardware, shaped like what a harness reports (no real host data).

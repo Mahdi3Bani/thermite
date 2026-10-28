@@ -8,12 +8,12 @@ import { describe, test } from "node:test";
 import { promisify } from "node:util";
 import { serve } from "@hono/node-server";
 import { runStartBody, runStartSaid } from "../../src/cli/run.ts";
-import { issueCommand } from "../../src/control/issue.ts";
-import type { ControlStore } from "../../src/control/store.ts";
+import { issueCommand } from "../../src/control/issue/index.ts";
+import type { ControlStore } from "../../src/control/store/index.ts";
 import { controlOnly } from "../helpers/control-stack.ts";
 
 const run = promisify(execFile);
-const CLI = join(import.meta.dirname, "../../src/cli/thermite.ts");
+const CLI = join(import.meta.dirname, "../../src/cli/thermite/main.ts");
 /** Control's tokens: the owner's, as the token files below hold it, and no rigs. */
 const TOKENS = { admin: "owner-token-abcdef", rigs: {} };
 

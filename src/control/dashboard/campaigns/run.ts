@@ -28,14 +28,14 @@ import {
   leftByClose,
   runBrief,
   timeline,
-} from "../../ui/operator.ts";
+} from "../../ui/operator/index.ts";
 import { experimentsTab, plannerTab } from "../../ui/queue.ts";
 import { hypothesesTab, type ReviewSources, researchBlock, reviewsTab } from "../../ui/research.ts";
 import { type RunUsage, runStatsTab, runUsageTop } from "../../ui/usage.ts";
-import { auditReason, clip, jobText, runStatusText, signed } from "../../ui/words.ts";
+import { auditReason, clip, jobText, runStatusText, signed } from "../../ui/words/index.ts";
 import { pricingOf, usageData } from "../../usage.ts";
 import { championsInForce, currentChampion, runCampaign } from "../../views/facts.ts";
-import type { RigView, RunView } from "../../views.ts";
+import type { RigView, RunView } from "../../views/index.ts";
 import type { Ctx, Dashboard } from "../context.ts";
 import { campaignHelpers } from "./shared.ts";
 

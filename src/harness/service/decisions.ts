@@ -4,7 +4,7 @@ import { type AuditDecision, type AuditPackage, Audits } from "../audits.ts";
 import { Conclusions } from "../conclusions.ts";
 import { patchBetween } from "../git.ts";
 import { briefingData, pastResearchLine } from "../knowledge.ts";
-import { LedgerError } from "../ledger.ts";
+import { LedgerError } from "../ledger/index.ts";
 import type { AdvisorRole, OwnerMessages } from "../messages.ts";
 import {
   checkResearchPanel,
@@ -13,15 +13,15 @@ import {
   type ResearchPackage,
   type ResearchVerdicts,
   reviewerGaps,
-} from "../research/review.ts";
+} from "../research/review/index.ts";
 import {
   type ResearchReviewPackage,
   type ReviewKind,
   type ReviewPackage,
   Reviews,
 } from "../reviews.ts";
-import type { HarnessService } from "../service.ts";
 import { promoteOrAsk } from "./champion.ts";
+import type { HarnessService } from "./index.ts";
 import { decidingRun, requireRun } from "./runs.ts";
 
 /**

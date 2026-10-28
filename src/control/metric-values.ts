@@ -1,5 +1,5 @@
 import { currentChampion } from "./views/facts.ts";
-import type { RunView } from "./views.ts";
+import type { RunView } from "./views/index.ts";
 
 /**
  * A hill climb's main metric in real values beside its gains (goal 133). The judge's verdict event

@@ -1,4 +1,4 @@
-import { type Ledger, LedgerError } from "../../ledger.ts";
+import { type Ledger, LedgerError } from "../../ledger/index.ts";
 import { cardsOf } from "../cards.ts";
 import type { PaperBasis } from "./check.ts";
 import type { PapersContext } from "./context.ts";

@@ -1,8 +1,8 @@
-import { harnessConfirmed } from "./issue.ts";
+import { harnessConfirmed } from "./issue/index.ts";
 import { sameModel } from "./providers.ts";
-import type { CommandRow, ControlStore } from "./store.ts";
+import type { CommandRow, ControlStore } from "./store/index.ts";
 import { EXPORT_WHERE, exportWords } from "./ui/exports.ts";
-import { foldCheck, type RigCheckView, type RigModelView, readModelInfo } from "./views.ts";
+import { foldCheck, type RigCheckView, type RigModelView, readModelInfo } from "./views/index.ts";
 
 /**
  * What became of an owner's action that control sent to a rig, in words (goal 080). The

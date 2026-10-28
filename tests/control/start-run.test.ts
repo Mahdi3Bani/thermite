@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { issueCommand } from "../../src/control/issue.ts";
-import type { ControlStore } from "../../src/control/store.ts";
+import { issueCommand } from "../../src/control/issue/index.ts";
+import type { ControlStore } from "../../src/control/store/index.ts";
 import { ADMIN, controlOnly, mcpClient, signIn } from "../helpers/control-stack.ts";
 
 /**

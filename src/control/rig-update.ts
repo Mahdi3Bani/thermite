@@ -1,9 +1,9 @@
 import { log, redact } from "../common/env.ts";
 import { errorText } from "../common/errors.ts";
 import type { BuildInfo } from "../core/version.ts";
-import { issueCommand } from "./issue.ts";
-import type { ControlStore } from "./store.ts";
-import { type RigView, rigView } from "./views.ts";
+import { issueCommand } from "./issue/index.ts";
+import type { ControlStore } from "./store/index.ts";
+import { type RigView, rigView } from "./views/index.ts";
 
 /**
  * Update to control's version (goal 012, the rig's page): a rig control set up, on a machine or on

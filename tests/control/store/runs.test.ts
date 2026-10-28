@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { runNameUsed } from "../../../src/control/run-names.ts";
-import { ControlStore } from "../../../src/control/store.ts";
+import { ControlStore } from "../../../src/control/store/index.ts";
 import type { SignedCommand } from "../../../src/core/commands.ts";
 
 /**

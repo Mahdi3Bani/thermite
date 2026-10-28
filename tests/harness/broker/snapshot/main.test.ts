@@ -4,7 +4,7 @@ import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { LEDGER_FILE, SEALED } from "../../../../src/harness/broker/snapshot.ts";
+import { LEDGER_FILE, SEALED } from "../../../../src/harness/broker/snapshot/index.ts";
 import { fixture, gid, RIG, rowsIn, typicalState, uid } from "./setup.ts";
 
 /**

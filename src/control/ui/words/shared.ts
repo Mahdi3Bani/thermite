@@ -1,4 +1,4 @@
-import type { AttemptView, RigView, RunView } from "../../views.ts";
+import type { AttemptView, RigView, RunView } from "../../views/index.ts";
 
 /** Plain words the dashboard's pages share, and an attempt found on its rig. */
 

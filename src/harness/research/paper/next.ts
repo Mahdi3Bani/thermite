@@ -1,5 +1,5 @@
 import type { PaperExperiment } from "../../../core/api/harness/research.ts";
-import type { Ledger } from "../../ledger.ts";
+import type { Ledger } from "../../ledger/index.ts";
 import { checkCited } from "../checks.ts";
 import type { PaperProblem } from "./check.ts";
 import { clip, FENCE, fold, HEADING } from "./markdown.ts";

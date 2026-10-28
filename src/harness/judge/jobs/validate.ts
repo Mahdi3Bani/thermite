@@ -1,6 +1,6 @@
 import type { GoalContract } from "../../../core/contract.ts";
 import type { Kit } from "../../kit.ts";
-import type { JobRow } from "../../ledger.ts";
+import type { JobRow } from "../../ledger/index.ts";
 import type { Finish, JudgeContext } from "../context.ts";
 import type { GoalStatus } from "../decide.ts";
 import { type GoalResult, heldOutGoals, recordGoals, verifyGoals } from "../goals.ts";

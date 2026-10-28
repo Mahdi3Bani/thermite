@@ -1,4 +1,4 @@
-import type { AttemptView } from "../views.ts";
+import type { AttemptView } from "../views/index.ts";
 
 /**
  * Plain words for the judge's verdicts and an attempt's states: "confirmed faster: +14.2%" rather

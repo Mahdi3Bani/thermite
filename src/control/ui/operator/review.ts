@@ -1,11 +1,11 @@
 import { RESEARCH_REVIEW } from "../../../core/research-check.ts";
-import type { RigView, RunView } from "../../views.ts";
+import type { RigView, RunView } from "../../views/index.ts";
 import { esc, icon, runHref } from "../components.ts";
 import { card } from "../need-card.ts";
-import type { Need, NeedsContext } from "../operator.ts";
-import { clip } from "../words.ts";
+import { clip } from "../words/index.ts";
 import { short } from "./change.ts";
 import { decidedState } from "./decided.ts";
+import type { Need, NeedsContext } from "./index.ts";
 
 /**
  * The owner's word on a run's reviews and its end: a review the review panel passed (a subjective

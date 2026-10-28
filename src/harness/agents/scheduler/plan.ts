@@ -14,7 +14,7 @@ import {
   type PlannerInput,
   plan,
   toDesign,
-} from "../planner.ts";
+} from "../planner/index.ts";
 import type { Assignment } from "../registry.ts";
 import { directivesOf, laneCountOf, objectiveOf, type SchedulerContext } from "./context.ts";
 import { goalReport } from "./goal.ts";

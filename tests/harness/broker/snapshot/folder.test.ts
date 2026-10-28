@@ -6,7 +6,7 @@ import {
   inspectSnapshotFolder,
   lookWords,
   SEALED,
-} from "../../../../src/harness/broker/snapshot.ts";
+} from "../../../../src/harness/broker/snapshot/index.ts";
 import { fixture, sealedOf, typicalState } from "./setup.ts";
 
 /**

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { inBackground } from "../../src/control/background.ts";
-import { type ClusterRig, ControlStore } from "../../src/control/store.ts";
+import { type ClusterRig, ControlStore } from "../../src/control/store/index.ts";
 
 function clusterRig(status?: string) {
   const store = new ControlStore(":memory:");

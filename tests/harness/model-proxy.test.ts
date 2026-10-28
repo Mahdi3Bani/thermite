@@ -8,7 +8,7 @@ import { describe, test } from "node:test";
 import { ModelSource } from "../../src/harness/agents/model-source.ts";
 import { classifyProviderError } from "../../src/harness/agents/provider-errors.ts";
 import { Registry } from "../../src/harness/agents/registry.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
+import { createHarnessApi } from "../../src/harness/api/index.ts";
 import { startFakeModel } from "../helpers/fake-model.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";
 import { makeJudgeEnv } from "../helpers/judge-env.ts";

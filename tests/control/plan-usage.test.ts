@@ -12,7 +12,7 @@ import {
   usageChips,
 } from "../../src/control/plan-usage.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
-import { ControlStore, type ModelProvider } from "../../src/control/store.ts";
+import { ControlStore, type ModelProvider } from "../../src/control/store/index.ts";
 
 const NOW = Date.parse("2026-10-26T03:00:00.000Z");
 const S = NOW / 1000;

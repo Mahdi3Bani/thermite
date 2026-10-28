@@ -12,8 +12,8 @@ import {
   type PlannerCallOptions,
   plannerHarness,
   Scheduler,
-} from "../../../src/harness/agents/scheduler.ts";
-import { createHarnessApi } from "../../../src/harness/api.ts";
+} from "../../../src/harness/agents/scheduler/index.ts";
+import { createHarnessApi } from "../../../src/harness/api/index.ts";
 import { LocalRunner } from "../../../src/harness/broker/runner.ts";
 import { Compactions } from "../../../src/harness/compactions.ts";
 import { ResearchFolder } from "../../../src/harness/research/folder.ts";

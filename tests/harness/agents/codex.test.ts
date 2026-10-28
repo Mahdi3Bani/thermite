@@ -16,11 +16,11 @@ import {
   readCodexEvents,
   runCodexTrial,
   tomlString,
-} from "../../../src/harness/agents/codex.ts";
+} from "../../../src/harness/agents/codex/index.ts";
 import { modelConfigFromEnv } from "../../../src/harness/agents/model.ts";
 import { ControlRoute } from "../../../src/harness/agents/model-source.ts";
-import { Scheduler } from "../../../src/harness/agents/scheduler.ts";
-import type { TrialSpec } from "../../../src/harness/agents/worker.ts";
+import { Scheduler } from "../../../src/harness/agents/scheduler/index.ts";
+import type { TrialSpec } from "../../../src/harness/agents/worker/index.ts";
 import {
   LocalRunner,
   type Runner,

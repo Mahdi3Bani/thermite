@@ -1,6 +1,6 @@
 import { CONTEXT_WINDOW_MAX, CONTEXT_WINDOW_MIN } from "../core/compaction.ts";
 import type { ModelPrice } from "../core/usage.ts";
-import type { ProviderModel, ProviderType } from "./store.ts";
+import type { ProviderModel, ProviderType } from "./store/index.ts";
 
 /**
  * A model provider's own model list, as other systems read it: an OpenAI-compatible provider's

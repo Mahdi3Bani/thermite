@@ -10,7 +10,7 @@ import {
   runRole,
 } from "../broker/devices.ts";
 import { collectHardware } from "../hardware.ts";
-import type { HarnessService } from "../service.ts";
+import type { HarnessService } from "../service/index.ts";
 import { CpuDriver } from "../targets/cpu.ts";
 import { CudaDriver, smiAs, smiAsRun } from "../targets/cuda.ts";
 import type { TargetDriver } from "../targets/driver.ts";

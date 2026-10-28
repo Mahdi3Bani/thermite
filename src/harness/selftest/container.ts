@@ -21,7 +21,7 @@ import {
   lookWords,
   SNAPSHOT_RECORD,
   type SnapshotRecord,
-} from "../broker/snapshot.ts";
+} from "../broker/snapshot/index.ts";
 import { isFailure } from "./probes.ts";
 
 /**

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { ControlStore } from "../../../src/control/store.ts";
+import { ControlStore } from "../../../src/control/store/index.ts";
 import { RigFold } from "../../../src/control/views/fold/index.ts";
+import { rigEvents, rigView, type StoredEvent } from "../../../src/control/views/index.ts";
 import { readRig, rigInputs } from "../../../src/control/views/rig.ts";
-import { rigEvents, rigView, type StoredEvent } from "../../../src/control/views.ts";
 import { uniforms } from "../../helpers/property.ts";
 import { VIEW_NOW, VIEW_SETS } from "../../helpers/view-events.ts";
 

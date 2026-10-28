@@ -28,9 +28,9 @@ import type { McpUse } from "../core/mcp.ts";
 import { buildInfo } from "../core/version.ts";
 import { modelStallMs } from "../harness/agents/model-stall.ts";
 import { McpGateway } from "../harness/mcp-gateway.ts";
-import { type AdviseState, adviseOnce, emptyAdviseState, teachersCalled } from "./advise.ts";
+import { type AdviseState, adviseOnce, emptyAdviseState, teachersCalled } from "./advise/index.ts";
 import { type ControlAdvisors, fetchControlAdvisors, mergeAdvisors } from "./advisor-routes.ts";
-import { AdvisorsConfig, advisorsFileReport } from "./advisors.ts";
+import { AdvisorsConfig, advisorsFileReport } from "./advisors/index.ts";
 import { type ChampionUpload, championsIn, uploadChampions } from "./champions.ts";
 import { type UploadState, uploadExportsOnce } from "./export-upload.ts";
 import { type ExportState, exportOnce } from "./git-export.ts";
@@ -41,7 +41,6 @@ import { syncMcpServers } from "./mcp-sync.ts";
 import { ModelDownloads } from "./model-download.ts";
 import { syncModelRouteRound } from "./model-route.ts";
 import { commandPollMs, followCommands } from "./relay/commands.ts";
-import { BUS_KEY_FILE, busKey, busKeyFigure } from "./relay/key.ts";
 import {
   healCursor,
   oneAtATime,
@@ -49,7 +48,8 @@ import {
   type RelayState,
   relayCommandsOnce,
   relayOnce,
-} from "./relay.ts";
+} from "./relay/index.ts";
+import { BUS_KEY_FILE, busKey, busKeyFigure } from "./relay/key.ts";
 import { dailyReport } from "./report.ts";
 import { SUPERVISOR_NUMBERS, supervisorMs } from "./settings.ts";
 import { stageCommand } from "./staging.ts";

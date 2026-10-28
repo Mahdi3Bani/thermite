@@ -22,7 +22,7 @@ import { type QueueSeed, startRun } from "./new-campaign.ts";
 import type { ControlParts } from "./parts.ts";
 import { sameModel } from "./providers.ts";
 import { untriedOf } from "./queue-copy.ts";
-import type { ControlStore } from "./store.ts";
+import type { ControlStore } from "./store/index.ts";
 
 /**
  * Start a run of a campaign control keeps (goal 029): the campaign page's Start a run panel,

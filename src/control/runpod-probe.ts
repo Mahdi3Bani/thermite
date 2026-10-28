@@ -216,7 +216,7 @@ const LANE = 10101; // lane-1, as the image creates it
     const keep = (b) => {
       log = (log + b.toString()).slice(-20000);
     };
-    const broker = cp.spawn(process.execPath, ["/opt/thermite/dist/harness/broker.js"], { env, stdio: ["ignore", "pipe", "pipe"] });
+    const broker = cp.spawn(process.execPath, ["/opt/thermite/dist/harness/broker/main.js"], { env, stdio: ["ignore", "pipe", "pipe"] });
     broker.stdout.on("data", keep);
     broker.stderr.on("data", keep);
     const sock = "/run/thermite/broker.sock";
@@ -224,7 +224,7 @@ const LANE = 10101; // lane-1, as the image creates it
     while (!fs.existsSync(sock) && Date.now() - t0 < 180000) await new Promise((r) => setTimeout(r, 1000));
     if (!fs.existsSync(sock)) throw new Error("the broker did not start: " + log.slice(-3000));
     await new Promise((r) => setTimeout(r, 5000));
-    const r = cp.spawnSync(process.execPath, ["/opt/thermite/dist/cli/thermite.js", "selftest", "isolation", "--force"], { env, encoding: "utf8", timeout: 600000 });
+    const r = cp.spawnSync(process.execPath, ["/opt/thermite/dist/cli/thermite/main.js", "selftest", "isolation", "--force"], { env, encoding: "utf8", timeout: 600000 });
     let parsed;
     try {
       parsed = JSON.parse(r.stdout);

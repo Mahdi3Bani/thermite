@@ -17,7 +17,7 @@ import {
   type Machine,
   type MachineRig,
   RIG_ID,
-} from "../../store.ts";
+} from "../../store/index.ts";
 import { ADD_RIG_JS } from "../../ui/add-rig-client.ts";
 import { esc } from "../../ui/components.ts";
 import { infoLabel } from "../../ui/new-campaign.ts";

@@ -1,6 +1,6 @@
 import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import { transaction } from "../../common/sqlite.ts";
-import type { ControlStore } from "../store.ts";
+import type { ControlStore } from "./index.ts";
 
 /**
  * What every sub-store of control's store shares (goal 125, T6): each owns its tables and their

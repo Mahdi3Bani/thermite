@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { campaignKind } from "../../../../src/control/ui/campaigns.ts";
-import type { CampaignView, RunView } from "../../../../src/control/views.ts";
+import type { CampaignView, RunView } from "../../../../src/control/views/index.ts";
 import { rig, statusRun } from "./fixtures.ts";
 
 /** The words for a run's and a campaign's state, on the Campaigns list and in Earlier runs. */

@@ -17,7 +17,7 @@ import {
   CLAUDE_HOOK,
   claudeArgs,
   claudeHookSettings,
-} from "../../../src/harness/agents/claude-code.ts";
+} from "../../../src/harness/agents/claude-code/index.ts";
 import { keptLine } from "../../../src/harness/agents/cli-compaction.ts";
 import {
   claudeBefore,

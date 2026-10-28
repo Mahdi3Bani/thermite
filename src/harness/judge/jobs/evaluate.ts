@@ -1,5 +1,5 @@
 import { toFraction } from "../../../core/stats.ts";
-import type { JobRow } from "../../ledger.ts";
+import type { JobRow } from "../../ledger/index.ts";
 import { runBlocks } from "../blocks.ts";
 import { type Finish, InfraError, type JudgeContext, Stop } from "../context.ts";
 import { type Decision, decideScreen, goalDelta } from "../decide.ts";

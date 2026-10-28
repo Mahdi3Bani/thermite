@@ -14,7 +14,7 @@ import { mcpLine } from "../mcp-tools.ts";
 import { readNew } from "../opencode/events.ts";
 import { afterProgramFailure, type FailureCount, failingOf } from "../provider-errors.ts";
 import { trialBudget } from "../trial-clock.ts";
-import { stopNudging, type TrialResult } from "../worker.ts";
+import { stopNudging, type TrialResult } from "../worker/index.ts";
 import {
   AFTER_SUBMIT_MS,
   breachError,

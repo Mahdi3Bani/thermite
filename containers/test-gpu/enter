@@ -25,4 +25,4 @@ if [ -n "${TEST_SUPERVISOR_TOKEN:-}" ]; then
   (umask 077 && printf '%s' "$TEST_SUPERVISOR_TOKEN" > /run/secrets/harness-supervisor-token)
   unset TEST_SUPERVISOR_TOKEN
 fi
-exec /usr/bin/tini -- node /opt/thermite/dist/harness/broker.js
+exec /usr/bin/tini -- node /opt/thermite/dist/harness/broker/main.js

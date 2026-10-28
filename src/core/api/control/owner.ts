@@ -5,7 +5,7 @@ import { POD_CONFIG_ENV } from "../../tunnel.ts";
 import type { Route } from "../route.ts";
 
 /**
- * Control's API as the command line calls it, with the owner's token (src/control/api.ts and the
+ * Control's API as the command line calls it, with the owner's token (src/control/api/ and the
  * modules it mounts answer it): rigs, their enrollment and tokens, RunPod's rigs, full resets,
  * commands, runs and campaigns, kits and MCP servers. Where REST and MCP share a request's fields
  * (start-run.ts, copy-campaign.ts, campaign-context.ts and mcp-server-routes.ts in src/control/),

@@ -1,12 +1,18 @@
 import { directionList, directionParts, RESEARCH_TASK_KINDS } from "../../core/directions.ts";
 import { labelledQuestion } from "../../core/research-check.ts";
 import { runCampaign } from "../views/facts.ts";
-import type { AttemptView, DirectionView, ExperimentView, RigView, RunView } from "../views.ts";
+import type {
+  AttemptView,
+  DirectionView,
+  ExperimentView,
+  RigView,
+  RunView,
+} from "../views/index.ts";
 import { ago, campaignHref, esc, icon, runKey } from "./components.ts";
 import { infoLabel } from "./new-campaign.ts";
-import { outcome } from "./operator.ts";
+import { outcome } from "./operator/index.ts";
 import { questionChip, yieldWords } from "./research.ts";
-import { clip } from "./words.ts";
+import { clip } from "./words/index.ts";
 
 /**
  * The run page's Experiments and Planner tabs (goal 064): the experiment queue in order, what

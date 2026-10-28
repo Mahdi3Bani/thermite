@@ -10,7 +10,7 @@ import type { OnceKeeping } from "../cli-compaction.ts";
 import { PLANNER } from "../coordinator.ts";
 import { mcpAgentTools } from "../mcp-tools.ts";
 import { type ModelConfig, withAgentsContext } from "../model.ts";
-import type { Ask, PlannerCompaction, PlannerMcp, PlannerPast } from "../planner.ts";
+import type { Ask, PlannerCompaction, PlannerMcp, PlannerPast } from "../planner/index.ts";
 import { isCliProgram, programOf } from "../programs.ts";
 import { pastResearch } from "./briefs.ts";
 import { modelNow, type PlannerCallOptions, type SchedulerContext } from "./context.ts";

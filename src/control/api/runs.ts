@@ -2,7 +2,7 @@ import type { Hono, MiddlewareHandler } from "hono";
 import { z } from "zod";
 import { errorText } from "../../common/errors.ts";
 import { RUN_DETAIL_INPUT, runDetail } from "../run-lists.ts";
-import type { RunView } from "../views.ts";
+import type { RunView } from "../views/index.ts";
 
 /** What the routes need from control: a run's view, and a past run's untried experiments. */
 export interface RunRoutesDeps {

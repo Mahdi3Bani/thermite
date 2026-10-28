@@ -5,14 +5,14 @@ import {
   newCodexTally,
   readCodexEvents,
   tomlString,
-} from "../harness/agents/codex.ts";
+} from "../harness/agents/codex/index.ts";
 import type { ModelConfig } from "../harness/agents/model.ts";
 import {
   newTally,
   opencodeConfig,
   opencodeModelId,
   readOpencodeEvents,
-} from "../harness/agents/opencode.ts";
+} from "../harness/agents/opencode/index.ts";
 
 /**
  * An advisor in OpenCode v2 or the Codex CLI, in the supervisor (goal 073): the CLI's settings

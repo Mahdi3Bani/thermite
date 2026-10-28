@@ -6,8 +6,8 @@ import { describe, test } from "node:test";
 import { RESEARCH_WORKER_SYSTEM } from "../../../src/agents/roles/research-worker.ts";
 import { laneLimits } from "../../../src/core/contract.ts";
 import type { CallUsage } from "../../../src/core/usage.ts";
-import { claudeEnv } from "../../../src/harness/agents/claude-code.ts";
-import { codexEnv } from "../../../src/harness/agents/codex.ts";
+import { claudeEnv } from "../../../src/harness/agents/claude-code/index.ts";
+import { codexEnv } from "../../../src/harness/agents/codex/index.ts";
 import {
   agentPath,
   breachError,
@@ -24,8 +24,8 @@ import {
   runEnv,
   runOpencodeResearchTrial,
   runOpencodeTrial,
-} from "../../../src/harness/agents/opencode.ts";
-import type { TrialSpec } from "../../../src/harness/agents/worker.ts";
+} from "../../../src/harness/agents/opencode/index.ts";
+import type { TrialSpec } from "../../../src/harness/agents/worker/index.ts";
 import type { Runner, RunOutcome, RunRequest } from "../../../src/harness/broker/runner.ts";
 
 // OpenCode v2's JSON output, as the spike recorded it (trimmed).

@@ -9,7 +9,7 @@ import { Type } from "@earendil-works/pi-ai";
 import { z } from "zod";
 import { CODEX_ADVISOR_OFF } from "../../src/supervisor/advisor-cli.ts";
 import { serveAdvisorModel } from "../../src/supervisor/advisor-proxy.ts";
-import { type AdvisorRuntime, runAdvisor } from "../../src/supervisor/advisors.ts";
+import { type AdvisorRuntime, runAdvisor } from "../../src/supervisor/advisors/index.ts";
 
 /**
  * Advisors in OpenCode v2 and the Codex CLI in the supervisor (goal 073), each with a stand-in

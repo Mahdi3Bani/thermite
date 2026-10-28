@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { outcome } from "../../src/control/ui/operator.ts";
-import { sentence } from "../../src/control/ui/words.ts";
-import type { RigView, StoredEvent } from "../../src/control/views.ts";
+import { outcome } from "../../src/control/ui/operator/index.ts";
+import { sentence } from "../../src/control/ui/words/index.ts";
+import type { RigView, StoredEvent } from "../../src/control/views/index.ts";
 
 const event = (kind: string, actor: string, body: Record<string, unknown>) =>
   ({

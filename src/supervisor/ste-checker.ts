@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import type { SteResult } from "../core/api/harness/research.ts";
-import { paperSha } from "../harness/research/paper.ts";
+import { paperSha } from "../harness/research/paper/index.ts";
 
 /**
  * The Simplified Technical English checker a deployment gives its supervisor (goal 112), for the

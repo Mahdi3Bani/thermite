@@ -14,7 +14,7 @@ import { parseContract } from "../core/contract.ts";
 import { RUN_FIELDS } from "./copy-campaign.ts";
 import { cappedWindow } from "./providers.ts";
 
-import type { AgentRole, CampaignSources, ControlStore } from "./store.ts";
+import type { AgentRole, CampaignSources, ControlStore } from "./store/index.ts";
 import { isRigCheck } from "./ui/campaigns.ts";
 
 /**

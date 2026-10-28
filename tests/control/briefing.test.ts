@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { briefingFromKb } from "../../src/control/briefing.ts";
 import { briefingSeedOf } from "../../src/control/kb.ts";
-import { ControlStore } from "../../src/control/store.ts";
+import { ControlStore } from "../../src/control/store/index.ts";
 
 /** One run of `campaign` on `rig`, named `run`, with one finding. */
 function ran(store: ControlStore, rig: string, run: string, words: string) {

@@ -7,7 +7,7 @@ import { test } from "node:test";
  */
 
 test("a research run's rounds with the planner off read as set by the gap-driven plan, not as a refused plan", async () => {
-  const { sentence } = await import("../../../../src/control/ui/words.ts");
+  const { sentence } = await import("../../../../src/control/ui/words/index.ts");
   const e = (body: Record<string, unknown>) =>
     ({
       kind: "epoch_started",
@@ -63,7 +63,7 @@ test("a research run's rounds with the planner off read as set by the gap-driven
 });
 
 test("History tells a run's MCP servers, and a server that fails and comes back, in words", async () => {
-  const { sentence } = await import("../../../../src/control/ui/words.ts");
+  const { sentence } = await import("../../../../src/control/ui/words/index.ts");
   const u = { judge: { jobs: [] }, runs: [] } as never;
   const say = (kind: string, body: Record<string, unknown>) => {
     const x = sentence(u, {
@@ -126,7 +126,7 @@ test("History tells a run's MCP servers, and a server that fails and comes back,
 });
 
 test("History tells each claim: verified, or a draft with the harness's reasons", async () => {
-  const { sentence } = await import("../../../../src/control/ui/words.ts");
+  const { sentence } = await import("../../../../src/control/ui/words/index.ts");
   const u = { judge: { jobs: [] }, runs: [] } as never;
   const say = (actor: string, body: Record<string, unknown>) => {
     const x = sentence(u, {
@@ -182,7 +182,7 @@ test("History tells each claim: verified, or a draft with the harness's reasons"
 });
 
 test("History tells the queue's changes, the hand-outs and the rules in words", async () => {
-  const { sentence } = await import("../../../../src/control/ui/words.ts");
+  const { sentence } = await import("../../../../src/control/ui/words/index.ts");
   const u = {
     judge: { jobs: [] },
     runs: [{ id: "r-1", queue: [{ id: "x-1", title: "vector loads" }] }],
@@ -349,7 +349,7 @@ test("History tells the queue's changes, the hand-outs and the rules in words", 
 });
 
 test("History tells a compacted conversation, and how often a trial's was, in words (goal 070)", async () => {
-  const { sentence } = await import("../../../../src/control/ui/words.ts");
+  const { sentence } = await import("../../../../src/control/ui/words/index.ts");
   const u = { judge: { jobs: [] }, runs: [] } as never;
   const say = (kind: string, body: Record<string, unknown>) => {
     const x = sentence(u, {

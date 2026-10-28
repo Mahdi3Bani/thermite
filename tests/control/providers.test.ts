@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, test } from "node:test";
 import { listedPrice, listModels, providerBase } from "../../src/control/providers.ts";
-import { ControlStore } from "../../src/control/store.ts";
+import { ControlStore } from "../../src/control/store/index.ts";
 
 const answer =
   (status: number, body: unknown, seen?: { url: string; headers: Headers }[]) =>

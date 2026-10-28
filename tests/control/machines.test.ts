@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { ControlOptions } from "../../src/control/api.ts";
+import type { ControlOptions } from "../../src/control/api/index.ts";
 import { makeDeployKey } from "../../src/control/git-keys.ts";
 import { CHECK_SCRIPT } from "../../src/control/machines/facts.ts";
 import { type MachineSsh, parseHostKeys, type SshTarget } from "../../src/control/machines/ssh.ts";

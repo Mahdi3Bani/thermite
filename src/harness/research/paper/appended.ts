@@ -1,6 +1,11 @@
-import type { Ledger } from "../../ledger.ts";
+import type { Ledger } from "../../ledger/index.ts";
 import type { StandingDecision } from "../progress.ts";
-import type { CheckedHypothesis, CheckedQuestion, Dissent, requiredHypotheses } from "../review.ts";
+import type {
+  CheckedHypothesis,
+  CheckedQuestion,
+  Dissent,
+  requiredHypotheses,
+} from "../review/index.ts";
 import { CITE, clip, FENCE } from "./markdown.ts";
 
 /**

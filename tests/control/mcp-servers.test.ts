@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, type TestContext, test } from "node:test";
-import { issueCommand } from "../../src/control/issue.ts";
-import { McpServers, mcpRefusal } from "../../src/control/mcp-servers.ts";
+import { issueCommand } from "../../src/control/issue/index.ts";
+import { McpServers, mcpRefusal } from "../../src/control/mcp-servers/index.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
-import { ControlStore } from "../../src/control/store.ts";
+import { ControlStore } from "../../src/control/store/index.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 import { assigned } from "../helpers/assignments.ts";
 import { ADMIN, controlOnly, mcpClient, signIn } from "../helpers/control-stack.ts";

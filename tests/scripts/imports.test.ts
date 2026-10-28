@@ -50,7 +50,7 @@ describe("reading imports", () => {
     assert.equal(partOf("src/harness/judge/judge.ts"), "harness");
     assert.equal(partOf("tests/harness/x.test.ts"), null);
     assert.equal(isPage("src/control/ui/components.ts"), true);
-    assert.equal(isPage("src/control/dashboard.ts"), true);
+    assert.equal(isPage("src/control/dashboard/index.ts"), true);
     assert.equal(isPage("src/control/dashboard/rigs/page.ts"), true);
     assert.equal(isPage("src/control/store.ts"), false);
   });
@@ -82,7 +82,7 @@ describe("the import rule", () => {
   test("domain modules never import page code; pages may", () => {
     assert.equal(rule("src/control/store.ts", "./ui/components.ts"), "page");
     assert.equal(rule("src/control/ui/runs.ts", "./components.ts"), null);
-    assert.equal(rule("src/control/dashboard.ts", "./ui/components.ts"), null);
+    assert.equal(rule("src/control/dashboard/index.ts", "../ui/components.ts"), null);
     assert.equal(rule("src/control/dashboard/rigs/page.ts", "../../ui/components.ts"), null);
     assert.equal(rule("src/control/ui/runs.ts", "../store.ts"), null);
   });

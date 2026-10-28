@@ -1,4 +1,4 @@
-import type { JobRow } from "../ledger.ts";
+import type { JobRow } from "../ledger/index.ts";
 import { readThrottle, throttledFraction } from "../targets/cgroup.ts";
 import { InfraError, type JudgeContext } from "./context.ts";
 import type { Block } from "./decide.ts";

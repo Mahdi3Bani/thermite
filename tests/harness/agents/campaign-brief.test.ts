@@ -14,10 +14,10 @@ import {
   briefSection,
 } from "../../../src/core/brief.ts";
 import { parseContract } from "../../../src/core/contract.ts";
-import { questionDetails, Scheduler } from "../../../src/harness/agents/scheduler.ts";
+import { questionDetails, Scheduler } from "../../../src/harness/agents/scheduler/index.ts";
 import { LocalRunner } from "../../../src/harness/broker/runner.ts";
-import { Research } from "../../../src/harness/research/research.ts";
-import { advisorPrompt } from "../../../src/supervisor/advisors.ts";
+import { Research } from "../../../src/harness/research/research/index.ts";
+import { advisorPrompt } from "../../../src/supervisor/advisors/index.ts";
 import { startFakeModel } from "../../helpers/fake-model.ts";
 import { researchFixture } from "../../helpers/fixtures.ts";
 import { makeHarnessEnv } from "../../helpers/harness-env.ts";

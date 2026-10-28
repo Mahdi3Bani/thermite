@@ -4,7 +4,7 @@ import {
   UNCLEAR_VERDICTS,
   WON_VERDICTS,
 } from "../../../core/verdicts.ts";
-import type { AttemptView, RigView, RunView } from "../../views.ts";
+import type { AttemptView, RigView, RunView } from "../../views/index.ts";
 
 /**
  * Whether the rig has an auditor to decide its audits. A supervisor that reports its roles says

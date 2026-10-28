@@ -42,10 +42,10 @@ import { exportMenu } from "../../ui/exports.ts";
 import { howChecked, howCheckedDetails } from "../../ui/goal-checks.ts";
 import { campaignKnowledge } from "../../ui/knowledge.ts";
 import { infoLabel, QUEUE_TARGET_TIP } from "../../ui/new-campaign.ts";
-import { goalState } from "../../ui/operator.ts";
+import { goalState } from "../../ui/operator/index.ts";
 import { campaignReviewsTab } from "../../ui/research.ts";
 import { campaignUsageBlock, runStateWord } from "../../ui/usage.ts";
-import { listText } from "../../ui/words.ts";
+import { listText } from "../../ui/words/index.ts";
 import { usageData } from "../../usage.ts";
 import {
   type CampaignView,
@@ -54,7 +54,7 @@ import {
   leaderboard,
   type RigView,
   type RunView,
-} from "../../views.ts";
+} from "../../views/index.ts";
 import type { Ctx, Dashboard } from "../context.ts";
 import { type CopyTry, campaignPanels } from "./panels.ts";
 import { type RunViewName, runHelpers } from "./run.ts";

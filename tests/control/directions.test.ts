@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { promisify } from "node:util";
 import { serve } from "@hono/node-server";
-import type { DirectionView } from "../../src/control/views.ts";
+import type { DirectionView } from "../../src/control/views/index.ts";
 import { ADMIN, controlStack, mcpClient } from "../helpers/control-stack.ts";
 
 /**
@@ -16,7 +16,7 @@ import { ADMIN, controlStack, mcpClient } from "../helpers/control-stack.ts";
  * run's directions as a client reads them, and the plain-words refusals.
  */
 
-const CLI = join(import.meta.dirname, "../../src/cli/thermite.ts");
+const CLI = join(import.meta.dirname, "../../src/cli/thermite/main.ts");
 const run = promisify(execFile);
 
 async function stack() {

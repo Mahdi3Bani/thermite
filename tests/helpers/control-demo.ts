@@ -1,4 +1,4 @@
-import type { ControlStore } from "../../src/control/store.ts";
+import type { ControlStore } from "../../src/control/store/index.ts";
 import type { LiveEntry } from "../../src/core/live.ts";
 
 /**

@@ -1,5 +1,5 @@
 import { AGENT_KINDS, type AgentKind, type McpUse, McpUses } from "../../core/mcp.ts";
-import type { ControlStore } from "../store.ts";
+import type { ControlStore } from "../store/index.ts";
 
 /**
  * Which servers campaigns name: why an assignment or a research campaign can't name them, the

@@ -1,5 +1,5 @@
 import type { McpUse } from "../../core/mcp.ts";
-import type { McpServer } from "../mcp-servers.ts";
+import type { McpServer } from "../mcp-servers/index.ts";
 import { esc } from "./components.ts";
 
 /**

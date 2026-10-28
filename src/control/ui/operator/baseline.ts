@@ -1,6 +1,6 @@
-import type { RigView, RunView } from "../../views.ts";
+import type { RigView, RunView } from "../../views/index.ts";
 import { ago, attemptHref, esc } from "../components.ts";
-import { clip } from "../words.ts";
+import { clip } from "../words/index.ts";
 import { figure } from "./held-out.ts";
 
 /**

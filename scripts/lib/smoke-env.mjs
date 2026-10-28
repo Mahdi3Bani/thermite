@@ -159,7 +159,7 @@ export async function rigCheck(check, { rig = "local-1", timeoutMs = 300_000 } =
 
 export async function assign(env, run, rig = "local-1") {
   const payload = sh("node", [
-    "dist/cli/thermite.js",
+    "dist/cli/thermite/main.js",
     "assign-payload",
     "--contract",
     env.contractFile,

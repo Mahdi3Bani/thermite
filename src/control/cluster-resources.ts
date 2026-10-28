@@ -4,7 +4,7 @@ import { judgeGpusByDefault } from "../core/hardware.ts";
 import type { ClusterFacts, SlotQuota } from "./clusters/facts.ts";
 import { rigResources } from "./clusters/manifests.ts";
 import { MAX_RIG_GPUS } from "./machines/deploy.ts";
-import type { ClusterRig, ClusterRigSize } from "./store.ts";
+import type { ClusterRig, ClusterRigSize } from "./store/index.ts";
 
 /**
  * A new size for a rig control set up on a cluster (goal 118): its GPUs, the judge's share of them,

@@ -1,4 +1,4 @@
-import type { ControlStore } from "../../src/control/store.ts";
+import type { ControlStore } from "../../src/control/store/index.ts";
 
 /**
  * Control's own record that it assigned a run of a campaign to a rig (a delivered command, in

@@ -1,4 +1,4 @@
-import type { AttemptView, JudgeJob, RigView, StoredEvent } from "../../views.ts";
+import type { AttemptView, JudgeJob, RigView, StoredEvent } from "../../views/index.ts";
 import { findAttempt } from "./shared.ts";
 
 export interface Sentence {

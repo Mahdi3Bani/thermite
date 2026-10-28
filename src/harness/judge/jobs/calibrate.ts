@@ -1,5 +1,5 @@
 import { meanInterval, toFraction } from "../../../core/stats.ts";
-import type { JobRow } from "../../ledger.ts";
+import type { JobRow } from "../../ledger/index.ts";
 import { runBlocks } from "../blocks.ts";
 import type { Finish, JudgeContext } from "../context.ts";
 import type { Arm } from "../measure.ts";

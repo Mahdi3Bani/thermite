@@ -10,9 +10,9 @@ import {
   podStopped,
   type RigView,
   type RunView,
-} from "../views.ts";
+} from "../views/index.ts";
 import { ICON_LINKS } from "./icons.ts";
-import { STYLE } from "./style.ts";
+import { STYLE } from "./style/index.ts";
 
 /** Everything the dashboard writes into HTML goes through esc (rig data is never markup). */
 export function esc(v: unknown): string {

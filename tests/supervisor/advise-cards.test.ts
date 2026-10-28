@@ -3,19 +3,19 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, type TestContext, test } from "node:test";
-import { createHarnessApi } from "../../src/harness/api.ts";
+import { createHarnessApi } from "../../src/harness/api/index.ts";
 import { cardOf, cardsOf } from "../../src/harness/research/cards.ts";
 import {
   type AdviseConfig,
   type AdviseState,
   adviseOnce,
   emptyAdviseState,
-} from "../../src/supervisor/advise.ts";
+} from "../../src/supervisor/advise/index.ts";
 import {
   AdvisorsConfig,
   SynthesizerAnswer,
   synthesisProblems,
-} from "../../src/supervisor/advisors.ts";
+} from "../../src/supervisor/advisors/index.ts";
 import { startFakeModel } from "../helpers/fake-model.ts";
 import {
   SIX_QUESTIONS,

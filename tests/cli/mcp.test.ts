@@ -12,7 +12,7 @@ import { controlOnly } from "../helpers/control-stack.ts";
 import { startFakeMcp } from "../helpers/fake-mcp.ts";
 
 const run = promisify(execFile);
-const CLI = join(import.meta.dirname, "../../src/cli/thermite.ts");
+const CLI = join(import.meta.dirname, "../../src/cli/thermite/main.ts");
 /** Control's tokens: the owner's, as the token files below hold it, and no rigs. */
 const TOKENS = { admin: "owner-token-abcdef", rigs: {} };
 /** A made-up key, read from a file: never on the command line, never printed back. */

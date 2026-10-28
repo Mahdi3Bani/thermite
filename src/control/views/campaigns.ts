@@ -1,4 +1,4 @@
-import type { ControlStore } from "../store.ts";
+import type { ControlStore } from "../store/index.ts";
 import { runCampaign } from "./facts.ts";
 import type { RigView, RunView } from "./types.ts";
 

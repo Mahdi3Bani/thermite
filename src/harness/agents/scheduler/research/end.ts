@@ -1,7 +1,7 @@
 import { log, logError, logWarn } from "../../../../common/log.ts";
 import { ANSWERED, NO_WRITER } from "../../../../core/research-check.ts";
-import type { Research } from "../../../research/research.ts";
-import { type ResearchEnd, researchEnd } from "../../../research/review.ts";
+import type { Research } from "../../../research/research/index.ts";
+import { type ResearchEnd, researchEnd } from "../../../research/review/index.ts";
 import type { SchedulerContext } from "../context.ts";
 
 /**

@@ -1,4 +1,4 @@
-import type { Ledger } from "./ledger.ts";
+import type { Ledger } from "./ledger/index.ts";
 
 /**
  * A run's status changes after an event id, oldest first, under every name the event was

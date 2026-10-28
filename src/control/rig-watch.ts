@@ -1,7 +1,7 @@
 import { log, redact } from "../common/env.ts";
 import { errorText } from "../common/errors.ts";
-import type { ControlStore } from "./store.ts";
-import { OFFLINE_AFTER_MS } from "./views.ts";
+import type { ControlStore } from "./store/index.ts";
+import { OFFLINE_AFTER_MS } from "./views/index.ts";
 
 /**
  * Control looks where a quiet rig runs (goal 012): when a rig it set up, on a machine or a

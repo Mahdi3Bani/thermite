@@ -8,7 +8,7 @@ import type { Credential } from "../credential.ts";
 import type { ExportFiles } from "../exports.ts";
 import type { KitRepos } from "../kit-repos.ts";
 import type { DeploymentDriver, RunpodDriver } from "../lifecycle.ts";
-import { McpServers } from "../mcp-servers.ts";
+import { McpServers } from "../mcp-servers/index.ts";
 import type { ControlParts } from "../parts.ts";
 import type { probeRepository, readKitManifest } from "../repo-probe.ts";
 import { RigUpdates } from "../rig-update.ts";
@@ -16,12 +16,12 @@ import type { RunpodRigs } from "../runpod-rigs.ts";
 import type { RunpodTests } from "../runpod-tests.ts";
 import type { SecretBox } from "../secrets.ts";
 import { SESSION_DAYS } from "../settings.ts";
-import type { ControlStore } from "../store.ts";
+import type { ControlStore } from "../store/index.ts";
 import { esc, type Shell, shell } from "../ui/components.ts";
 import { infoLabel } from "../ui/new-campaign.ts";
-import { type Forms, type Need, needs as operatorNeeds } from "../ui/operator.ts";
+import { type Forms, type Need, needs as operatorNeeds } from "../ui/operator/index.ts";
 import { runCampaign } from "../views/facts.ts";
-import { OFFLINE_AFTER_MS, type RigView, type RunView } from "../views.ts";
+import { OFFLINE_AFTER_MS, type RigView, type RunView } from "../views/index.ts";
 
 const DAY_MS = 24 * 3_600_000;
 /** What Close run does, in its ⋯ menu on a run's page (goal 087). */

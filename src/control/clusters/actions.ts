@@ -1,7 +1,7 @@
 import { inBackground } from "../background.ts";
 import type { ControlParts } from "../parts.ts";
 import { STEP_WORDS } from "../rigs/setup.ts";
-import type { ClusterRig } from "../store.ts";
+import type { ClusterRig } from "../store/index.ts";
 import { kubeError } from "./kubectl.ts";
 import { awaitNewPods, clusterTarget } from "./rigs.ts";
 

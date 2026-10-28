@@ -1,13 +1,13 @@
 import type { ResearchContract } from "../../../core/contract.ts";
 import { PAPER_ACCEPTED, PAPER_REQUESTED } from "../../../core/research-check.ts";
-import type { Ledger } from "../../ledger.ts";
+import type { Ledger } from "../../ledger/index.ts";
 import {
   ANSWERED,
   checkedPanel,
   type ResearchEnd,
   researchEnd,
   researchPackage,
-} from "../review.ts";
+} from "../review/index.ts";
 import type { PapersContext, Row } from "./context.ts";
 
 /** A run's paper asked for, with the corpus figures frozen in the request, and accepted. */

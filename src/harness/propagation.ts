@@ -8,8 +8,8 @@ import type { CommandPayloads } from "../core/commands.ts";
 import { FINAL_LIFECYCLES } from "../core/verdicts.ts";
 import { createAttemptCommit, deleteRef, GitError, hasCommit, patchBytes, treeOf } from "./git.ts";
 import { importFile } from "./imports.ts";
-import { type Ledger, LedgerError } from "./ledger.ts";
-import type { HarnessService, SubmitResult } from "./service.ts";
+import { type Ledger, LedgerError } from "./ledger/index.ts";
+import type { HarnessService, SubmitResult } from "./service/index.ts";
 
 /**
  * Propagation across rigs. A rig's champion is published in its exports as a binary patch

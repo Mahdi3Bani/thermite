@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { type KeyPairPem, reportBody, signJson } from "../../core/commands.ts";
 import { liveBody } from "../../core/live.ts";
 import { writeExport } from "../outbox.ts";
-import type { HarnessService } from "../service.ts";
+import type { HarnessService } from "./index.ts";
 
 /**
  * What the harness reports through its supervisor: the live log and the snapshot of events and

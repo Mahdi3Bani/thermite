@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { LedgerError } from "../../ledger.ts";
+import { LedgerError } from "../../ledger/index.ts";
 import { checkCited } from "../checks.ts";
 import { DRAFT_FINDING, KEPT_FINDING } from "../worker-words.ts";
 import { claimKey, clip, type ResearchContext } from "./context.ts";

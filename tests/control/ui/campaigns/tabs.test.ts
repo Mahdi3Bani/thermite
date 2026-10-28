@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { RigView, RunView } from "../../../../src/control/views.ts";
+import type { RigView, RunView } from "../../../../src/control/views/index.ts";
 import { rig, statusRun } from "./fixtures.ts";
 
 /**
@@ -86,8 +86,8 @@ test("the Planner tab counts rounds, and says plainly when the planner is off", 
 });
 
 test("a research run's rounds are counted as research rounds, not as planner fallbacks (goal 079)", async () => {
-  const { ControlStore } = await import("../../../../src/control/store.ts");
-  const { rigView } = await import("../../../../src/control/views.ts");
+  const { ControlStore } = await import("../../../../src/control/store/index.ts");
+  const { rigView } = await import("../../../../src/control/views/index.ts");
   const store = new ControlStore(":memory:");
   const ev = (kind: string, subject: string, body: Record<string, unknown>) => ({
     kind,

@@ -1,6 +1,6 @@
 import { redact } from "../common/env.ts";
 import { errorText } from "../common/errors.ts";
-import type { ControlStore, ModelProvider } from "./store.ts";
+import type { ControlStore, ModelProvider } from "./store/index.ts";
 import { ago, esc } from "./ui/components.ts";
 
 /**

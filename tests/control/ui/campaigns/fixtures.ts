@@ -1,4 +1,4 @@
-import type { RigView, RunView } from "../../../../src/control/views.ts";
+import type { RigView, RunView } from "../../../../src/control/views/index.ts";
 
 /** Runs and a rig for the Campaigns pages' words, as control's views give them. */
 

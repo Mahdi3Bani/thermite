@@ -7,8 +7,8 @@ import {
   type McpServerInput,
   type McpServers,
   namedBy,
-} from "./mcp-servers.ts";
-import type { ControlStore } from "./store.ts";
+} from "./mcp-servers/index.ts";
+import type { ControlStore } from "./store/index.ts";
 import { ago, esc, icon } from "./ui/components.ts";
 import { infoLabel } from "./ui/new-campaign.ts";
 

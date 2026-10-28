@@ -10,7 +10,7 @@ import {
   type StandingView,
   type TaskYieldView,
 } from "../research-view.ts";
-import type { MessageView, RigView, RunView } from "../views.ts";
+import type { MessageView, RigView, RunView } from "../views/index.ts";
 import {
   ago,
   esc,
@@ -25,7 +25,7 @@ import {
   runLiveHref,
 } from "./components.ts";
 import type { CmdForm } from "./queue.ts";
-import { clip, decisionTone, decisionWords, itemName } from "./words.ts";
+import { clip, decisionTone, decisionWords, itemName } from "./words/index.ts";
 
 /**
  * A research run on its page (goals 116 and 117): each question with its answer card, the review

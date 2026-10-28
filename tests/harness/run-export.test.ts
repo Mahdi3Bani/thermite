@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { sha256Hex } from "../../src/core/canonical.ts";
 import { parseContract } from "../../src/core/contract.ts";
-import { Ledger } from "../../src/harness/ledger.ts";
+import { Ledger } from "../../src/harness/ledger/index.ts";
 import { runEvents } from "../../src/harness/outbox.ts";
 import { hillClimbFixture } from "../helpers/fixtures.ts";
 

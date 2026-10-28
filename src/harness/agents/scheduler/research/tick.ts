@@ -8,14 +8,14 @@ import {
   RESEARCH_STOPPED,
 } from "../../../../core/research-check.ts";
 import { lastImprovement, progressStopped, questionSaturated } from "../../../research/progress.ts";
-import type { Research } from "../../../research/research.ts";
+import type { Research } from "../../../research/research/index.ts";
 import {
   itemsState,
   researchEnd,
   researchPackage,
   researchReviewDue,
   waitingReview,
-} from "../../../research/review.ts";
+} from "../../../research/review/index.ts";
 import { Reviews } from "../../../reviews.ts";
 import { halted, type SchedulerContext } from "../context.ts";
 import { laneWaitMs } from "../gates.ts";

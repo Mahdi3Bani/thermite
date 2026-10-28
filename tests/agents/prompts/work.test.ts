@@ -3,26 +3,26 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { runClaudeTrial } from "../../../src/harness/agents/claude-code.ts";
-import { runCodexTrial } from "../../../src/harness/agents/codex.ts";
+import { runClaudeTrial } from "../../../src/harness/agents/claude-code/index.ts";
+import { runCodexTrial } from "../../../src/harness/agents/codex/index.ts";
 import {
   runOpencodeResearchTrial,
   runOpencodeTrial,
-} from "../../../src/harness/agents/opencode.ts";
+} from "../../../src/harness/agents/opencode/index.ts";
 import {
   type ResearchTrialSpec,
   runResearchTrial,
 } from "../../../src/harness/agents/research-worker.ts";
-import { Scheduler } from "../../../src/harness/agents/scheduler.ts";
-import { runTrial, type TrialSpec } from "../../../src/harness/agents/worker.ts";
-import type { createHarnessApi } from "../../../src/harness/api.ts";
+import { Scheduler } from "../../../src/harness/agents/scheduler/index.ts";
+import { runTrial, type TrialSpec } from "../../../src/harness/agents/worker/index.ts";
+import type { createHarnessApi } from "../../../src/harness/api/index.ts";
 import {
   LocalRunner,
   type Runner,
   type RunOutcome,
   type RunRequest,
 } from "../../../src/harness/broker/runner.ts";
-import type { Research } from "../../../src/harness/research/research.ts";
+import type { Research } from "../../../src/harness/research/research/index.ts";
 import { startFakeModel } from "../../helpers/fake-model.ts";
 import { makeJudgeEnv } from "../../helpers/judge-env.ts";
 import { makeResearchRun } from "../../helpers/research-run.ts";

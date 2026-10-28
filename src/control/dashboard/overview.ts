@@ -2,7 +2,7 @@ import type { Hono } from "hono";
 import { knownTimeZone, type UsagePeriod } from "../../core/usage.ts";
 import { campaignFilter, campaignsListBody, isRigCheck } from "../ui/campaigns.ts";
 import { ago, campaignHref, esc } from "../ui/components.ts";
-import { runBrief, timeline } from "../ui/operator.ts";
+import { runBrief, timeline } from "../ui/operator/index.ts";
 import { metricsBody } from "../ui/usage.ts";
 import { usageData } from "../usage.ts";
 import { runCampaign } from "../views/facts.ts";
@@ -13,7 +13,7 @@ import {
   podStopped,
   type RigView,
   type RunView,
-} from "../views.ts";
+} from "../views/index.ts";
 import { campaignHelpers, copiedBy, headline } from "./campaigns/shared.ts";
 import { campaignOfRun, type Dashboard } from "./context.ts";
 

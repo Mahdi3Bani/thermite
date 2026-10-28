@@ -1,9 +1,9 @@
-import { type ControlStore, fingerprint } from "../../store.ts";
-import { podStopped, type RigView, type RunView } from "../../views.ts";
+import { type ControlStore, fingerprint } from "../../store/index.ts";
+import { podStopped, type RigView, type RunView } from "../../views/index.ts";
 import { esc, icon } from "../components.ts";
 import { card } from "../need-card.ts";
-import type { Need, NeedsContext } from "../operator.ts";
-import { span } from "../words.ts";
+import { span } from "../words/index.ts";
+import type { Need, NeedsContext } from "./index.ts";
 
 /**
  * What waits for the owner on a rig rather than on a change: its report key, its run's agents

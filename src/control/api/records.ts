@@ -1,7 +1,7 @@
 import type { Hono } from "hono";
 import { copiedFromRecords, untriedOf } from "../queue-copy.ts";
-import { cursorOf } from "../store.ts";
-import { rigView } from "../views.ts";
+import { cursorOf } from "../store/index.ts";
+import { rigView } from "../views/index.ts";
 import { type ApiContext, clampLimit } from "./context.ts";
 import { runRoutes } from "./runs.ts";
 

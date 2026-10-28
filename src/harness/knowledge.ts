@@ -6,7 +6,7 @@ import { log } from "../common/env.ts";
 import { writeAtomic } from "../common/fs.ts";
 import { SEARCH_DEFAULT, SEARCH_MAX } from "../core/api/harness/research.ts";
 import { type KbItemWire, kbPlural, readKbItems, untoldKinds } from "../core/kb.ts";
-import type { BriefingItem } from "./ledger.ts";
+import type { BriefingItem } from "./ledger/index.ts";
 
 /** A search's most hits (its home: core/api/harness/research.ts), for the planner's tool. */
 export { SEARCH_MAX };

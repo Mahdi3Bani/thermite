@@ -1,6 +1,6 @@
 import type { GoalContract } from "../core/contract.ts";
 import { ITEM_DECIDED, questionName, REVIEW_ITEMS } from "../core/research-check.ts";
-import { type Ledger, LedgerError } from "./ledger.ts";
+import { type Ledger, LedgerError } from "./ledger/index.ts";
 import {
   type CheckedReviewer,
   decideItems,
@@ -11,7 +11,7 @@ import {
   questionReasons,
   RESEARCH_REVIEW,
   type ResearchPackage,
-} from "./research/review.ts";
+} from "./research/review/index.ts";
 
 const clip = (s: string, n: number) => {
   const t = s.replace(/\s+/g, " ").trim();

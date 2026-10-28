@@ -6,19 +6,19 @@ import { describe, type TestContext, test } from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { parseContract } from "../../src/core/contract.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
+import { createHarnessApi } from "../../src/harness/api/index.ts";
 import {
   type AdviseConfig,
   adviseOnce,
   emptyAdviseState,
   teachersCalled,
-} from "../../src/supervisor/advise.ts";
+} from "../../src/supervisor/advise/index.ts";
 import {
   AdvisorsConfig,
   Opportunity,
   opportunityExperiment,
   teacherRound,
-} from "../../src/supervisor/advisors.ts";
+} from "../../src/supervisor/advisors/index.ts";
 import { serveAdvisorTools } from "../../src/supervisor/past-mcp.ts";
 import { startFakeModel } from "../helpers/fake-model.ts";
 import { researchFixture } from "../helpers/fixtures.ts";

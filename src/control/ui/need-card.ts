@@ -1,6 +1,6 @@
-import type { RigView, RunView } from "../views.ts";
+import type { RigView, RunView } from "../views/index.ts";
 import { esc, runHref } from "./components.ts";
-import { span } from "./words.ts";
+import { span } from "./words/index.ts";
 
 /**
  * A decision as one row that reads at a glance: what it is about, why it waits for the owner,

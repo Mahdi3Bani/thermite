@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ControlStore } from "../../../src/control/store.ts";
+import { ControlStore } from "../../../src/control/store/index.ts";
 
 test("a reported event's run is kept and read back; an event that names none has none (goal 170)", () => {
   const store = new ControlStore(":memory:");

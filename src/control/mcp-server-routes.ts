@@ -3,8 +3,8 @@ import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { errorText } from "../common/errors.ts";
 import { MCP_SERVERS } from "../core/api/control/rigs.ts";
-import { MCP_AUTHS, type McpServer, type McpServers, namedBy } from "./mcp-servers.ts";
-import type { ControlStore } from "./store.ts";
+import { MCP_AUTHS, type McpServer, type McpServers, namedBy } from "./mcp-servers/index.ts";
+import type { ControlStore } from "./store/index.ts";
 
 /**
  * MCP servers over control's REST API (goal 068): the owner lists, adds, changes, checks, signs

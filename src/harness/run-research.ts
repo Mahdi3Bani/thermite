@@ -12,7 +12,7 @@ import {
 import { clip } from "../core/kb-index.ts";
 import { FILE_BYTES_MAX, READ_LINES_DEFAULT, READ_LINES_MAX } from "./evidence.ts";
 import { searchLimit, searchWords } from "./knowledge.ts";
-import { type Ledger, LedgerError } from "./ledger.ts";
+import { type Ledger, LedgerError } from "./ledger/index.ts";
 import { cardFile, cardHistory, cardsOf, questionLabel } from "./research/cards.ts";
 import { registrableDomain } from "./research/fetcher.ts";
 import { cardPath, readNoFollow, sectionPath } from "./research/folder.ts";

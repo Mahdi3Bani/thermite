@@ -1,4 +1,4 @@
-import type { ControlStore } from "../store.ts";
+import type { ControlStore } from "../store/index.ts";
 import type { RigView } from "./types.ts";
 
 /**

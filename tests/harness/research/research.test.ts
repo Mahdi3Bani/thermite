@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { OUTPUT_MAX, READ_MAX, researchOutput } from "../../../src/agents/tools/research.ts";
 import { runResearchTrial } from "../../../src/harness/agents/research-worker.ts";
-import { Scheduler } from "../../../src/harness/agents/scheduler.ts";
+import { Scheduler } from "../../../src/harness/agents/scheduler/index.ts";
 import { LocalRunner } from "../../../src/harness/broker/runner.ts";
 import {
   blockedAddress,

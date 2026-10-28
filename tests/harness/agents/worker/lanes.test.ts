@@ -24,7 +24,7 @@ describe("worker trial", () => {
       lane: "lane-1",
     });
     const { Registry } = await import("../../../../src/harness/agents/registry.ts");
-    const { createHarnessApi } = await import("../../../../src/harness/api.ts");
+    const { createHarnessApi } = await import("../../../../src/harness/api/index.ts");
     new Registry(env.ledger).startTrial({
       id: "t-lane",
       run: "js-1",
@@ -89,7 +89,7 @@ describe("worker trial", () => {
       lane: "lane-1",
     });
     const { Registry } = await import("../../../../src/harness/agents/registry.ts");
-    const { createHarnessApi } = await import("../../../../src/harness/api.ts");
+    const { createHarnessApi } = await import("../../../../src/harness/api/index.ts");
     new Registry(env.ledger).startTrial({
       id: "t-lim",
       run: "js-1",
@@ -185,7 +185,7 @@ describe("worker trial", () => {
   test("the isolation selftest refuses a rig with open trials or judge jobs", async () => {
     const env = makeJudgeEnv();
     await env.service.applyCommand(env.assign);
-    const { busyReason } = await import("../../../../src/harness/selftest.ts");
+    const { busyReason } = await import("../../../../src/harness/selftest/index.ts");
     const { Registry } = await import("../../../../src/harness/agents/registry.ts");
     const jobs = Number(
       (

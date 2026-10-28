@@ -6,9 +6,9 @@ import { Registry } from "../agents/registry.ts";
 import { createAttemptCommit, GitError, hasCommit } from "../git.ts";
 import { BASELINE_PRIORITY, baselineState } from "../judge/baseline.ts";
 import { heldOutWords } from "../judge/held-out.ts";
-import { type Ledger, LedgerError } from "../ledger.ts";
-import type { HarnessService } from "../service.ts";
+import { type Ledger, LedgerError } from "../ledger/index.ts";
 import { checkV0, violationsOf } from "../v0.ts";
+import type { HarnessService } from "./index.ts";
 import { requireRun } from "./runs.ts";
 
 /**

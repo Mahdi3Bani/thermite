@@ -34,7 +34,7 @@ import {
   startRunFields,
   startRunRequest,
 } from "../start-run.ts";
-import { rigView } from "../views.ts";
+import { rigView } from "../views/index.ts";
 import type { ToolContext } from "./context.ts";
 
 /** A run of a campaign started, and a campaign copied: the owner's token and an operator's. */

@@ -3,9 +3,9 @@ import type { Hono } from "hono";
 import { jsonBody } from "../../common/errors.ts";
 import { ENROLL, RETIRE, RIG_TOKEN, RIGS } from "../../core/api/control/owner.ts";
 import { newToken } from "../credential.ts";
-import { fingerprint } from "../store.ts";
+import { fingerprint } from "../store/index.ts";
 import { rigVersions } from "../versions.ts";
-import { reportingState } from "../views.ts";
+import { reportingState } from "../views/index.ts";
 import type { ApiContext } from "./context.ts";
 
 /**

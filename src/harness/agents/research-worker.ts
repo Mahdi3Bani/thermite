@@ -26,8 +26,8 @@ import { researchAgentTools } from "./research-agent-tools.ts";
 import { listFiles, readFile, removeFile, searchFiles, writeFile } from "./research-files.ts";
 import { TrialClock } from "./trial-clock.ts";
 import { PiMeter } from "./usage-meter.ts";
-import type { CompactionLink, McpForAgent, ProviderWait, TrialResult } from "./worker.ts";
-import { keepGoing, watchedStream, withoutPastThinking } from "./worker.ts";
+import type { CompactionLink, McpForAgent, ProviderWait, TrialResult } from "./worker/index.ts";
+import { keepGoing, watchedStream, withoutPastThinking } from "./worker/index.ts";
 
 /**
  * A research trial in Pi: a fresh agent session with the research tools and file tools over its

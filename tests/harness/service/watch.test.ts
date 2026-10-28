@@ -4,7 +4,7 @@ import { parseContract } from "../../../src/core/contract.ts";
 import { LiveLog } from "../../../src/core/live.ts";
 import { Registry } from "../../../src/harness/agents/registry.ts";
 import { sameAnswer } from "../../../src/harness/agents/repeats.ts";
-import { createHarnessApi } from "../../../src/harness/api.ts";
+import { createHarnessApi } from "../../../src/harness/api/index.ts";
 import { REPEAT_STREAK, TrialWatch, tellStreak } from "../../../src/harness/service/watch.ts";
 import { researchFixture } from "../../helpers/fixtures.ts";
 import { makeHarnessEnv } from "../../helpers/harness-env.ts";

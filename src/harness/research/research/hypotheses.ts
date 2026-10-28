@@ -8,7 +8,7 @@ import {
   questionLabel,
 } from "../../../core/research-check.ts";
 import type { HypothesisRow } from "../../ledger/hypotheses.ts";
-import { type Ledger, LedgerError } from "../../ledger.ts";
+import { type Ledger, LedgerError } from "../../ledger/index.ts";
 import { foldText } from "../checks.ts";
 import { repeatsWords } from "../worker-words.ts";
 import { clip, questionOf, type ResearchContext } from "./context.ts";

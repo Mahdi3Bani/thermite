@@ -30,7 +30,7 @@ describe("control's store's owners (goal 125, T6)", () => {
   test("no production code in control outside the store's modules uses its database", () => {
     const found = files(CONTROL)
       .map((path) => relative(ROOT, path))
-      .filter((path) => !path.startsWith("src/control/store/") && path !== "src/control/store.ts")
+      .filter((path) => !path.startsWith("src/control/store/"))
       .flatMap((path) =>
         readFileSync(join(ROOT, path), "utf8")
           .split("\n")

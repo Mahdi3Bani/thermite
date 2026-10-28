@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { describe, type TestContext, test } from "node:test";
 import { type CommandKind, signEnvelope } from "../../../src/core/commands.ts";
-import { Scheduler } from "../../../src/harness/agents/scheduler.ts";
+import { Scheduler } from "../../../src/harness/agents/scheduler/index.ts";
 import { LocalRunner } from "../../../src/harness/broker/runner.ts";
 import { startFakeModel } from "../../helpers/fake-model.ts";
 import { makeJudgeEnv } from "../../helpers/judge-env.ts";

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DETAIL_CHARS } from "../../src/control/run-lists.ts";
-import { ControlStore, OPEN_TRIAL_LINES } from "../../src/control/store.ts";
+import { ControlStore, OPEN_TRIAL_LINES } from "../../src/control/store/index.ts";
 import { SESSION_LINES, trialSession } from "../../src/control/trial-session.ts";
 import type { LiveEntry } from "../../src/core/live.ts";
 

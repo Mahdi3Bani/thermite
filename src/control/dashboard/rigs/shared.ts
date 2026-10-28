@@ -3,7 +3,7 @@ import type { Progress } from "../../command-progress.ts";
 import { newToken } from "../../credential.ts";
 import { JOIN_HOURS, joinCommand, joinedCommands } from "../../join.ts";
 import { controlImages, STEP_WORDS } from "../../rigs/setup.ts";
-import type { JoinedRig } from "../../store.ts";
+import type { JoinedRig } from "../../store/index.ts";
 import { ago, esc } from "../../ui/components.ts";
 import type { RigPlace } from "../../ui/rig-states.ts";
 import { podRuns } from "../../ui/runpod-rig.ts";

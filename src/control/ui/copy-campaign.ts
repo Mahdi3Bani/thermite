@@ -1,7 +1,7 @@
 import type { AgentsContext } from "../../core/compaction.ts";
 import { NAME_PATTERN, NAME_WORDS } from "../../core/ids.ts";
 import { AGENT_KINDS, type AgentKind, type McpUse, McpUses, sameUses } from "../../core/mcp.ts";
-import type { McpServer } from "../mcp-servers.ts";
+import type { McpServer } from "../mcp-servers/index.ts";
 import { contextFields, fieldValues } from "./campaign-context.ts";
 import { esc } from "./components.ts";
 import { infoLabel } from "./new-campaign.ts";

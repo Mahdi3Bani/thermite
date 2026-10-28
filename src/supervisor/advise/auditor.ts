@@ -1,6 +1,6 @@
 import { errorText } from "../../common/errors.ts";
 import { AUDITS, AUDITS_PENDING } from "../../core/api/harness/advisors.ts";
-import { auditOne } from "../advisors.ts";
+import { auditOne } from "../advisors/index.ts";
 import type { AdviseContext } from "./context.ts";
 import { clip } from "./shared.ts";
 import { MAX_TRIES } from "./state.ts";

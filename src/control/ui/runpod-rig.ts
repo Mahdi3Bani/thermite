@@ -4,9 +4,9 @@ import type { RunpodRigView } from "../runpod-rig-view.ts";
 import type { KeptPodLog } from "../runpod-rigs.ts";
 import { ago, esc } from "./components.ts";
 import { infoLabel } from "./new-campaign.ts";
-import type { TimelineRow } from "./operator.ts";
+import type { TimelineRow } from "./operator/index.ts";
 import { type RigStep, stepsHtml } from "./rig-states.ts";
-import { span } from "./words.ts";
+import { span } from "./words/index.ts";
 
 /**
  * A RunPod rig's pod on its page (goals 022 and 023): what it costs now and has cost, the owner's

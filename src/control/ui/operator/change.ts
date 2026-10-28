@@ -1,7 +1,7 @@
-import type { AttemptView, RigView, RunView } from "../../views.ts";
+import type { AttemptView, RigView, RunView } from "../../views/index.ts";
 import { ago, attemptHref, esc } from "../components.ts";
 import { gainChip, measuredWords } from "../gains.ts";
-import { clip, listText, runStatusText, signed, verdictText } from "../words.ts";
+import { clip, listText, runStatusText, signed, verdictText } from "../words/index.ts";
 
 /**
  * A change in words, for the owner's decision on it and for its page: what the judge found, what

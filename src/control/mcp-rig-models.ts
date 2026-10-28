@@ -10,7 +10,7 @@ import {
   rigModelRequest,
   rigModelsAnswer,
 } from "./rig-model.ts";
-import type { ControlStore } from "./store.ts";
+import type { ControlStore } from "./store/index.ts";
 
 /**
  * MCP's tools for each of a rig's agents' models (goal 029), the twins of Edit rig's section

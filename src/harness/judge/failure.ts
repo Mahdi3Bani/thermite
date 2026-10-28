@@ -1,5 +1,5 @@
 import { log } from "../../common/env.ts";
-import { type JobRow, type Ledger, LedgerError } from "../ledger.ts";
+import { type JobRow, type Ledger, LedgerError } from "../ledger/index.ts";
 import { clipReason } from "./reasons.ts";
 
 /** Whether an error is the ledger saying the job's lease was lost: another holder has the job. */

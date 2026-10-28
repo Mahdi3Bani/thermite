@@ -8,8 +8,8 @@ import { indexEvent, type KbFields } from "../../../src/core/kb-index.ts";
 import { Registry } from "../../../src/harness/agents/registry.ts";
 import { LocalRunner } from "../../../src/harness/broker/runner.ts";
 import { ResearchFolder, SAVED_LANES_DIR } from "../../../src/harness/research/folder.ts";
-import { NOTE_REPEATS } from "../../../src/harness/research/research.ts";
-import { researchPackage } from "../../../src/harness/research/review.ts";
+import { NOTE_REPEATS } from "../../../src/harness/research/research/index.ts";
+import { researchPackage } from "../../../src/harness/research/review/index.ts";
 import { makeHarnessEnv } from "../../helpers/harness-env.ts";
 import { researchEnv } from "../../helpers/research-run.ts";
 

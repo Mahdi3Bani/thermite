@@ -20,8 +20,8 @@ The first prints `ok`, the contract's mode, name, version and SHA-256. The secon
 
 | Where | How to run it | Used there for |
 | --- | --- | --- |
-| Your computer, in a clone of the repository | `npx thermite <command>`, after `npm ci` and `npm run build`. It runs `dist/cli/thermite.js` and needs Node.js 22.19 or later. With a release's compose stack, link its `.dev/` folder into the clone, as [the command line](../how-to/install/one-machine.md#the-command-line) shows | Checking the machine, contracts, tokens, starting runs, commands, enrolling rigs |
-| Control's image | `thermite` (`/usr/local/bin/thermite`, which runs `node /opt/thermite/dist/cli/thermite.js`) | The same commands, from inside control's container, except `doctor`, which checks the machine it runs on. A release's `init` service runs `local init` from this image |
+| Your computer, in a clone of the repository | `npx thermite <command>`, after `npm ci` and `npm run build`. It runs `dist/cli/thermite/main.js` and needs Node.js 22.19 or later. With a release's compose stack, link its `.dev/` folder into the clone, as [the command line](../how-to/install/one-machine.md#the-command-line) shows | Checking the machine, contracts, tokens, starting runs, commands, enrolling rigs |
+| Control's image | `thermite` (`/usr/local/bin/thermite`, which runs `node /opt/thermite/dist/cli/thermite/main.js`) | The same commands, from inside control's container, except `doctor`, which checks the machine it runs on. A release's `init` service runs `local init` from this image |
 | The supervisor's image | `thermite`, the same wrapper | The same commands |
 | The harness image | `thermite`, the same wrapper, and `thermite-trial` | `submit` and `status` against the harness at `http://127.0.0.1:8700`; `selftest isolation`, which must run there, as root |
 
@@ -905,6 +905,6 @@ Each image starts one program under `tini`; none of them takes options.
 | --- | --- | --- |
 | Control | `node /opt/thermite/dist/control/main.js` | User `thermite` (10001) |
 | Supervisor | `node /opt/thermite/dist/supervisor/main.js` | User `supervisor` (10001) |
-| Harness | `node /opt/thermite/dist/harness/broker.js`. The broker runs as root and starts the harness's other processes, each as its own user | root |
+| Harness | `node /opt/thermite/dist/harness/broker/main.js`. The broker runs as root and starts the harness's other processes, each as its own user | root |
 
 Their settings are environment variables: see [Settings](settings.md). The [harness image reference](harness-image.md) lists what else the harness image holds.

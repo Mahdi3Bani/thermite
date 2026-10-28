@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import type { ResearchContract } from "../../../core/contract.ts";
+import { type Ledger, LedgerError } from "../../ledger/index.ts";
 import type { SourceRow } from "../../ledger/sources.ts";
-import { type Ledger, LedgerError } from "../../ledger.ts";
 import { foldText } from "../checks.ts";
 import type { Fetcher } from "../fetcher.ts";
 import { Refusals } from "../refusals.ts";

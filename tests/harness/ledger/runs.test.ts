@@ -5,9 +5,9 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, test } from "node:test";
 import { Registry } from "../../../src/harness/agents/registry.ts";
+import { Ledger } from "../../../src/harness/ledger/index.ts";
 import { LEDGER_MIGRATIONS } from "../../../src/harness/ledger/migrations.ts";
 import { eventRun } from "../../../src/harness/ledger/runs.ts";
-import { Ledger } from "../../../src/harness/ledger.ts";
 import { makeJudgeEnv } from "../../helpers/judge-env.ts";
 
 /**

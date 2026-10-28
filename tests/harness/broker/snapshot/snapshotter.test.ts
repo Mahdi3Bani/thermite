@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { type SnapshotJob, Snapshotter } from "../../../../src/harness/broker/snapshot.ts";
+import { type SnapshotJob, Snapshotter } from "../../../../src/harness/broker/snapshot/index.ts";
 
 /**
  * When the broker takes a snapshot (Snapshotter): one at a time, again after a failure, every few

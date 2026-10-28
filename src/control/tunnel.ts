@@ -25,7 +25,7 @@ import {
 } from "../core/tunnel.ts";
 import { podPortUrl } from "./runpod.ts";
 import type { SecretBox } from "./secrets.ts";
-import { type ControlStore, RIG_ID } from "./store.ts";
+import { type ControlStore, RIG_ID } from "./store/index.ts";
 
 /**
  * Control's end of the tunnel to a rig in pull mode: one control connects to through a public

@@ -4,12 +4,12 @@ import {
   type ControlOptions,
   type ControlTokens,
   createControlApi,
-} from "../../src/control/api.ts";
-import { ControlStore } from "../../src/control/store.ts";
+} from "../../src/control/api/index.ts";
+import { ControlStore } from "../../src/control/store/index.ts";
 import { generateSigningKeys, type KeyPairPem } from "../../src/core/commands.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
-import type { HarnessService } from "../../src/harness/service.ts";
-import { type RelayState, relayOnce } from "../../src/supervisor/relay.ts";
+import { createHarnessApi } from "../../src/harness/api/index.ts";
+import type { HarnessService } from "../../src/harness/service/index.ts";
+import { type RelayState, relayOnce } from "../../src/supervisor/relay/index.ts";
 import { makeJudgeEnv } from "./judge-env.ts";
 
 /**

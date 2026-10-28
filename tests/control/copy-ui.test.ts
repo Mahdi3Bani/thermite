@@ -5,10 +5,10 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import type { CampaignDraft } from "../../src/control/campaign-builder.ts";
 import { KitRepos } from "../../src/control/kit-repos.ts";
-import { McpServers } from "../../src/control/mcp-servers.ts";
+import { McpServers } from "../../src/control/mcp-servers/index.ts";
 import { startCampaign } from "../../src/control/new-campaign.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
-import { ControlStore } from "../../src/control/store.ts";
+import { ControlStore } from "../../src/control/store/index.ts";
 import { controlOnly, signIn } from "../helpers/control-stack.ts";
 
 /**

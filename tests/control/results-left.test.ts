@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { advanceResets } from "../../src/control/lifecycle.ts";
 import { exportLeft, resultsLeft } from "../../src/control/results-left.ts";
-import { ControlStore } from "../../src/control/store.ts";
+import { ControlStore } from "../../src/control/store/index.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 import { controlOnly, signIn } from "../helpers/control-stack.ts";
 

@@ -3,7 +3,7 @@ import { ExperimentText, type QueuePosition } from "../core/commands.ts";
 import { DIRECTION_NAME, directionOf, RESEARCH_TASK_KINDS } from "../core/directions.ts";
 import { newExperimentId } from "../core/ids.ts";
 import { labelledQuestion } from "../core/research-check.ts";
-import { type ExperimentRow, type Ledger, LedgerError } from "./ledger.ts";
+import { type ExperimentRow, type Ledger, LedgerError } from "./ledger/index.ts";
 
 /**
  * Each run's experiment queue (goal 064): the experiments still to try, in order, and the log

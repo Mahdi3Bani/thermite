@@ -13,8 +13,8 @@ import {
   claudeOnce,
   NO_CLAUDE_CODE,
   runClaudeTrial,
-} from "../../../../src/harness/agents/claude-code.ts";
-import { codexOnce, NO_CODEX, runCodexTrial } from "../../../../src/harness/agents/codex.ts";
+} from "../../../../src/harness/agents/claude-code/index.ts";
+import { codexOnce, NO_CODEX, runCodexTrial } from "../../../../src/harness/agents/codex/index.ts";
 import { CHATGPT_LIMIT_CODE, type ModelConfig } from "../../../../src/harness/agents/model.ts";
 import {
   NO_OPENCODE,
@@ -25,8 +25,8 @@ import {
   PLANNER_ROLE,
   runOpencodeResearchTrial,
   runOpencodeTrial,
-} from "../../../../src/harness/agents/opencode.ts";
-import type { TrialSpec } from "../../../../src/harness/agents/worker.ts";
+} from "../../../../src/harness/agents/opencode/index.ts";
+import type { TrialSpec } from "../../../../src/harness/agents/worker/index.ts";
 import { fakeProgramRunner, type Program } from "../../../helpers/fake-program.ts";
 
 const PROGRAMS: Program[] = ["opencode", "claude-code", "codex"];

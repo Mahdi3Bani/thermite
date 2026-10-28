@@ -6,14 +6,14 @@ import {
   rigContext,
 } from "../../campaign-context.ts";
 import { copiedFromWords, copiedMcpWords } from "../../copy-campaign.ts";
-import { campaignMcpServers } from "../../mcp-servers.ts";
+import { campaignMcpServers } from "../../mcp-servers/index.ts";
 import { startLine, startNote } from "../../ui/campaign-context.ts";
 import { isRigCheck, lastActivity, type StartRig, startDrawer } from "../../ui/campaigns.ts";
 import { ago, campaignHref, esc, hardwareLine, icon, runKey } from "../../ui/components.ts";
 import { copyDrawer, suggestCopyName } from "../../ui/copy-campaign.ts";
 import { pastSection } from "../../ui/knowledge.ts";
 import { infoLabel } from "../../ui/new-campaign.ts";
-import { campaignModes, campaignViews, podStopped, type RigView } from "../../views.ts";
+import { campaignModes, campaignViews, podStopped, type RigView } from "../../views/index.ts";
 import type { Ctx, Dashboard } from "../context.ts";
 import { modelPrefix } from "../settings/shared.ts";
 import { campaignHelpers, copiedBy } from "./shared.ts";

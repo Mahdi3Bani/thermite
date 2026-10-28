@@ -3,11 +3,11 @@ import { RIG_ID_SENTENCE } from "../../core/ids.ts";
 import { inBackground } from "../background.ts";
 import { quotaRefusal } from "../cluster-resources.ts";
 import { newToken } from "../credential.ts";
-import { issueCommand } from "../issue.ts";
+import { issueCommand } from "../issue/index.ts";
 import { MAX_RIG_GPUS } from "../machines/deploy.ts";
 import type { ControlParts } from "../parts.ts";
 import { awaitFirstReport, controlAddress, judgeShare, rigTaken, sleep } from "../rigs/setup.ts";
-import { type Cluster, type ClusterRig, RIG_ID } from "../store.ts";
+import { type Cluster, type ClusterRig, RIG_ID } from "../store/index.ts";
 import {
   type ClusterFacts,
   type ClusterSlot,

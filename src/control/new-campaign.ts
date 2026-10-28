@@ -1,10 +1,10 @@
 import type { AskOwner, BriefingSeed } from "../core/commands.ts";
 import { parseContract } from "../core/contract.ts";
 import { buildCampaign } from "./campaign-builder.ts";
-import { issueWaking, type PodWaker } from "./issue.ts";
+import { issueWaking, type PodWaker } from "./issue/index.ts";
 import type { KitRepos } from "./kit-repos.ts";
 import { nextRunName } from "./run-names.ts";
-import type { CampaignSources, ControlStore } from "./store.ts";
+import type { CampaignSources, ControlStore } from "./store/index.ts";
 
 /**
  * Creating a campaign from the new-campaign page: build the contract (and the kit, when it was

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { describe, test } from "node:test";
 import { sendCommandsOn } from "../../../src/control/issue/bus.ts";
-import { issueCommand } from "../../../src/control/issue.ts";
+import { issueCommand } from "../../../src/control/issue/index.ts";
 import { canonicalJson } from "../../../src/core/canonical.ts";
 import { signEnvelope } from "../../../src/core/commands.ts";
 import { commandSubject } from "../../../src/core/link/commands.ts";
@@ -12,7 +12,11 @@ import {
   commandPollMs,
   takeCommand,
 } from "../../../src/supervisor/relay/commands.ts";
-import { oneAtATime, type RelayConfig, relayCommandsOnce } from "../../../src/supervisor/relay.ts";
+import {
+  oneAtATime,
+  type RelayConfig,
+  relayCommandsOnce,
+} from "../../../src/supervisor/relay/index.ts";
 import { controlStack } from "../../helpers/control-stack.ts";
 import { FakeBus, settle } from "../../helpers/fake-bus.ts";
 import { makeHarnessEnv } from "../../helpers/harness-env.ts";

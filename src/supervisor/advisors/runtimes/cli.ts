@@ -7,7 +7,7 @@ import type { TSchema } from "@earendil-works/pi-ai";
 import type { z } from "zod";
 import { errorText } from "../../../common/errors.ts";
 import type { CallUsage, UsageRoute } from "../../../core/usage.ts";
-import { CLAUDE_TOKEN_FD } from "../../../harness/agents/claude-code.ts";
+import { CLAUDE_TOKEN_FD } from "../../../harness/agents/claude-code/index.ts";
 import type { Own } from "../../../harness/agents/cli-conversation.ts";
 import type { CliAnswer } from "../../advisor-cli.ts";
 import type { AdvisorCompaction, AdvisorKeeper, AdvisorResult, AdvisorUsage } from "../call.ts";

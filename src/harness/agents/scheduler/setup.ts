@@ -3,7 +3,7 @@ import type { Contract } from "../../../core/contract.ts";
 import { type BaselineState, SETUP_FAMILY } from "../../judge/baseline.ts";
 import { clipReason } from "../../judge/reasons.ts";
 import { focusOf, type Handout, PLANNER } from "../coordinator.ts";
-import { lanesOf } from "../planner.ts";
+import { lanesOf } from "../planner/index.ts";
 import type { Assignment, EpochRecord } from "../registry.ts";
 import { laneCountOf, type SchedulerContext } from "./context.ts";
 

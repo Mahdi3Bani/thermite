@@ -1,4 +1,4 @@
-import type { Decision } from "../../store.ts";
+import type { Decision } from "../../store/index.ts";
 import { ago, esc } from "../components.ts";
 
 /**

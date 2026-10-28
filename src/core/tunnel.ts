@@ -339,7 +339,7 @@ export interface PodLaunchEnv {
 export const ENROLLED_FILES = {
   /**
    * Control's command-signing public key. In the one-container rig image, root checks it against
-   * the launch's SHA-256 and gives the harness a copy of its own (src/harness/broker.ts).
+   * the launch's SHA-256 and gives the harness a copy of its own (src/harness/broker/).
    */
   controlKey: "control.pub",
   /** The rig and its settings from control, as JSON. */

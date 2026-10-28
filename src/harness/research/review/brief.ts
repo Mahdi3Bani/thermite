@@ -1,5 +1,5 @@
 import { measurementIn, questionLabel } from "../../../core/research-check.ts";
-import type { Ledger } from "../../ledger.ts";
+import type { Ledger } from "../../ledger/index.ts";
 import { standingDecisions } from "../progress.ts";
 import { checkedPanel } from "./checks.ts";
 import { clip } from "./shared.ts";

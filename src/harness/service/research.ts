@@ -1,11 +1,11 @@
 import { log } from "../../common/env.ts";
 import type { CardSubmission, PaperSubmission } from "../../core/api/harness/research.ts";
 import { type BriefData, briefData } from "../../core/brief.ts";
-import { LedgerError } from "../ledger.ts";
+import { LedgerError } from "../ledger/index.ts";
 import type { CardResult, Cards } from "../research/cards.ts";
-import type { PaperPackage, Papers } from "../research/paper.ts";
-import { researchEnd } from "../research/review.ts";
-import type { HarnessService } from "../service.ts";
+import type { PaperPackage, Papers } from "../research/paper/index.ts";
+import { researchEnd } from "../research/review/index.ts";
+import type { HarnessService } from "./index.ts";
 
 /**
  * A research run's answer cards (goal 117) and final paper (goal 112), as the supervisor asks for

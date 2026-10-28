@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { ANSWERED, briefGaps } from "../../../../src/harness/research/review.ts";
+import { ANSWERED, briefGaps } from "../../../../src/harness/research/review/index.ts";
 import { Reviews } from "../../../../src/harness/reviews.ts";
 import { goodReviewer } from "../../../helpers/research-paper.ts";
 import { RESEARCH_QUESTIONS } from "../../../helpers/research-run.ts";

@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { describe, test } from "node:test";
-import { Scheduler } from "../../../../src/harness/agents/scheduler.ts";
+import { Scheduler } from "../../../../src/harness/agents/scheduler/index.ts";
 import { LocalRunner } from "../../../../src/harness/broker/runner.ts";
 import { startFakeModel } from "../../../helpers/fake-model.ts";
 import { makeJudgeEnv } from "../../../helpers/judge-env.ts";

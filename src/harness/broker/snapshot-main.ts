@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { log } from "../../common/env.ts";
 import { errorText } from "../../common/errors.ts";
 import { deriveKeys, parseSnapshotKey } from "./seal.ts";
-import { backupLedger, TakeJob, takeSnapshot } from "./snapshot.ts";
+import { backupLedger, TakeJob, takeSnapshot } from "./snapshot/index.ts";
 
 /**
  * The broker's helper for the rig's state snapshot (snapshot.ts), started as its own process so

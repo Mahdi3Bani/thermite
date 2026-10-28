@@ -1,11 +1,11 @@
 import { SCREENED_VERDICTS, WON_VERDICTS } from "../../../core/verdicts.ts";
 import { runCampaign } from "../../views/facts.ts";
-import type { AttemptView, RigView, RunView } from "../../views.ts";
+import type { AttemptView, RigView, RunView } from "../../views/index.ts";
 import { ago, esc, liveHref, moreText, runHref } from "../components.ts";
-import type { Need } from "../operator.ts";
-import { auditReason, verdictText } from "../words.ts";
+import { auditReason, verdictText } from "../words/index.ts";
 import { cap, evidence, short } from "./change.ts";
 import { heldOutBlock } from "./held-out.ts";
+import type { Need } from "./index.ts";
 import { outcome } from "./outcome.ts";
 import { timeline } from "./timeline.ts";
 

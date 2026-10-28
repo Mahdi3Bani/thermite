@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import type { CampaignDraft } from "../../src/control/campaign-builder.ts";
-import { issueCommand } from "../../src/control/issue.ts";
+import { issueCommand } from "../../src/control/issue/index.ts";
 import { KitRepos } from "../../src/control/kit-repos.ts";
 import { startCampaign, startRun } from "../../src/control/new-campaign.ts";
-import { ControlStore } from "../../src/control/store.ts";
+import { ControlStore } from "../../src/control/store/index.ts";
 import { generateSigningKeys, verifyCommand } from "../../src/core/commands.ts";
 
 const C = "9a41c07e0d1f2a3b4c5d6e7f8091a2b3c4d5e6f7";

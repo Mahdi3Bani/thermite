@@ -2,7 +2,7 @@ import { z } from "zod";
 import { KbKind as KbKindSchema } from "../../core/kb.ts";
 import { exportSummary } from "../exports.ts";
 import type { KbKind } from "../kb.ts";
-import { campaignModes, rigView } from "../views.ts";
+import { campaignModes, rigView } from "../views/index.ts";
 import type { ToolContext } from "./context.ts";
 
 /**

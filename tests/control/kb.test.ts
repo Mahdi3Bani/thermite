@@ -3,8 +3,8 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { KnowledgeBase } from "../../src/control/store/kb.ts";
-import { ControlStore } from "../../src/control/store.ts";
+import { ControlStore } from "../../src/control/store/index.ts";
+import { KnowledgeBase } from "../../src/control/store/kb/index.ts";
 import { KbSync } from "../../src/core/kb.ts";
 import { assigned } from "../helpers/assignments.ts";
 import { controlOnly } from "../helpers/control-stack.ts";
@@ -416,7 +416,7 @@ test("a research note is a note of its own in the folder and in the run's journa
   assert.equal(notes[0]?.url, "https://example.com/guide");
   assert.match(String(notes[0]?.body), /Sources: s-1/);
   assert.equal(kb.search("memory bound", ["gemv-speed"])[0]?.sub, "observation");
-  const { rigView } = await import("../../src/control/views.ts");
+  const { rigView } = await import("../../src/control/views/index.ts");
   const run = rigView(store, "rig-c", { staleAfterMs: 600_000 })?.runs.find((r) => r.id === "g-1");
   assert.deepEqual(
     run?.journal.map((n) => [n.id, n.kind, n.about?.type ?? null]),

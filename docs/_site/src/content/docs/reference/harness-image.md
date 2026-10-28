@@ -137,7 +137,7 @@ The [isolation check](rig-checks.md#isolation-check) tests these users, and [Iso
 
 ### How it runs
 
-- **Entry point:** `tini`, then `node /opt/thermite/dist/harness/broker.js`.
+- **Entry point:** `tini`, then `node /opt/thermite/dist/harness/broker/main.js`.
 - **As root.** The image sets no user. The broker needs root to start each role as its user, and stops at start with `fatal: not root, so roles cannot be separated` otherwise. Compose, the machine units and the cluster manifests keep only the capabilities `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `KILL`, `SETGID` and `SETUID`, and forbid gaining new privileges.
 - **What a role's process sees.** Builds and timed runs get only `PATH`, `LANG=C.UTF-8`, `HOME` and `TMPDIR` (both the run's own directory) and `USER`, plus `CUDA_VISIBLE_DEVICES` on a rig with dedicated GPUs. Other `ENV` lines in a derived image do not reach them. A lane's commands also get their build cache: `THERMITE_LANE_CACHE` and `CCACHE_DIR` (both the lane's cache folder) and `CCACHE_MAXSIZE=8G`.
 - **Port:** 8700, the harness API (`THERMITE_LISTEN`). No port is published.
@@ -196,7 +196,7 @@ podman build -t thermite-rig --build-arg HARNESS_IMAGE=localhost/thermite-harnes
 | User | `supervisor`, uid and gid 10001, home `/var/lib/thermite-supervisor/home`, as in the supervisor image. `/var/lib/thermite-supervisor` and its `home` are mode 0700 |
 | Set-id files | None. The build removes every setuid and setgid bit after the last package, and fails if one is left. RunPod does not stop a process from gaining privileges through such a file (`no_new_privs` is off there), so a role could otherwise run a setuid program as its owner |
 | `thermite-rig-start` | `/usr/local/bin/thermite-rig-start`, the entry point. See [How it starts](#how-it-starts) |
-| Entry point | `thermite-rig-start`, then `tini`, then `node /opt/thermite/dist/harness/broker.js` |
+| Entry point | `thermite-rig-start`, then `tini`, then `node /opt/thermite/dist/harness/broker/main.js` |
 | Port | 8790 (`EXPOSE 8790`), the supervisor's port for control. The launch exposes it as HTTP, and RunPod's proxy makes it reachable |
 
 ### Settings the image sets

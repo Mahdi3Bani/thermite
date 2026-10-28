@@ -9,7 +9,7 @@ import {
   rmSync,
 } from "node:fs";
 import { join } from "node:path";
-import type { Ledger } from "../ledger.ts";
+import type { Ledger } from "../ledger/index.ts";
 import { statusEvents } from "../run-status.ts";
 
 /**

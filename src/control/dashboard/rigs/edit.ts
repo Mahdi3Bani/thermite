@@ -16,7 +16,7 @@ import {
 import { asksNothing, type ClusterResourcesRequest } from "../../cluster-resources.ts";
 import type { ClusterFacts } from "../../clusters/facts.ts";
 import { prepareResize } from "../../clusters/resize.ts";
-import { issueCommand } from "../../issue.ts";
+import { issueCommand } from "../../issue/index.ts";
 import { MAX_RIG_GPUS } from "../../machines/deploy.ts";
 import { contextCapRefusal, isOpencodeOwn } from "../../providers.ts";
 import { advisorsFileOf, neededHarness, opencodeOnly } from "../../rig-model.ts";
@@ -39,7 +39,7 @@ import {
   HARNESSES,
   harnessOf,
   type ModelProvider,
-} from "../../store.ts";
+} from "../../store/index.ts";
 import { esc, hardwareLine } from "../../ui/components.ts";
 import {
   type AgentLineId,
@@ -50,7 +50,7 @@ import {
 } from "../../ui/edit-rig.ts";
 import { EDIT_RIG_JS } from "../../ui/edit-rig-client.ts";
 import { infoLabel } from "../../ui/new-campaign.ts";
-import { listText } from "../../ui/words.ts";
+import { listText } from "../../ui/words/index.ts";
 import type { Dashboard } from "../context.ts";
 import { modelPrefix } from "../settings/shared.ts";
 

@@ -1,9 +1,9 @@
 import { clockUtc, commandProgress } from "../command-progress.ts";
-import type { CommandRow, ControlStore } from "../store.ts";
+import type { CommandRow, ControlStore } from "../store/index.ts";
+import type { RigView } from "../views/index.ts";
 import { type OpenTrial, workOf } from "../views/work.ts";
-import type { RigView } from "../views.ts";
 import { ago, esc, fmtInt, icon, infoLabel } from "./components.ts";
-import { clip, span } from "./words.ts";
+import { clip, span } from "./words/index.ts";
 
 /**
  * A rig's drain on its page (goal 136, item 3): a card at the top says since when it drains, who

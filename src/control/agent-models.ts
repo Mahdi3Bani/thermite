@@ -19,8 +19,8 @@ import {
   codexTakes,
   type Effort,
   type Harness,
-} from "./store.ts";
-import type { RigView } from "./views.ts";
+} from "./store/index.ts";
+import type { RigView } from "./views/index.ts";
 
 /**
  * Each of a rig's agents' models (goals 029, 070, 073, 074): what Providers, Edit rig, Start a run,

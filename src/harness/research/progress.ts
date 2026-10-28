@@ -1,4 +1,4 @@
-import type { Ledger } from "../ledger.ts";
+import type { Ledger } from "../ledger/index.ts";
 import type { TaskYield } from "../queue.ts";
 
 /**

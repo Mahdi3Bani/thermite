@@ -1,10 +1,10 @@
-import type { ControlStore } from "../../store.ts";
+import type { ControlStore } from "../../store/index.ts";
 import { currentChampion, runCampaign } from "../../views/facts.ts";
-import type { RigView, RunView } from "../../views.ts";
+import type { RigView, RunView } from "../../views/index.ts";
 import { ago, esc, judgeOnlyMark, modeAvatar, runHref, runLiveHref } from "../components.ts";
 import type { LaneExtra } from "../drain.ts";
 import { stuckChip, stuckTrials } from "../stuck.ts";
-import { clip, span } from "../words.ts";
+import { clip, span } from "../words/index.ts";
 import { jobHtml, runProgress } from "./run.ts";
 
 /** What is happening now on a run: each lane, the final writer, the planner and the judge. */

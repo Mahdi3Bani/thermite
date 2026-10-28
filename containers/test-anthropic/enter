@@ -7,4 +7,4 @@ mkdir -p /run/secrets /keys
 (umask 077 && printf '%s' "$TEST_SUPERVISOR_TOKEN" > /run/secrets/harness-supervisor-token)
 printf '%s\n' "$TEST_CONTROL_PUBKEY" > /keys/control-signing.pub
 unset TEST_SUPERVISOR_TOKEN TEST_CONTROL_PUBKEY
-exec /usr/bin/tini -- node /opt/thermite/dist/harness/broker.js
+exec /usr/bin/tini -- node /opt/thermite/dist/harness/broker/main.js

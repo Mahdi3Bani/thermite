@@ -14,7 +14,7 @@ updated: 2026-10-27
 
 ## What
 
-Design invariant 3, "Nothing is destroyed", says bad evidence is invalidated, never deleted, with the invalidation propagated to whatever depended on it. The ledger has the mechanism, `Ledger.invalidate()` (`src/harness/ledger.ts`), tested, but nothing calls it: [Verdicts](../../_site/src/content/docs/reference/verdicts.md) says the `invalidated` verdict is not recorded in this version. The v0.1.1 audit (goal [160](_completed/160-v010-audit.goal)) found it, and the owner decided to wire it to a command of their own, in a goal of its own.
+Design invariant 3, "Nothing is destroyed", says bad evidence is invalidated, never deleted, with the invalidation propagated to whatever depended on it. The ledger has the mechanism, `ledger.verdicts.invalidate()` (`src/harness/ledger/verdicts.ts`), tested, but nothing calls it: [Verdicts](../../_site/src/content/docs/reference/verdicts.md) says the `invalidated` verdict is not recorded in this version. The v0.1.1 audit (goal [160](_completed/160-v010-audit.goal)) found it, and the owner decided to wire it to a command of their own, in a goal of its own.
 
 1. **An owner-only signed command**, "invalidate this evidence": an attempt, or a judge's job whose measurements are withdrawn, with the reason. The harness checks it as every command and calls `Ledger.invalidate()`.
 2. **The propagation, as the ledger does it:** an invalidated attempt and every attempt built on it are invalid for good; attempts whose job evidence was withdrawn may be measured again, and their descendants judged again; their verdicts are superseded by new records; a champion that rested on them is reopened, and the run's champion moves back with a recorded step. Nothing is deleted.

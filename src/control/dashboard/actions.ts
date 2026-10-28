@@ -1,10 +1,10 @@
 import type { Hono } from "hono";
 import { errorText } from "../../common/errors.ts";
 import { checkProgress, checkRows, commandProgress, modelProgress } from "../command-progress.ts";
-import { propagateChampion } from "../issue.ts";
+import { propagateChampion } from "../issue/index.ts";
 import { advanceResets, cancelReset, confirmReset } from "../lifecycle.ts";
 import { runpodResetRefusal } from "../runpod-lifecycle.ts";
-import { RIG_ID } from "../store.ts";
+import { RIG_ID } from "../store/index.ts";
 import { runHref } from "../ui/components.ts";
 import { backTo, type Dashboard } from "./context.ts";
 

@@ -12,7 +12,7 @@ import { checkModel, type RigCheckReport } from "./model-check.ts";
 import { opencodeProgram } from "./opencode/program.ts";
 import type { ResearchTrialSpec } from "./research-worker.ts";
 import { spawnTrial } from "./spawn.ts";
-import type { TrialResult, TrialSpec } from "./worker.ts";
+import type { TrialResult, TrialSpec } from "./worker/index.ts";
 import { prepareResearchArea } from "./workspace.ts";
 
 /**

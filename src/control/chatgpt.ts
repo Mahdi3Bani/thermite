@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { errorText } from "../common/errors.ts";
 import { CHATGPT_USAGE_URL, chatgptWindows, type PlanUsage } from "./plan-usage.ts";
 import type { SecretBox } from "./secrets.ts";
-import type { ControlStore, ModelProvider, ProviderModel } from "./store.ts";
+import type { ControlStore, ModelProvider, ProviderModel } from "./store/index.ts";
 
 /**
  * A ChatGPT subscription through Sign in with ChatGPT (OpenAI's "ChatGPT plan usage" for

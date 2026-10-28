@@ -6,7 +6,7 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "thermite": "dist/cli/thermite.js"
+    "thermite": "dist/cli/thermite/main.js"
   },
   "engines": {
     "node": ">=22.19"

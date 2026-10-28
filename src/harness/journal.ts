@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { NOTE_KINDS, type NoteAbout, NoteInput, type NoteKind } from "../core/journal.ts";
 import type { LiveLog } from "../core/live.ts";
+import { type Ledger, LedgerError } from "./ledger/index.ts";
 import type { JournalNoteRow } from "./ledger/journal.ts";
-import { type Ledger, LedgerError } from "./ledger.ts";
 import { foldText } from "./research/checks.ts";
 
 /**

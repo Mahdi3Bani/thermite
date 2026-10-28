@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { describe, test } from "node:test";
 import { LenientNotes } from "../../src/core/journal.ts";
 import { Registry } from "../../src/harness/agents/registry.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
+import { createHarnessApi } from "../../src/harness/api/index.ts";
 import type { LedgerEvent } from "../../src/harness/ledger/rows.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";
 

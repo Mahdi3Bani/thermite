@@ -9,7 +9,7 @@ import {
   commandMessageId,
   commandSubject,
 } from "../../core/link/commands.ts";
-import type { ControlStore } from "../store.ts";
+import type { ControlStore } from "../store/index.ts";
 
 /**
  * Control's commands on the message bus (goal 168, step 1). With the bus on, each command control

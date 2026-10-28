@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { RunView } from "./views.ts";
+import type { RunView } from "./views/index.ts";
 
 /**
  * A run's detail of a size an agent can read (goal 128), for MCP's get_run and REST's

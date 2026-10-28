@@ -12,7 +12,7 @@ import { manageScript, type RigAction } from "../../machines/deploy.ts";
 import { tail } from "../../machines/ssh.ts";
 import { removeCheck } from "../../results-left.ts";
 import { awaitFirstReport, STEP_WORDS } from "../../rigs/setup.ts";
-import { fingerprint } from "../../store.ts";
+import { fingerprint } from "../../store/index.ts";
 import { type Ctx, type Dashboard, wantsJson } from "../context.ts";
 import { placeFollowUrl, rigHelpers } from "./shared.ts";
 

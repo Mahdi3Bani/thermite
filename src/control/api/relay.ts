@@ -4,7 +4,7 @@ import { jsonBody } from "../../common/errors.ts";
 import { ACK, GIT_ACCESS, INGEST, LIVE, PENDING_COMMANDS } from "../../core/api/control/rigs.ts";
 import { readReport } from "../../core/link/report.ts";
 import { takeReport } from "../ingest.ts";
-import { cancelCommand, pendingFor } from "../issue.ts";
+import { cancelCommand, pendingFor } from "../issue/index.ts";
 import { takeLive } from "../live-in.ts";
 import type { ApiContext } from "./context.ts";
 import { supervisorRoutes } from "./supervisor.ts";

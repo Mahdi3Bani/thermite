@@ -1,12 +1,12 @@
-import type { Decision } from "../../store.ts";
+import type { Decision } from "../../store/index.ts";
 import { currentChampion } from "../../views/facts.ts";
-import type { AttemptView, RigView, RunView } from "../../views.ts";
+import type { AttemptView, RigView, RunView } from "../../views/index.ts";
 import { attemptHref, esc, icon } from "../components.ts";
 import { card } from "../need-card.ts";
-import type { Need, NeedsContext } from "../operator.ts";
-import { clip } from "../words.ts";
+import { clip } from "../words/index.ts";
 import { cap, changeChips, changeFacts, changeHeadline } from "./change.ts";
 import { decidedState } from "./decided.ts";
+import type { Need, NeedsContext } from "./index.ts";
 import { hasAdvisors } from "./outcome.ts";
 
 /**

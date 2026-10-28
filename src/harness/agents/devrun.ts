@@ -2,7 +2,7 @@ import { join, resolve, sep } from "node:path";
 import { z } from "zod";
 import { SHARED_DEV_RUN_S } from "../../core/contract.ts";
 import { type Role, RoleSchema, type Runner } from "../broker/runner.ts";
-import type { Ledger } from "../ledger.ts";
+import type { Ledger } from "../ledger/index.ts";
 import { laneCacheEnv } from "./workspace.ts";
 
 /**

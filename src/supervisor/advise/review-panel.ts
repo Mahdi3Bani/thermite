@@ -8,7 +8,7 @@ import {
   type ResearchReviewAnswers,
   type ReviewOutput,
   reviewOne,
-} from "../advisors.ts";
+} from "../advisors/index.ts";
 import type { AdviseContext } from "./context.ts";
 import { clip } from "./shared.ts";
 import { MAX_TRIES } from "./state.ts";

@@ -1,5 +1,5 @@
 import { MAX_LANES } from "../../core/contract.ts";
-import { type Ledger, LedgerError } from "../ledger.ts";
+import { type Ledger, LedgerError } from "../ledger/index.ts";
 import type { TrialFacts } from "./watch.ts";
 
 /**

@@ -1,9 +1,9 @@
 import type { KbFolder, KbItem, KbKind } from "../kb.ts";
 import { JOURNAL_KINDS } from "../kb.ts";
-import type { JournalNoteView, RigView, RunView } from "../views.ts";
+import type { JournalNoteView, RigView, RunView } from "../views/index.ts";
 import { ago, attemptHref, campaignHref, esc, fmtInt, runHref } from "./components.ts";
 import { infoLabel } from "./new-campaign.ts";
-import { clip } from "./words.ts";
+import { clip } from "./words/index.ts";
 
 /**
  * Goal 065 on the dashboard: a run's Journal tab (the agents' field notes), the Knowledge page

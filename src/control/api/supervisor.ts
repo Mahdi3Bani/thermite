@@ -6,7 +6,7 @@ import { isUserKey, USER_KEY_WORDS } from "../../core/link/users.ts";
 import { type BusUsers, takeRigBusKey } from "../bus/users.ts";
 import { reportPlace } from "../ingest.ts";
 import { modelSteps } from "../model-steps.ts";
-import type { ControlStore } from "../store.ts";
+import type { ControlStore } from "../store/index.ts";
 
 /** What the route needs from control: its store, and the bus's users when control runs the bus. */
 export interface SupervisorRoutesDeps {

@@ -2,7 +2,7 @@ import type { ResearchContract } from "../../../../core/contract.ts";
 import { questionLabel } from "../../../../core/research-check.ts";
 import type { Experiment } from "../../../queue.ts";
 import { hypothesisTask } from "../../../research/hypothesis-evidence.ts";
-import type { Research } from "../../../research/research.ts";
+import type { Research } from "../../../research/research/index.ts";
 import {
   gapOf,
   nextGap,

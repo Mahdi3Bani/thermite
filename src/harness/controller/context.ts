@@ -10,7 +10,7 @@ import type { ApiTokens } from "../api/context.ts";
 import { BrokerClient } from "../broker/client.ts";
 import { LocalRunner, type Runner } from "../broker/runner.ts";
 import type { PromotionPolicy } from "../judge/judge.ts";
-import type { HarnessPaths } from "../service.ts";
+import type { HarnessPaths } from "../service/index.ts";
 import { harnessNumbers } from "../settings.ts";
 
 /**

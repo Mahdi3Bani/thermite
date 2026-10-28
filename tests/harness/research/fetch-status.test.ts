@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import { describe, test } from "node:test";
 import { parseContract } from "../../../src/core/contract.ts";
 import { FetchRefused, statusRefusal } from "../../../src/harness/research/fetcher.ts";
-import { Research } from "../../../src/harness/research/research.ts";
+import { Research } from "../../../src/harness/research/research/index.ts";
 import { researchFixture } from "../../helpers/fixtures.ts";
 import { makeHarnessEnv } from "../../helpers/harness-env.ts";
 

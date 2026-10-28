@@ -1,6 +1,6 @@
 /** What the planner's tests share: a campaign's input to the planner, and a model route. */
 
-import type { PlannerInput } from "../../../../src/harness/agents/planner.ts";
+import type { PlannerInput } from "../../../../src/harness/agents/planner/index.ts";
 
 /** A hill climb's second round, with two lanes and two live directions. */
 export const base: PlannerInput = {

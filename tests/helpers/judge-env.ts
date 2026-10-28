@@ -12,8 +12,8 @@ import {
 } from "../../src/harness/broker/process.ts";
 import { LocalRunner, type RunOutcome, type RunRequest } from "../../src/harness/broker/runner.ts";
 import { Judge, type PromotionPolicy } from "../../src/harness/judge/judge.ts";
-import { Ledger } from "../../src/harness/ledger.ts";
-import { HarnessService } from "../../src/harness/service.ts";
+import { Ledger } from "../../src/harness/ledger/index.ts";
+import { HarnessService } from "../../src/harness/service/index.ts";
 import { CpuDriver } from "../../src/harness/targets/cpu.ts";
 
 /**

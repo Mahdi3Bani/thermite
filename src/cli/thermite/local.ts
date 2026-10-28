@@ -4,7 +4,13 @@ import { parseArgs } from "node:util";
 import { newToken } from "../../control/credential.ts";
 import { generateSigningKeys } from "../../core/commands.ts";
 import { parseContract } from "../../core/contract.ts";
-import { answeringEngines, doctor, doctorExit, formatReport, machineProbes } from "../doctor.ts";
+import {
+  answeringEngines,
+  doctor,
+  doctorExit,
+  formatReport,
+  machineProbes,
+} from "../doctor/index.ts";
 import {
   chooseOwner,
   localInit,
@@ -150,7 +156,9 @@ export async function thermiteLocal(rest: string[]): Promise<void> {
 /** thermite selftest isolation: inside the harness container, as root. */
 export async function thermiteSelftest(rest: string[]): Promise<void> {
   if (rest[0] !== "isolation") fail(USAGE);
-  const { isolationSelftest, oneContainerTargets } = await import("../../harness/selftest.ts");
+  const { isolationSelftest, oneContainerTargets } = await import(
+    "../../harness/selftest/index.ts"
+  );
   const { effectiveGpuLists, savedJudgeGpus } = await import("../../harness/broker/devices.ts");
   const env = process.env;
   const secretFiles = [

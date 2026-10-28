@@ -9,7 +9,7 @@ import { promisify } from "node:util";
 import { serve } from "@hono/node-server";
 import { RunpodRigs } from "../../src/control/runpod-rigs.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
-import { ControlStore } from "../../src/control/store.ts";
+import { ControlStore } from "../../src/control/store/index.ts";
 import { ControlTunnels } from "../../src/control/tunnel.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 import { parseContract } from "../../src/core/contract.ts";
@@ -17,7 +17,7 @@ import { controlOnly } from "../helpers/control-stack.ts";
 import { FAKE_RUNPOD_KEY, fakeRunpod } from "../helpers/fake-runpod.ts";
 
 const run = promisify(execFile);
-const CLI = join(import.meta.dirname, "../../src/cli/thermite.ts");
+const CLI = join(import.meta.dirname, "../../src/cli/thermite/main.ts");
 const CONTRACT = join(import.meta.dirname, "../../examples/contracts/smoke-cpu.json");
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
 /** Control's tokens: the owner's, as the token files below hold it, and no rigs. */

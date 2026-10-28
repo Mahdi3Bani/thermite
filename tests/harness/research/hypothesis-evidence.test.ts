@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { Ledger } from "../../../src/harness/ledger.ts";
+import type { Ledger } from "../../../src/harness/ledger/index.ts";
 import {
   hypothesisEvidence,
   hypothesisTask,
@@ -14,7 +14,7 @@ import {
   type ResearchVerdicts,
   researchPackage,
   researchReviewDue,
-} from "../../../src/harness/research/review.ts";
+} from "../../../src/harness/research/review/index.ts";
 import { gapOf } from "../../../src/harness/research/shares.ts";
 import { Reviews } from "../../../src/harness/reviews.ts";
 import { makeResearchRun } from "../../helpers/research-run.ts";

@@ -1,7 +1,7 @@
 import { KitSchema } from "../harness/kit.ts";
 import { type KitAdded, KitRefused, type KitRepos } from "./kit-repos.ts";
 import { kitSummary } from "./kit-upload.ts";
-import type { ControlStore } from "./store.ts";
+import type { ControlStore } from "./store/index.ts";
 
 /**
  * A kit written elsewhere, given to control as a git bundle of its repository (REST, MCP and the

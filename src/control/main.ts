@@ -7,7 +7,7 @@ import { startLogging } from "../common/log.ts";
 import { readNumber } from "../common/settings.ts";
 import { generateSigningKeys } from "../core/commands.ts";
 import { buildInfo } from "../core/version.ts";
-import { createControlApi } from "./api.ts";
+import { createControlApi } from "./api/index.ts";
 import { BUS_USERS_SYNC_MS, BusUsers, busUsersFile } from "./bus/users.ts";
 import { Credential } from "./credential.ts";
 import { followReports } from "./ingest.ts";
@@ -20,7 +20,7 @@ import { checkRigPlace } from "./rigs/place.ts";
 import { refreshGpuClouds } from "./runpod.ts";
 import { SecretBox } from "./secrets.ts";
 import { CONTROL_NUMBERS } from "./settings.ts";
-import { ControlStore } from "./store.ts";
+import { ControlStore } from "./store/index.ts";
 
 /** Control service entry point. Generates its signing key on first start. */
 async function main(): Promise<void> {

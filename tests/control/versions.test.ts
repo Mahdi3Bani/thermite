@@ -4,9 +4,9 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { ControlStore } from "../../src/control/store.ts";
+import { ControlStore } from "../../src/control/store/index.ts";
 import type { RigVersions } from "../../src/control/versions.ts";
-import { reportingState, rigView } from "../../src/control/views.ts";
+import { reportingState, rigView } from "../../src/control/views/index.ts";
 import { generateSigningKeys, reportBody, signJson } from "../../src/core/commands.ts";
 import {
   BUILD_HEADERS,
@@ -16,7 +16,7 @@ import {
   OLDEST_PROTOCOL,
   PROTOCOL,
 } from "../../src/core/version.ts";
-import { RelayError, relayOnce } from "../../src/supervisor/relay.ts";
+import { RelayError, relayOnce } from "../../src/supervisor/relay/index.ts";
 import {
   ADMIN,
   controlOnly,

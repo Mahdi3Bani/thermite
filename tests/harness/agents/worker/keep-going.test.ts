@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { FailureCount } from "../../../../src/harness/agents/provider-errors.ts";
-import { keepGoing } from "../../../../src/harness/agents/worker.ts";
+import { keepGoing } from "../../../../src/harness/agents/worker/index.ts";
 
 describe("worker trial", () => {
   test("keepGoing ends a trial on a full context or a stuck model, never loops on it", async () => {

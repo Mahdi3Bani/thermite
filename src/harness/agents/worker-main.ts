@@ -16,7 +16,7 @@ import {
   runTrial,
   type TrialResult,
   type TrialSpec,
-} from "./worker.ts";
+} from "./worker/index.ts";
 
 /**
  * A worker trial in its own process (one per trial), run as its lane's agent user. It reaches

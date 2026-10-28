@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { keepToBudget } from "./run-lists.ts";
-import { type ControlStore, OPEN_TRIAL_LINES } from "./store.ts";
+import { type ControlStore, OPEN_TRIAL_LINES } from "./store/index.ts";
 
 /**
  * MCP's trial_session (goal 139): the worker trials' sessions control keeps from a rig's live log,

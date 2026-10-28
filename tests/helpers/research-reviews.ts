@@ -1,4 +1,4 @@
-import type { ControlStore } from "../../src/control/store.ts";
+import type { ControlStore } from "../../src/control/store/index.ts";
 import { callUsage } from "../../src/core/usage.ts";
 import { ADMIN, controlOnly, mcpClient, signIn } from "./control-stack.ts";
 

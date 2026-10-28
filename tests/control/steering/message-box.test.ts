@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { parseContract } from "../../../src/core/contract.ts";
-import { Scheduler } from "../../../src/harness/agents/scheduler.ts";
+import { Scheduler } from "../../../src/harness/agents/scheduler/index.ts";
 import { LocalRunner } from "../../../src/harness/broker/runner.ts";
-import { Research } from "../../../src/harness/research/research.ts";
+import { Research } from "../../../src/harness/research/research/index.ts";
 import { researchFixture } from "../../helpers/fixtures.ts";
 import { makeHarnessEnv } from "../../helpers/harness-env.ts";
 import { makeJudgeEnv } from "../../helpers/judge-env.ts";

@@ -1,4 +1,4 @@
-import type { ControlStore } from "./store.ts";
+import type { ControlStore } from "./store/index.ts";
 
 /**
  * Run names on control (goal 170): a run's name is used once, across every rig and every ledger

@@ -1,4 +1,4 @@
-import type { JudgeJob } from "../views.ts";
+import type { JudgeJob } from "../views/index.ts";
 
 /** What a judge job is doing, in words. */
 export function jobText(job: Pick<JudgeJob, "kind" | "attempt">, lane?: string | null): string {

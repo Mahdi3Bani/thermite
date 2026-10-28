@@ -12,7 +12,7 @@ import {
 } from "../../../src/control/bus/users.ts";
 import { STEP_WORDS } from "../../../src/control/rigs/setup.ts";
 import { SecretBox } from "../../../src/control/secrets.ts";
-import { ControlStore } from "../../../src/control/store.ts";
+import { ControlStore } from "../../../src/control/store/index.ts";
 import {
   BUS_ACCOUNT,
   rigPermissions,

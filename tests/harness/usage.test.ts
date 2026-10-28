@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { describe, test } from "node:test";
 import { callUsage } from "../../src/core/usage.ts";
 import { Registry } from "../../src/harness/agents/registry.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
+import { createHarnessApi } from "../../src/harness/api/index.ts";
 import { routeOf } from "../../src/harness/usage.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";
 

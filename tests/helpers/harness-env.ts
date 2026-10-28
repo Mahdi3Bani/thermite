@@ -11,8 +11,8 @@ import {
   signEnvelope,
 } from "../../src/core/commands.ts";
 import { parseContract } from "../../src/core/contract.ts";
-import { Ledger } from "../../src/harness/ledger.ts";
-import { HarnessService } from "../../src/harness/service.ts";
+import { Ledger } from "../../src/harness/ledger/index.ts";
+import { HarnessService } from "../../src/harness/service/index.ts";
 import { hillClimbFixture } from "./fixtures.ts";
 
 /** A throwaway harness with a real git source repo bundled into its inbox. */

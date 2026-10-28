@@ -8,7 +8,7 @@ import { KitRepos } from "../../src/control/kit-repos.ts";
 import type { RunpodRigView } from "../../src/control/runpod-rig-view.ts";
 import { DEFAULT_IDLE_STOP_MINUTES, RunpodRigs } from "../../src/control/runpod-rigs.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
-import { ControlStore } from "../../src/control/store.ts";
+import { ControlStore } from "../../src/control/store/index.ts";
 import { ControlTunnels } from "../../src/control/tunnel.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 import { assigned } from "../helpers/assignments.ts";

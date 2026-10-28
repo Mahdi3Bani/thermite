@@ -1,7 +1,7 @@
 import type { LiveKind } from "../../core/live.ts";
 import type { McpUse } from "../../core/mcp.ts";
 import type { McpGateway } from "../../harness/mcp-gateway.ts";
-import type { AdvisorsConfig } from "../advisors.ts";
+import type { AdvisorsConfig } from "../advisors/index.ts";
 
 export interface AdviseConfig {
   harnessUrl: string;
