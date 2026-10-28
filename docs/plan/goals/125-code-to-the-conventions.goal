@@ -139,6 +139,7 @@ Known at the start, 2026-10-24:
 - 2026-10-26, owner: the knowledge base's folders are called collections (the guide's question 23).
 - 2026-10-26, owner: the guide's rules of shape are accepted: "these look mostly good". They go into CONVENTIONS.md first, in a commit of their own that the owner reviews, so every later step follows them.
 - 2026-10-26, owner: each image upgrades the system packages of its base when it is built, so a rebuild takes the distribution's fixes. It goes in with v0.1.1's first code changes, beside goals 161 to 165, and the images are built again.
+- 2026-10-28 00:08 UTC, owner, T7's three questions, from its design (one table of agent programs and one CLI trial loop): a Codex trial whose ChatGPT plan is full goes through the general provider-error path, as OpenCode on a ChatGPT route does, and Codex's own stop goes; Claude Code's limits note states its memory as measured in the real Claude Code acceptance, in place of OpenCode's "about 500 MiB"; an image without OpenCode's binary ends an OpenCode trial with a sentence that says so, as Claude Code's and Codex's do.
 
 ## Open questions
 
