@@ -23,7 +23,7 @@ describe("control's store migrations", () => {
     old.close();
 
     const store = new ControlStore(path);
-    assert.equal(version(store.db), 7);
+    assert.equal(version(store.db), 8);
     const folder = store.db.prepare("select name from campaign_folder").get() as { name: string };
     assert.equal(folder.name, "speed");
     store.db.close();
@@ -45,7 +45,7 @@ describe("control's store migrations", () => {
   test("a new store is not copied", () => {
     const path = fresh();
     const store = new ControlStore(path);
-    assert.equal(version(store.db), 7);
+    assert.equal(version(store.db), 8);
     store.db.close();
     assert.deepEqual(copiesOf(path), []);
   });
@@ -56,7 +56,7 @@ describe("control's store migrations", () => {
     one.db.exec("drop table rig_update; delete from schema_migrations where version >= 2");
     one.db.close();
     const store = new ControlStore(path);
-    assert.equal(version(store.db), 7);
+    assert.equal(version(store.db), 8);
     assert.ok(store.db.prepare("select 1 from sqlite_master where name = 'rig_update'").get());
     store.db.close();
     assert.deepEqual(
@@ -81,7 +81,7 @@ describe("control's store migrations", () => {
       row.run(id, agent);
     three.db.close();
     const store = new ControlStore(path);
-    assert.equal(version(store.db), 7);
+    assert.equal(version(store.db), 8);
     const agents = store.db.prepare("select agent from model_call order by event_id").all();
     assert.deepEqual(
       agents.map((r) => r.agent),
@@ -94,17 +94,34 @@ describe("control's store migrations", () => {
     );
   });
 
+  test("a rig's events are read in pages in control's order from an index, with no sort", () => {
+    const store = new ControlStore(":memory:");
+    // The views' paged read (RigEvents.after, lean, on the rig's ledger).
+    const plan = store.db
+      .prepare(
+        "explain query plan select seq from rig_event where rig = ? and ledger_id = ? and kind != 'model_call' and seq > ? order by seq limit ?",
+      )
+      .all("rig-a", "l", 0, 5000)
+      .map((r) => String(r.detail));
+    assert.ok(
+      plan.some((d) => d.includes("rig_event_ledger_seq")),
+      plan.join("; "),
+    );
+    assert.ok(!plan.some((d) => d.includes("TEMP B-TREE")), plan.join("; "));
+    store.db.close();
+  });
+
   test("a store newer than this code is refused, naming the copy to restore", () => {
     const path = fresh();
     const old = new DatabaseSync(path);
     old.exec(V010);
     old.close();
     const store = new ControlStore(path);
-    store.db.prepare("insert into schema_migrations (version) values (8)").run();
+    store.db.prepare("insert into schema_migrations (version) values (9)").run();
     store.db.close();
     assert.throws(
       () => new ControlStore(path),
-      /control store is at schema version 8, newer than this code's 7: .*the copy made then: .*control\.db\.v0\..*\.copy/,
+      /control store is at schema version 9, newer than this code's 8: .*the copy made then: .*control\.db\.v0\..*\.copy/,
     );
   });
 });

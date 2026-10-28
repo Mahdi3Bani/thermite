@@ -149,6 +149,7 @@ The question of an assignment that expires while its models download is goal [17
   | 200,000 | 1,035 ms | 1,045 ms | 1.2 ms | 8.6 ms | 20.6 MiB |
 
   The first read is mostly the store's read, not the fold (332 ms and 15 ms at 100,000 events): `store.events` walks the rig's index again for each page of 5,000. An index on the rig's ledger and seq, or pages by seq, would cut it; that is for the store's split.
+- 2026-10-28 14:48 UTC: The first read of a rig's fold: control's store has an index on a rig's events by ledger and seq (store migration 8), so the views' paged read starts at a seq and stops after the page, where it read the whole ledger and sorted it for each page of 5,000. Measured the same way, median of 5: 217 ms at 100,000 events (384 before) and 442 ms at 200,000 (1,040), now linear; a read after new events uses the same read.
 
 ---
 

@@ -1,3 +1,4 @@
+import type { DatabaseSync } from "node:sqlite";
 import { canonicalJson } from "../../core/canonical.ts";
 import { currentEvent } from "../../core/names.ts";
 import { MODEL_CALL_EVENT, ModelCallBody } from "../../core/usage.ts";
@@ -8,6 +9,15 @@ import type { IngestReport } from "./report.ts";
  * The events rigs reported (goal 125, T6): a report taken, with its events, and the events read
  * back, by rig and by run.
  */
+
+/**
+ * A rig's events by ledger, in control's order (store migration 8): a view's pages of events start
+ * at a seq and stop after a page, where they read the whole ledger again for each page and sorted
+ * it.
+ */
+export function eventsInOrderIndex(db: DatabaseSync): void {
+  db.exec("create index if not exists rig_event_ledger_seq on rig_event (rig, ledger_id, seq)");
+}
 
 export class RigEvents extends StorePart {
   /**
