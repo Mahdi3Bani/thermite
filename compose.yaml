@@ -77,13 +77,16 @@ services:
         include users/users.conf
         EOF
         trap 'exit 0' TERM INT
+        # Control writes the users as its own user (10001): the folder is given to it here, since
+        # not every engine gives a new volume the owner its first container's image has.
+        chown 10001:10001 /etc/nats/users
         [ -s /etc/nats/users/users.conf ] || echo "waiting for control to write the bus's users"
         until [ -s /etc/nats/users/users.conf ]; do sleep 1; done
         exec nats-server -c /etc/nats/thermite.conf
     volumes:
       - nats-data:/data
-      - nats-users:/etc/nats/users:ro
-    # Control first: it makes the users' volume, as its owner, and writes the users file.
+      - nats-users:/etc/nats/users
+    # Control first: it writes the users file.
     depends_on: [control]
     networks: [control]
     healthcheck:
@@ -92,6 +95,8 @@ services:
       timeout: 5s
       retries: 3
     cap_drop: [ALL]
+    # Only to give the users' folder to control's user as it starts (above).
+    cap_add: [CHOWN]
     security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
 
