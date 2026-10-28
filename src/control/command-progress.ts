@@ -1,7 +1,6 @@
 import { harnessConfirmed } from "./issue/index.ts";
 import { sameModel } from "./providers/models.ts";
 import type { CommandRow, ControlStore } from "./store/index.ts";
-import { EXPORT_WHERE, exportWords } from "./ui/exports.ts";
 import { foldCheck, type RigCheckView, type RigModelView, readModelInfo } from "./views/index.ts";
 
 /**
@@ -20,12 +19,31 @@ export interface Progress {
   reload?: boolean;
 }
 
+/** An export_now's payload in words (goal 103): what was asked for, and what the rig made. */
+export function exportWords(p: { full?: unknown; run?: unknown }) {
+  const run = typeof p.run === "string" ? p.run : undefined;
+  const full = p.full === true;
+  return {
+    asked: run
+      ? `An export of ${run} alone was asked for.`
+      : full
+        ? "A full export was asked for."
+        : "An export was asked for.",
+    made: (name: string) =>
+      `It made ${run ? `the export of ${run}` : full ? "the full export" : "export"} ${name}.`,
+  };
+}
+
+/** Where an export the owner asked for shows, in words (after "Sent", and once the rig did it). */
+export const EXPORT_WHERE =
+  "When all its files reach control, it shows on the Exports page, ready to download. A rig with a results repository pushes it there instead.";
+
 /** A time of day as the dashboard writes it: "03:41 UTC". */
 export const clockUtc = (iso: string): string => `${iso.slice(11, 16)} UTC`;
 
 /**
  * How long something has run, as a running check's chip says it: "45 s", "1 m 12 s", "2 h 5 m".
- * The page script counts on with the same words (follow-client.ts, fwElapsed).
+ * The page script counts on with the same words (ui/commands/client.ts, fwElapsed).
  */
 export function elapsedWords(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));

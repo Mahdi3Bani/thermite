@@ -11,9 +11,9 @@ import {
   contextApplied,
 } from "../../core/compaction.ts";
 import { parseContract } from "../../core/contract.ts";
+import { isRigCheck } from "../../core/ids.ts";
 import { cappedWindow } from "../providers/models.ts";
 import type { AgentRole, CampaignSources, ControlStore } from "../store/index.ts";
-import { isRigCheck } from "../ui/campaigns/list.ts";
 import { RUN_FIELDS } from "./copy.ts";
 
 /**

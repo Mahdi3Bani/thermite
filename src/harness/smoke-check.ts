@@ -3,6 +3,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { git as gitRun, gitText } from "../common/git.ts";
+import { RIG_CHECK_PREFIX } from "../core/ids.ts";
 import { JUDGED_LIFECYCLES } from "../core/verdicts.ts";
 import type { RigCheckReport } from "./agents/model-check.ts";
 import type { HarnessService } from "./service/index.ts";
@@ -118,7 +119,7 @@ export async function smokeCheck(o: {
     readFileSync(join(o.checksDir, "examples", "contracts", "smoke-cpu.json"), "utf8"),
   ) as Record<string, unknown>;
   // A campaign per kit commit: a newer image's smoke never collides with an older contract.
-  contract.campaign = `rig-check-${kitName}-${kit.slice(0, 8)}`;
+  contract.campaign = `${RIG_CHECK_PREFIX}${kitName}-${kit.slice(0, 8)}`;
   contract.version = 1;
   contract.title = `Rig check: smoke (${kitName})`;
   contract.project = {

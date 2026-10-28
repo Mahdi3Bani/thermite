@@ -9,10 +9,6 @@
   ],
   "src/cli/thermite/runpod.ts": ["src/control/runpod/rig-view.ts"],
   "src/control/api/index.ts": ["src/control/dashboard/index.ts"],
-  "src/control/campaigns/context.ts": ["src/control/ui/campaigns/list.ts"],
-  "src/control/command-progress.ts": ["src/control/ui/exports.ts"],
-  "src/control/campaigns/copy.ts": ["src/control/ui/campaigns/list.ts"],
-  "src/control/providers/plan-usage.ts": ["src/control/ui/components/index.ts"],
   "src/supervisor/advise/context.ts": ["src/harness/mcp-gateway.ts"],
   "src/supervisor/advise/state.ts": ["src/harness/mcp-gateway.ts"],
   "src/supervisor/advisor-cli.ts": [

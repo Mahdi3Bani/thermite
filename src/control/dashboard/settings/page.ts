@@ -15,7 +15,6 @@ import { RECIPES, type RecipeId, recipeScript, scriptSha } from "../../machines/
 import { fingerprint as fingerprintOf } from "../../machines/ssh.ts";
 import { CHATGPT_REDIRECT } from "../../providers/chatgpt.ts";
 import { ANTHROPIC_BASE, capWords, isOpencodeOwn } from "../../providers/models.ts";
-import { usageBlock, usageChips } from "../../providers/plan-usage.ts";
 import { HARNESS_NAMES } from "../../rigs/model.ts";
 import { type RunpodFacts, runpodLine } from "../../runpod/cloud.ts";
 import { cheapestGpu, DEFAULT_DISK_GB, type TestView } from "../../runpod/tests.ts";
@@ -27,6 +26,7 @@ import {
 } from "../../store/index.ts";
 import { infoLabel } from "../../ui/campaigns/new/index.ts";
 import { ago, esc } from "../../ui/components/index.ts";
+import { usageBlock, usageChips } from "../../ui/providers/usage.ts";
 import { checkFollowUrl, modelCheckHtml } from "../../ui/rigs/checks.ts";
 import { modelPricesBlock } from "../../ui/usage.ts";
 import type { Dashboard } from "../context.ts";

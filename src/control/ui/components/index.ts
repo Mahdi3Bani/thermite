@@ -1,4 +1,5 @@
 import type { Hardware } from "../../../core/hardware.ts";
+import { isRigCheck } from "../../../core/ids.ts";
 import { ANSWERED, RESEARCH_REVIEW } from "../../../core/research-check.ts";
 import { SCREENED_VERDICTS, WON_VERDICTS } from "../../../core/verdicts.ts";
 import { championWords } from "../../metric-values.ts";
@@ -543,7 +544,7 @@ function navCampaigns(camps: CampaignView[], nav: NavCampaigns | undefined): str
   const shown = camps.filter(
     (k) =>
       !archived.has(k.name) &&
-      (!k.name.startsWith("rig-check-") || k.runs.some((x) => x.run.status === "running")),
+      (!isRigCheck(k.name) || k.runs.some((x) => x.run.status === "running")),
   );
   const row = (k: CampaignView) => {
     const st = campaignState(k);

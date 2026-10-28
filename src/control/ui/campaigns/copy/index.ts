@@ -1,5 +1,5 @@
 import type { AgentsContext } from "../../../../core/compaction.ts";
-import { NAME_PATTERN, NAME_WORDS } from "../../../../core/ids.ts";
+import { isRigCheck, NAME_PATTERN, NAME_WORDS } from "../../../../core/ids.ts";
 import {
   AGENT_KINDS,
   type AgentKind,
@@ -66,7 +66,7 @@ export function suggestCopyName(base: string, taken: ReadonlySet<string>): strin
   const stem = m?.[1] ?? base;
   for (let c = m?.[2] ? m[2].charCodeAt(0) + 1 : 98; c <= 122; c++) {
     const name = `${stem}-${String.fromCharCode(c)}`;
-    if (!taken.has(name) && NAME_PATTERN.test(name) && !name.startsWith("rig-check-")) return name;
+    if (!taken.has(name) && NAME_PATTERN.test(name) && !isRigCheck(name)) return name;
   }
   return "";
 }

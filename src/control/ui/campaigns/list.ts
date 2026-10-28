@@ -1,3 +1,4 @@
+import { isRigCheck } from "../../../core/ids.ts";
 import { type CampaignView, newestRun, type RigView, type RunView } from "../../views/index.ts";
 import {
   ago,
@@ -12,8 +13,8 @@ import {
 import { runProgress, waitingOn } from "../operator/index.ts";
 import { infoLabel } from "./new/index.ts";
 
-/** The smoke checks control runs on each new rig make campaigns of their own: hidden by default. */
-export const isRigCheck = (name: string) => name.startsWith("rig-check-");
+// The smoke checks control runs on each new rig make campaigns of their own: hidden by default.
+export { isRigCheck };
 
 /**
  * What the Campaigns list shows: active and paused (the default), one state, everything, or the

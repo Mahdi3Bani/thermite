@@ -30,6 +30,14 @@ export const CampaignId = z.string().regex(NAME_PATTERN, `a campaign's name is $
 export const RunId = z.string().regex(NAME_PATTERN, `a run's name is ${NAME_WORDS}`);
 
 /**
+ * The campaigns of the smoke checks a rig runs when control sets it up: the harness names them
+ * with this prefix, control hides them on the Campaigns list by default, and no other campaign may
+ * take a name that starts with it.
+ */
+export const RIG_CHECK_PREFIX = "rig-check-";
+export const isRigCheck = (name: string): boolean => name.startsWith(RIG_CHECK_PREFIX);
+
+/**
  * A run's things, each with its own ID that is unique where it is used (goal 170): an attempt
  * (`a-`), a trial (`t-`) and an experiment in the run's queue (`x-`), each minted where it is
  * made, from random bytes.
