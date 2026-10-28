@@ -9,6 +9,7 @@ import type { KitRepos } from "../kits/repos.ts";
 import type { DeploymentDriver } from "../lifecycle.ts";
 import type { MachineSsh } from "../machines/ssh.ts";
 import type { McpServers } from "../mcp-servers/index.ts";
+import type { MountPages } from "../pages.ts";
 import { type ControlParts, controlParts } from "../parts.ts";
 import type { probeRepository, readKitManifest } from "../repo-probe.ts";
 import type { RigImages } from "../rigs/setup.ts";
@@ -130,6 +131,8 @@ export interface ControlOptions {
    * them (a test's control), the API makes its own from the options above.
    */
   parts?: ControlParts | undefined;
+  /** Control's pages (control/pages.ts: the dashboard's mountDashboard); none: REST and MCP only. */
+  pages?: MountPages | undefined;
 }
 
 /** What every section of the API takes, built once by createControlApi. */

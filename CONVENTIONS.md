@@ -133,7 +133,7 @@ These rules give the code one shape, so a reader knows where a thing lives befor
 - **`src/common`** holds runtime tools: settings, logs, errors, files, git, subprocesses and HTTP.
 - **`src/agents`** holds the agent runtimes that the harness and the supervisor share: the agent programs' adapters, the model client, the MCP tools and the roles' definitions.
 - **The parts** (`harness`, `supervisor`, `control`, `cli`, `release`) import `core`, `common` and `agents`, never each other. Code that two parts need goes to one of those three, or to a shared folder named for what it is.
-- **Domain modules never import page code** (`control/ui/`). REST, MCP and the dashboard call the domain modules.
+- **Domain modules never import page code** (`control/ui/` and `control/dashboard/`). REST, MCP and the dashboard call the domain modules. Only control's `main.ts`, which makes control, hands the API its pages.
 - **Tests and scripts may import any part.** Production code never imports them.
 - `npm run check` enforces these imports. Today's exceptions are listed by file in the check, and each is removed when its code moves.
 

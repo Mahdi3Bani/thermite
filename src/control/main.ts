@@ -10,6 +10,7 @@ import { generateSigningKeys } from "../core/commands.ts";
 import { createControlApi } from "./api/index.ts";
 import { BUS_USERS_SYNC_MS, BusUsers, busUsersFile } from "./bus/users.ts";
 import { Credential } from "./credential.ts";
+import { mountDashboard } from "./dashboard/index.ts";
 import { followReports } from "./ingest.ts";
 import { sendCommandsOn } from "./issue/bus.ts";
 import { KitRepos } from "./kits/repos.ts";
@@ -138,6 +139,8 @@ async function main(): Promise<void> {
       requireKeyAcceptance,
       sessionDays: readNumber(env, CONTROL_NUMBERS.sessionDays),
       parts,
+      // The dashboard's pages.
+      pages: mountDashboard,
       // Exports from rigs without a results repository, kept in control's state.
       exportsDir: join(dir, "exports"),
       // Who may use the message bus: a rig's new key gets its user there.

@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { serve } from "@hono/node-server";
 import { createControlApi } from "../../../src/control/api/index.ts";
+import { mountDashboard } from "../../../src/control/dashboard/index.ts";
 import { issueCommand } from "../../../src/control/issue/index.ts";
 import { ControlStore } from "../../../src/control/store/index.ts";
 import { generateSigningKeys } from "../../../src/core/commands.ts";
@@ -89,7 +90,10 @@ store.modelProviders.setModels("demo-models", [
 
 const port = Number(values.port);
 serve({
-  fetch: createControlApi(store, tokens, keys.privateKeyPem, { staleAfterMs: 180_000 }).fetch,
+  fetch: createControlApi(store, tokens, keys.privateKeyPem, {
+    staleAfterMs: 180_000,
+    pages: mountDashboard,
+  }).fetch,
   hostname: "127.0.0.1",
   port,
 });

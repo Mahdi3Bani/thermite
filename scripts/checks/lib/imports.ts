@@ -1,10 +1,10 @@
 // The import rule (CONVENTIONS.md, "The parts and how they import"). `core` holds contracts and
 // does no I/O apart from node:crypto; `common` holds runtime tools; `agents` holds the agent
 // runtimes the harness and the supervisor share. The parts (harness, supervisor, control, cli,
-// release) import those three, never each other. Domain modules never import page code, and
-// production code never imports tests or scripts. Today's exceptions are listed by file in
-// scripts/import-exceptions.json; the check fails on a new one, and on a listed one that is gone,
-// until the list is lowered, so the list only shrinks.
+// release) import those three, never each other. Domain modules never import page code (a part's
+// main.ts, which makes the part, may), and production code never imports tests or scripts.
+// Today's exceptions are listed by file in scripts/import-exceptions.json; the check fails on a
+// new one, and on a listed one that is gone, until the list is lowered, so the list only shrinks.
 
 /** The exceptions, from the repository's root. */
 export const EXCEPTIONS_PATH = "scripts/import-exceptions.json";
@@ -66,6 +66,11 @@ export function isPage(path: string): boolean {
   return path.startsWith("src/control/ui/") || path.startsWith("src/control/dashboard/");
 }
 
+/** A part's main.ts: what makes the part (its composition root), the pages among the rest. */
+export function isMain(path: string): boolean {
+  return /^src\/[^/]+\/main\.ts$/.test(path);
+}
+
 /** The rule one import breaks, if it breaks one. Only production code (`src/`) is held to it. */
 export function broken(file: string, spec: string): Broken | null {
   const from = partOf(file);
@@ -80,7 +85,8 @@ export function broken(file: string, spec: string): Broken | null {
     return { file, target, rule: "tests" };
   const to = partOf(target);
   if (!to || to === from) {
-    if (to === "control" && isPage(target) && !isPage(file)) return { file, target, rule: "page" };
+    if (to === "control" && isPage(target) && !isPage(file) && !isMain(file))
+      return { file, target, rule: "page" };
     return null;
   }
   const allowed = SHARED[from] ?? FOR_PARTS;

@@ -85,6 +85,9 @@ describe("the import rule", () => {
     assert.equal(rule("src/control/dashboard/index.ts", "../ui/components.ts"), null);
     assert.equal(rule("src/control/dashboard/rigs/page.ts", "../../ui/components.ts"), null);
     assert.equal(rule("src/control/ui/runs.ts", "../store.ts"), null);
+    // Control's main makes control, its pages among the rest.
+    assert.equal(rule("src/control/main.ts", "./dashboard/index.ts"), null);
+    assert.equal(rule("src/control/api/index.ts", "../dashboard/index.ts"), "page");
   });
   test("production code never imports tests or scripts; tests may import anything", () => {
     assert.equal(rule("src/control/x.ts", "../../tests/helpers/fixtures.ts"), "tests");

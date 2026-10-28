@@ -7,6 +7,5 @@
     "src/harness/broker/devices.ts",
     "src/harness/selftest/index.ts"
   ],
-  "src/cli/thermite/runpod.ts": ["src/control/runpod/rig-view.ts"],
-  "src/control/api/index.ts": ["src/control/dashboard/index.ts"]
+  "src/cli/thermite/runpod.ts": ["src/control/runpod/rig-view.ts"]
 }

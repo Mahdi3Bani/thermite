@@ -5,6 +5,7 @@ import {
   type ControlTokens,
   createControlApi,
 } from "../../src/control/api/index.ts";
+import { mountDashboard } from "../../src/control/dashboard/index.ts";
 import { ControlStore } from "../../src/control/store/index.ts";
 import { generateSigningKeys, type KeyPairPem } from "../../src/core/commands.ts";
 import { createHarnessApi } from "../../src/harness/api/index.ts";
@@ -88,6 +89,7 @@ function makeControl(
   const opts = typeof options === "function" ? options(store, keys) : options;
   const control = createControlApi(store, tokens, keys.privateKeyPem, {
     staleAfterMs: 180_000,
+    pages: mountDashboard,
     ...opts,
   });
   const owner = typeof tokens.admin === "string" ? tokens.admin : ADMIN;

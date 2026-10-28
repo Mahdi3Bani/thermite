@@ -3,7 +3,6 @@ import { HTTPException } from "hono/http-exception";
 import { log, redact } from "../../common/env.ts";
 import { answerOf } from "../../common/errors.ts";
 import { watchDrains } from "../clusters/drain.ts";
-import { createDashboard } from "../dashboard/index.ts";
 import { ExportFiles } from "../exports.ts";
 import { mountMcp } from "../mcp/index.ts";
 import { mountMcpServerRoutes } from "../mcp-servers/routes.ts";
@@ -109,32 +108,29 @@ export function createControlApi(
 
   // A draining cluster rig's pods restart once nothing runs on it (clusters/drain.ts).
   watchDrains(parts, opts.drainWatchMs);
-  app.route(
-    "/",
-    createDashboard(store, {
-      admin: owner,
-      privateKeyPem,
-      staleAfterMs: opts.staleAfterMs,
-      driver: opts.driver,
-      sessionDays: opts.sessionDays,
-      secrets,
-      chatgpt,
-      providerFetch: opts.providerFetch,
-      kits: parts.kits,
-      probeRepo: opts.probeRepo,
-      readKit: opts.readKit,
-      cloudFetch: opts.cloudFetch,
-      runpodTests,
-      parts,
-      mcpServers,
-      runpodRigs,
-      runpodDriver,
-      control,
-      offlineAfterMs: opts.offlineAfterMs,
-      rigUpdates: opts.rigUpdates,
-      exportFiles,
-    }),
-  );
+  opts.pages?.(app, store, {
+    admin: owner,
+    privateKeyPem,
+    staleAfterMs: opts.staleAfterMs,
+    driver: opts.driver,
+    sessionDays: opts.sessionDays,
+    secrets,
+    chatgpt,
+    providerFetch: opts.providerFetch,
+    kits: parts.kits,
+    probeRepo: opts.probeRepo,
+    readKit: opts.readKit,
+    cloudFetch: opts.cloudFetch,
+    runpodTests,
+    parts,
+    mcpServers,
+    runpodRigs,
+    runpodDriver,
+    control,
+    offlineAfterMs: opts.offlineAfterMs,
+    rigUpdates: opts.rigUpdates,
+    exportFiles,
+  });
   app.get("/", (c) => c.redirect("/ui", 302));
   mountMcp(app, store, {
     admin: owner,

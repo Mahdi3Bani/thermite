@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { MountPages } from "../pages.ts";
 import type { ControlStore } from "../store/index.ts";
 import { actionRoutes } from "./actions.ts";
 import { attemptRoutes } from "./attempt.ts";
@@ -70,3 +71,8 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
   commandRoutes(app, dash);
   return app;
 }
+
+/** The dashboard as control's API mounts it (control/pages.ts): every page under "/". */
+export const mountDashboard: MountPages = (app, store, o) => {
+  app.route("/", createDashboard(store, o));
+};
