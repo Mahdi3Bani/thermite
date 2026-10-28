@@ -1,4 +1,4 @@
-import { taskFields } from "../../research-view.ts";
+import { taskFields } from "../research.ts";
 import type { ExperimentView, RunView, StoredEvent } from "../types.ts";
 import type { Handler, Handlers } from "./index.ts";
 

@@ -1,17 +1,17 @@
 import type { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { redact } from "../../common/env.ts";
-import { rigModels, setRigModel } from "../agent-models.ts";
-import { ClusterResourcesBody, clusterResourcesRequest } from "../cluster-resources.ts";
+import { bodyRefusal } from "../campaigns/start-run.ts";
 import { setClusterRigResources } from "../clusters/resize.ts";
-import { RigModelBody, rigModelAnswer, rigModelRequest, rigModelsAnswer } from "../rig-model.ts";
+import { ClusterResourcesBody, clusterResourcesRequest } from "../clusters/resources.ts";
+import { rigModels, setRigModel } from "../rigs/agent-models.ts";
+import { RigModelBody, rigModelAnswer, rigModelRequest, rigModelsAnswer } from "../rigs/model.ts";
 import {
   RigSettingsBody,
   rigSettingsAnswer,
   rigSettingsRead,
   setRigSettings,
-} from "../rig-settings.ts";
-import { bodyRefusal } from "../start-run.ts";
+} from "../rigs/settings.ts";
 import type { ApiContext } from "./context.ts";
 
 /**

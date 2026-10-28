@@ -1,7 +1,7 @@
-import { judgeShareOf } from "../cluster-resources.ts";
+import { judgeShareOf } from "../clusters/resources.ts";
 import type { ControlParts } from "../parts.ts";
-import { UPDATE_STEP_WORDS } from "../rig-update.ts";
 import type { ClusterRig } from "../store/index.ts";
+import { UPDATE_STEP_WORDS } from "./update.ts";
 
 /**
  * What setting a rig up takes, wherever control sets it up (on a machine, on a cluster, or where

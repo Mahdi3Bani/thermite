@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, test } from "node:test";
-import { listedPrice, listModels, providerBase } from "../../src/control/providers.ts";
+import { listedPrice, listModels, providerBase } from "../../src/control/providers/models.ts";
 import { ControlStore } from "../../src/control/store/index.ts";
 
 const answer =

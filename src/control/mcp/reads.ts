@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { USAGE_PERIODS } from "../../core/usage.ts";
-import { agentEvent, agentRun } from "../agent-view.ts";
 import {
   RESEARCH_DETAIL,
   RUN_DETAIL_INPUT,
@@ -10,6 +9,7 @@ import {
   runQueue,
 } from "../run-lists.ts";
 import { modelUsage } from "../usage.ts";
+import { agentEvent, agentRun } from "../views/agent.ts";
 import { currentChampion, leaderboard } from "../views/index.ts";
 import type { ToolContext } from "./context.ts";
 

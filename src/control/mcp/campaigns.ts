@@ -9,7 +9,13 @@ import {
   campaignContextAnswer,
   campaignContextFields,
   setCampaignContext,
-} from "../campaign-context.ts";
+} from "../campaigns/context.ts";
+import {
+  type CopyCampaignRequest,
+  copyACampaign,
+  copyCampaignAnswer,
+  copyCampaignFields,
+} from "../campaigns/copy.ts";
 import {
   archiveCampaign,
   campaignFoldersAnswer,
@@ -20,20 +26,14 @@ import {
   renameFolder,
   type ShelfOutcome,
   unarchiveCampaign,
-} from "../campaign-folders.ts";
-import {
-  type CopyCampaignRequest,
-  copyACampaign,
-  copyCampaignAnswer,
-  copyCampaignFields,
-} from "../copy-campaign.ts";
+} from "../campaigns/folders.ts";
 import {
   type StartRunBody,
   startARun,
   startRunAnswer,
   startRunFields,
   startRunRequest,
-} from "../start-run.ts";
+} from "../campaigns/start-run.ts";
 import { rigView } from "../views/index.ts";
 import type { ToolContext } from "./context.ts";
 

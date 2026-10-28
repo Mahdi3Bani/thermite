@@ -3,10 +3,10 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import type { CampaignDraft } from "../../src/control/campaign-builder.ts";
+import type { CampaignDraft } from "../../src/control/campaigns/builder.ts";
+import { startCampaign, startRun } from "../../src/control/campaigns/new.ts";
 import { issueCommand } from "../../src/control/issue/index.ts";
-import { KitRepos } from "../../src/control/kit-repos.ts";
-import { startCampaign, startRun } from "../../src/control/new-campaign.ts";
+import { KitRepos } from "../../src/control/kits/repos.ts";
 import { ControlStore } from "../../src/control/store/index.ts";
 import { generateSigningKeys, verifyCommand } from "../../src/core/commands.ts";
 

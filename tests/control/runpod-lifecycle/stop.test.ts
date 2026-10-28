@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { STOP_WAIT_MS } from "../../../src/control/runpod-lifecycle.ts";
-import type { RunpodRigView } from "../../../src/control/runpod-rig-view.ts";
+import { STOP_WAIT_MS } from "../../../src/control/runpod/lifecycle.ts";
+import type { RunpodRigView } from "../../../src/control/runpod/rig-view.ts";
 import {
   exportName,
   exportOnControl,

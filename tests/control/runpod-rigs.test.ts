@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { podPortUrl } from "../../src/control/runpod.ts";
-import type { RunpodRigView } from "../../src/control/runpod-rig-view.ts";
-import { DEFAULT_IDLE_STOP_MINUTES, RunpodRigs } from "../../src/control/runpod-rigs.ts";
+import { podPortUrl } from "../../src/control/runpod/cloud.ts";
+import type { RunpodRigView } from "../../src/control/runpod/rig-view.ts";
+import { DEFAULT_IDLE_STOP_MINUTES, RunpodRigs } from "../../src/control/runpod/rigs.ts";
+import { ControlTunnels } from "../../src/control/runpod/tunnel.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
 import { ControlStore } from "../../src/control/store/index.ts";
-import { ControlTunnels } from "../../src/control/tunnel.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 import { keySha256 } from "../../src/core/tunnel.ts";
 import { controlOnly, mcpClient } from "../helpers/control-stack.ts";

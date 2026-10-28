@@ -1,6 +1,6 @@
 /**
  * RunPod for tests and acceptance runs: the calls control makes to RunPod's REST API v2
- * (src/control/runpod.ts) and RunPod's HTTP proxy, behind a fake fetch. Never the real RunPod: a
+ * (src/control/runpod/cloud.ts) and RunPod's HTTP proxy, behind a fake fetch. Never the real RunPod: a
  * request to any other host throws, so nothing leaves the test, and no key but the fake's works.
  *
  * Pods move as RunPod's do, one step per read of the pod: a new pod is PROVISIONING and a started

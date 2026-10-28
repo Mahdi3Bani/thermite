@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
-import { CampaignDraft } from "../../src/control/campaign-builder.ts";
+import { CampaignDraft } from "../../src/control/campaigns/builder.ts";
 import { assignRefusal } from "../../src/control/issue/index.ts";
 import { CommandPayloads, MESSAGE_TARGET } from "../../src/core/commands.ts";
 import {

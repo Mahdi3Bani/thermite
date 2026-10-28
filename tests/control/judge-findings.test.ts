@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { KitRepos } from "../../src/control/kit-repos.ts";
+import { KitRepos } from "../../src/control/kits/repos.ts";
 import { type GoalContract, parseContract } from "../../src/core/contract.ts";
 import { goalChecks } from "../../src/harness/goal-checks.ts";
 import { KitSchema } from "../../src/harness/kit.ts";

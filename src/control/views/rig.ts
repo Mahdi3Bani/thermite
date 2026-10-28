@@ -1,12 +1,12 @@
 import { readHardware } from "../../core/hardware.ts";
 import { type BuildInfo, buildInfo } from "../../core/version.ts";
-import { standingOf } from "../research-view.ts";
-import { type RunpodRigView, runpodRigView } from "../runpod-rig-view.ts";
+import { type RunpodRigView, runpodRigView } from "../runpod/rig-view.ts";
 import type { ControlStore } from "../store/index.ts";
 import { type RigVersions, rigVersions } from "../versions.ts";
 import { runDirections } from "./directions.ts";
 import type { FoldedRig } from "./fold/index.ts";
 import { readGpuSplit, readModelInfo, readSettings, reportingState } from "./report.ts";
+import { standingOf } from "./research.ts";
 import { ownCopier } from "./sharing.ts";
 import type { RigView, RunView, StoredEvent } from "./types.ts";
 import { doingsOf, type TrialDoing } from "./work.ts";

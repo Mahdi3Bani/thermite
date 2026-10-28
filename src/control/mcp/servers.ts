@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { redirectUriOf, ServerBody, serverJson } from "../mcp-server-routes.ts";
+import { redirectUriOf, ServerBody, serverJson } from "../mcp-servers/routes.ts";
 import type { ToolContext } from "./context.ts";
 
 /** MCP servers for the agents (goal 068): the owner's, as in Settings › Providers. */

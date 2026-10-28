@@ -59,7 +59,7 @@ The writers and verifiers of the documentation site (goal [060](_completed/060-d
 - [ ] Control's Quadlet units set no `LogDriver`, so where Podman gives them the `passthrough` driver, `podman logs` shows nothing for a machine rig (`src/control/machines/deploy.ts`; not confirmed).
 - [ ] Cluster acceptance runs CPU rigs only: neither the device plugin path nor the DRA path for GPUs is tested (`scripts/cluster-acceptance.mjs`).
 - [ ] A join command is used up when its script is fetched, before the script's checks run, so any missing piece on the machine means a new command (`src/control/join.ts`).
-- [ ] A RunPod test pod's cost on its card is the hourly price times the time it ran, without the storage that RunPod also bills (`src/control/runpod-tests.ts`).
+- [ ] A RunPod test pod's cost on its card is the hourly price times the time it ran, without the storage that RunPod also bills (`src/control/runpod/tests.ts`).
 
 ### Rig lifecycle and tokens
 
@@ -98,18 +98,18 @@ The writers and verifiers of the documentation site (goal [060](_completed/060-d
 
 ### New campaign
 
-- [x] Fixed in `b233d44`. The campaign page's start card refused a rig with no model even for "a try of the kit: no agents"; the model check now runs only for a run with agents (`src/control/start-run.ts`).
-- [ ] New campaign decides whether to start at once from the model's name alone, so the same name from another provider starts the run before the rig has the new model (`src/control/new-campaign.ts`; worked out from the code).
+- [x] Fixed in `b233d44`. The campaign page's start card refused a rig with no model even for "a try of the kit: no agents"; the model check now runs only for a run with agents (`src/control/campaigns/start-run.ts`).
+- [ ] New campaign decides whether to start at once from the model's name alone, so the same name from another provider starts the run before the rig has the new model (`src/control/campaigns/new.ts`; worked out from the code).
 - [ ] The help for **Questions** says "Every finding must answer one of them", but findings name no question; only claims do (`src/control/ui/new-campaign.ts`).
 - [ ] The try's description says it "runs every case once", but a try of a hill climb measures the starting point's noise on the measured cases only and never runs a hidden case (`src/control/ui/new-campaign.ts`). Found by running tutorial 4.
 - [ ] Plurals on the page: "1 files" and "1 agent work" (`src/control/ui/new-campaign.ts`).
-- [ ] "Agents working at once" sets the contract's lane count, not how many agents work at once; that is the rig's **Workers at a time** (default 1), so with the defaults the lanes take turns (`src/control/campaign-builder.ts`, `src/harness/agents/scheduler/context.ts`).
+- [ ] "Agents working at once" sets the contract's lane count, not how many agents work at once; that is the rig's **Workers at a time** (default 1), so with the defaults the lanes take turns (`src/control/campaigns/builder.ts`, `src/harness/agents/scheduler/context.ts`).
 - [ ] "Try the kit first" says the judge runs every case once, but a hill-climb try is a calibration on the visible cases only and the hidden tests never run, so a wrong expected answer for a hidden test shows up only at the first confirmation (`src/control/ui/new-campaign.ts`, `src/harness/judge/jobs/calibrate.ts`, `src/harness/judge/jobs/confirm.ts`).
 - [ ] A project that is only on your computer cannot be used: the page reads `https://` addresses, or SSH ones with a Git access, and takes kits as archives but not projects (`src/control/repo-probe.ts`).
-- [ ] Goal campaigns with an uploaded kit or a kit in a repository: "the check passes on cases" names a verifier that such a kit does not have, so the start is refused, although the upload panel suggests that choice (`src/control/campaign-builder.ts`, `src/control/ui/new-campaign-client.ts`).
+- [ ] Goal campaigns with an uploaded kit or a kit in a repository: "the check passes on cases" names a verifier that such a kit does not have, so the start is refused, although the upload panel suggests that choice (`src/control/campaigns/builder.ts`, `src/control/ui/new-campaign-client.ts`).
 - [ ] Goal campaigns: "the score reaches" cannot choose the kit's metric; it names `rate` for a kit in a repository and the first metric for an uploaded kit, because the metric field shows only for hill climbs (`src/control/ui/new-campaign-client.ts`).
 - [ ] A kit in a repository has no "Better is" or "Smallest gain that counts (%)" of its own; the page takes them from the hidden "Describe it here" fields (`src/control/ui/new-campaign-client.ts`).
-- [ ] Campaigns made on this page can never end as "not possible", because the builder never sets `infeasibility` (`src/control/campaign-builder.ts`).
+- [ ] Campaigns made on this page can never end as "not possible", because the builder never sets `infeasibility` (`src/control/campaigns/builder.ts`).
 - [ ] The page has no money or device-hours budget, only "Stop after (hours)" (`src/control/ui/new-campaign.ts`).
 - [ ] "Look it up" keeps the first commit after the Repository or Start from field changes (`src/control/ui/new-campaign-client.ts`).
 - [ ] In "Files for the check", the tick "the run reads these too" applies when the files are chosen, not when the form is sent, so files chosen before the tick stay hidden from the run (`src/control/ui/new-campaign-client.ts`).
@@ -119,7 +119,7 @@ The writers and verifiers of the documentation site (goal [060](_completed/060-d
 ### Contracts and kits
 
 - [ ] A `kit.json` that a run's start refuses is reported as a raw JSON dump, not in sentences (`src/harness/kit.ts`, `src/control/command-progress.ts`, `src/control/ui/words/rig.ts`).
-- [ ] An uploaded kit archive made with a Mac's `tar` is refused (`the archive has no kit.json at its top`) because of the `._` files it adds; control could skip them (`src/control/kit-upload.ts`).
+- [ ] An uploaded kit archive made with a Mac's `tar` is refused (`the archive has no kit.json at its top`) because of the `._` files it adds; control could skip them (`src/control/kits/upload.ts`).
 - [ ] The smoke kit reaches a rig only through **Judge smoke**: assigning a contract that names the smoke kit's commit to a fresh or reset rig fails with `kit commit … is not in kit smoke-cpu-kit; import its bundle first` until the check has run there.
 - [ ] Contract fields that are accepted but not used: `target.class`, `search_policy.allowed_purposes`, `min_duration` and `max_duration` outside research, `objective.policy`, `objective.secondary`, `monitor_only`, a hard constraint of kind `check`, the goal fields `independence_epochs`, `min_live_families`, `priority` and `parent`, and the research fields `scope.source_types`, `scope.languages` and `report_cadence.report_hours`. Build each one or remove it (`src/core/contract.ts`).
 - [ ] `project.repo` and `project.kit.repo` accept any text, but an import needs a lowercase id of 64 characters at most, so a contract that validates can be refused at assignment (`src/core/contract.ts`, `src/core/commands.ts`).
@@ -158,8 +158,8 @@ The writers and verifiers of the documentation site (goal [060](_completed/060-d
 - [ ] The model check tests only the workers' model, not a planner or advisor model given on Edit rig (`src/harness/service/checks.ts`).
 - [ ] A Claude model on an image without Claude Code fails the model check with the spawn's error, not a message that the image has no Claude Code (`src/harness/agents/claude-code/program.ts`).
 - [ ] An OpenAI-compatible provider needs an API key even when its model server needs none (`src/control/store/providers.ts`, `src/harness/agents/model.ts`).
-- [ ] A ChatGPT sign-in's access token lasts an hour and only control renews it, so a rig whose control is away for longer, or that has a `chatgpt` route from its own settings, loses its model with no warning (`src/control/chatgpt.ts`, `src/harness/agents/model.ts`).
-- [ ] A ChatGPT sign-in that has started is lost when control restarts, because it is kept in memory only (`src/control/chatgpt.ts`).
+- [ ] A ChatGPT sign-in's access token lasts an hour and only control renews it, so a rig whose control is away for longer, or that has a `chatgpt` route from its own settings, loses its model with no warning (`src/control/providers/chatgpt.ts`, `src/harness/agents/model.ts`).
+- [ ] A ChatGPT sign-in that has started is lost when control restarts, because it is kept in memory only (`src/control/providers/chatgpt.ts`).
 - [ ] Edit rig's model groups do not say which harness they need, as Providers does ("OpenCode harness only", "ChatGPT subscription: Pi or OpenCode"), so the rule shows only as an error on save (`src/control/dashboard/rigs/edit.ts`).
 - [ ] Out-of-date texts on Providers: the intro names only Pi and OpenCode v2 as harnesses, and an unknown type gives "A provider is OpenAI-compatible or Anthropic." (`src/control/dashboard/settings/page.ts`, `src/control/dashboard/settings/providers.ts`).
 
@@ -197,7 +197,7 @@ The writers and verifiers of the documentation site (goal [060](_completed/060-d
 - [ ] A cancelled command shows as `failed`, and the Commands page styles a `cancelled` status that never occurs (`src/control/store/commands.ts`, `src/control/dashboard/commands.ts`).
 - [ ] A cancel can lose a race with delivery: the harness may still apply the command, and its record later sets the status to `delivered` (`src/control/store/commands.ts`, `src/supervisor/relay/index.ts`).
 - [ ] An expired command for a rig that never asks again stays `pending` for ever (`src/control/store/commands.ts`).
-- [ ] A command's time to live can run out while the supervisor fetches what it names: the dashboard always gives 60 minutes, and a `propagate` sent through `POST /v1/commands` gets 60 minutes, not the 24 hours of control's own propagate paths (`src/control/new-campaign.ts`, `src/control/api/commands.ts`, `src/control/issue/index.ts`).
+- [ ] A command's time to live can run out while the supervisor fetches what it names: the dashboard always gives 60 minutes, and a `propagate` sent through `POST /v1/commands` gets 60 minutes, not the 24 hours of control's own propagate paths (`src/control/campaigns/new.ts`, `src/control/api/commands.ts`, `src/control/issue/index.ts`).
 - [ ] A command's outcome changes shape after the rig's next report: the harness's record replaces the supervisor's `{"status": …}` (`src/control/store/events.ts`, `src/supervisor/relay/index.ts`).
 - [ ] The harness records an owner-only refusal as a failed command, not as a `command_rejected` event like every other refusal (`src/harness/service/commands.ts`).
 - [ ] `reset_workers.reseed_commit` is accepted by the schema and always refused (`src/core/commands.ts`, `src/harness/service/commands.ts`).

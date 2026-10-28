@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { cappedWindow, capWords, contextCapRefusal } from "../../src/control/providers.ts";
+import { cappedWindow, capWords, contextCapRefusal } from "../../src/control/providers/models.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
 import { ADMIN, controlOnly, mcpClient, RIG_TOKEN, signIn } from "../helpers/control-stack.ts";
 

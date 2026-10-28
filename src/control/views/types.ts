@@ -1,5 +1,10 @@
 import type { Hardware } from "../../core/hardware.ts";
 import type { MetricValues } from "../metric-values.ts";
+import type { RunpodRigView } from "../runpod/rig-view.ts";
+import type { RigVersions } from "../versions.ts";
+import type { RigCheckView } from "./fold/checks.ts";
+import type { GoalChecks, GoalValues } from "./fold/goals.ts";
+import type { ReportingState, RigModelView, RigSettingsView } from "./report.ts";
 import type {
   HypothesisView,
   ItemDecisionView,
@@ -7,12 +12,7 @@ import type {
   ReviewFigures,
   StandingView,
   TaskYieldView,
-} from "../research-view.ts";
-import type { RunpodRigView } from "../runpod-rig-view.ts";
-import type { RigVersions } from "../versions.ts";
-import type { RigCheckView } from "./fold/checks.ts";
-import type { GoalChecks, GoalValues } from "./fold/goals.ts";
-import type { ReportingState, RigModelView, RigSettingsView } from "./report.ts";
+} from "./research.ts";
 import type { TrialDoing } from "./work.ts";
 
 /**

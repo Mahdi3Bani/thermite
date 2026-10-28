@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, test } from "node:test";
-import { kitSummary, unpackKit } from "../../src/control/kit-upload.ts";
+import { kitSummary, unpackKit } from "../../src/control/kits/upload.ts";
 
 const smoke = resolve(import.meta.dirname, "..", "..", "kits", "smoke-cpu");
 

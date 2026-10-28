@@ -17,7 +17,7 @@ import {
   buildCampaign,
   type CampaignDraft,
   shellCommand,
-} from "../../src/control/campaign-builder.ts";
+} from "../../src/control/campaigns/builder.ts";
 import { inFolder, suggestions } from "../../src/control/repo-probe.ts";
 import { parseContract } from "../../src/core/contract.ts";
 import { KitSchema, paramsText } from "../../src/harness/kit.ts";

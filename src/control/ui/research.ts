@@ -1,4 +1,5 @@
 import { questionName, RESEARCH_REVIEW } from "../../core/research-check.ts";
+import type { MessageView, RigView, RunView } from "../views/index.ts";
 import {
   type HypothesisView,
   type ItemDecisionView,
@@ -9,8 +10,7 @@ import {
   SATURATION_TASKS,
   type StandingView,
   type TaskYieldView,
-} from "../research-view.ts";
-import type { MessageView, RigView, RunView } from "../views/index.ts";
+} from "../views/research.ts";
 import {
   ago,
   esc,

@@ -8,9 +8,9 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { issueCommand } from "../../src/control/issue/index.ts";
 import { McpServers } from "../../src/control/mcp-servers/index.ts";
+import { ControlTunnels, tunnelRouteAllowed } from "../../src/control/runpod/tunnel.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
 import { ControlStore, RIG_ID } from "../../src/control/store/index.ts";
-import { ControlTunnels, tunnelRouteAllowed } from "../../src/control/tunnel.ts";
 import { generateSigningKeys, type KeyPairPem } from "../../src/core/commands.ts";
 import {
   controlCodeProof,

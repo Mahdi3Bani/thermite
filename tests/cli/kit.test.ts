@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { promisify } from "node:util";
 import { serve } from "@hono/node-server";
-import { KitRepos } from "../../src/control/kit-repos.ts";
+import { KitRepos } from "../../src/control/kits/repos.ts";
 import { controlOnly } from "../helpers/control-stack.ts";
 
 const run = promisify(execFile);

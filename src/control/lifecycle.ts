@@ -6,9 +6,9 @@ import { errorText, Refusal } from "../common/errors.ts";
 import { RIG_ID } from "../core/ids.ts";
 import { harnessConfirmed, issueCommand } from "./issue/index.ts";
 import { exportLeft, resultsLeft } from "./results-left.ts";
-import { runpodResetRefusal } from "./runpod-lifecycle.ts";
-import type { RunpodRigView } from "./runpod-rig-view.ts";
-import type { RunpodRigs } from "./runpod-rigs.ts";
+import { runpodResetRefusal } from "./runpod/lifecycle.ts";
+import type { RunpodRigView } from "./runpod/rig-view.ts";
+import type { RunpodRigs } from "./runpod/rigs.ts";
 import type { ControlStore } from "./store/index.ts";
 import { type RigView, rigView } from "./views/index.ts";
 

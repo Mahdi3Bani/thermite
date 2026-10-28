@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, test } from "node:test";
-import { KitRepos } from "../../src/control/kit-repos.ts";
+import { KitRepos } from "../../src/control/kits/repos.ts";
 import { controlStack, signIn } from "../helpers/control-stack.ts";
 import { makeJudgeEnv } from "../helpers/judge-env.ts";
 

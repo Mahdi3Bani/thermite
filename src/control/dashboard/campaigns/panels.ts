@@ -4,8 +4,8 @@ import {
   contractContext,
   ownModels,
   rigContext,
-} from "../../campaign-context.ts";
-import { copiedFromWords, copiedMcpWords } from "../../copy-campaign.ts";
+} from "../../campaigns/context.ts";
+import { copiedFromWords, copiedMcpWords } from "../../campaigns/copy.ts";
 import { campaignMcpServers } from "../../mcp-servers/index.ts";
 import { startLine, startNote } from "../../ui/campaign-context.ts";
 import { isRigCheck, lastActivity, type StartRig, startDrawer } from "../../ui/campaigns.ts";

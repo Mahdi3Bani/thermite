@@ -1,21 +1,21 @@
 import type { Hono } from "hono";
 import { errorText } from "../../../common/errors.ts";
-import { clearRigModel, giveRigModel } from "../../agent-models.ts";
-import { CHATGPT_API } from "../../chatgpt.ts";
 import { inspectKubeconfig, KUBE_NAME } from "../../clusters/kubectl.ts";
 import { checkClusterNow, NS } from "../../clusters/rigs.ts";
 import { modelFollowUrl, modelProgress, notSent } from "../../command-progress.ts";
 import { makeDeployKey } from "../../git-keys.ts";
 import { ADDRESS, USER } from "../../machines/ssh.ts";
-import { mountMcpUi } from "../../mcp-ui.ts";
-import { CLAUDE_MODELS, listModels, providerBase } from "../../providers.ts";
+import { CHATGPT_API } from "../../providers/chatgpt.ts";
+import { CLAUDE_MODELS, listModels, providerBase } from "../../providers/models.ts";
 import { probeRepository } from "../../repo-probe.ts";
-import { readRunpod } from "../../runpod.ts";
+import { clearRigModel, giveRigModel } from "../../rigs/agent-models.ts";
+import { readRunpod } from "../../runpod/cloud.ts";
 import { keyHint } from "../../secrets.ts";
 import { harnessOf, type ModelProvider, type ProviderType } from "../../store/index.ts";
 import { PRICE_NUMBER, PRICE_WORDS } from "../../ui/usage.ts";
 import { setModelPrice } from "../../usage.ts";
 import { type Ctx, type Dashboard, wantsJson } from "../context.ts";
+import { mountMcpUi } from "./mcp-servers.ts";
 import { machineUrl, newName, settingsHelpers, settingsUrl, TYPES } from "./shared.ts";
 
 /**

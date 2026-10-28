@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { quietField, rigSettingsChange } from "../../src/control/rig-settings.ts";
+import { quietField, rigSettingsChange } from "../../src/control/rigs/settings.ts";
 import {
   ADMIN,
   controlOnly,

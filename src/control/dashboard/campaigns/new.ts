@@ -4,19 +4,19 @@ import type { Hono } from "hono";
 import { errorText } from "../../../common/errors.ts";
 import { FolderSchema } from "../../../core/contract.ts";
 import { McpUses } from "../../../core/mcp.ts";
+import { ownModels } from "../../campaigns/context.ts";
+import { askOwnerFrom, startCampaign } from "../../campaigns/new.ts";
+import { kitSummary, unpackKit } from "../../kits/upload.ts";
+import { sameModel } from "../../providers/models.ts";
+import { probeRepository, readKitManifest } from "../../repo-probe.ts";
 import {
   agentsModelMissing,
   giveRigModel,
   harnessKept,
   opencodeOnlyModel,
   researchNeedsOpencode,
-} from "../../agent-models.ts";
-import { ownModels } from "../../campaign-context.ts";
-import { sendSplit, splitFor } from "../../gpu-split.ts";
-import { kitSummary, unpackKit } from "../../kit-upload.ts";
-import { askOwnerFrom, startCampaign } from "../../new-campaign.ts";
-import { sameModel } from "../../providers.ts";
-import { probeRepository, readKitManifest } from "../../repo-probe.ts";
+} from "../../rigs/agent-models.ts";
+import { sendSplit, splitFor } from "../../rigs/gpu-split.ts";
 import { campaignHref, runKey } from "../../ui/components.ts";
 import { COPY_JS } from "../../ui/copy-campaign-client.ts";
 import { newCampaignBody } from "../../ui/new-campaign.ts";

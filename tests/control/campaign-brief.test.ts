@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { KitRepos } from "../../src/control/kit-repos.ts";
+import { KitRepos } from "../../src/control/kits/repos.ts";
 import {
   BRIEF_CORE_JS,
   briefPane,

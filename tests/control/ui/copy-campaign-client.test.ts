@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { copyCampaign } from "../../../src/control/copy-campaign.ts";
+import { copyCampaign } from "../../../src/control/campaigns/copy.ts";
 import { ControlStore } from "../../../src/control/store/index.ts";
 import { suggestCopyName } from "../../../src/control/ui/copy-campaign.ts";
 import { COPY_CORE_JS, COPY_JS } from "../../../src/control/ui/copy-campaign-client.ts";

@@ -4,7 +4,7 @@ import {
   type GoalCellValues as GoalValues,
   parseGoalValues as goalValuesOf,
 } from "../../../harness/judge/goal-values.ts";
-import { newReviewFigures, panelFigures } from "../../research-view.ts";
+import { newReviewFigures, panelFigures } from "../research.ts";
 import type { Handler, Handlers } from "./index.ts";
 
 /**

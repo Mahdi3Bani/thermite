@@ -1,13 +1,13 @@
 import { z } from "zod";
 import { RIG_ID_SENTENCE } from "../../core/ids.ts";
+import { clusterRigAction } from "../clusters/actions.ts";
+import { updateRigImages } from "../clusters/images.ts";
+import { setClusterRigResources } from "../clusters/resize.ts";
 import {
   type ClusterResourcesBody,
   clusterResourcesFields,
   clusterResourcesRequest,
-} from "../cluster-resources.ts";
-import { clusterRigAction } from "../clusters/actions.ts";
-import { updateRigImages } from "../clusters/images.ts";
-import { setClusterRigResources } from "../clusters/resize.ts";
+} from "../clusters/resources.ts";
 import { addClusterRig, setClusterSlots } from "../clusters/rigs.ts";
 import type { ToolContext } from "./context.ts";
 

@@ -6,7 +6,7 @@ import { watchDrains } from "../clusters/drain.ts";
 import { createDashboard } from "../dashboard/index.ts";
 import { ExportFiles } from "../exports.ts";
 import { mountMcp } from "../mcp/index.ts";
-import { mountMcpServerRoutes } from "../mcp-server-routes.ts";
+import { mountMcpServerRoutes } from "../mcp-servers/routes.ts";
 import type { ControlStore } from "../store/index.ts";
 import { campaignRoutes } from "./campaigns.ts";
 import { commandRoutes, commandStatusRoutes } from "./commands.ts";

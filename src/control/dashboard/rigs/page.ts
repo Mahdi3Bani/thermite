@@ -1,5 +1,5 @@
 import type { Hono } from "hono";
-import { resourcesWords, sizeWords } from "../../cluster-resources.ts";
+import { resourcesWords, sizeWords } from "../../clusters/resources.ts";
 import { rigWork, workWords } from "../../clusters/rigs.ts";
 import {
   checkRow,
@@ -11,7 +11,7 @@ import {
 } from "../../command-progress.ts";
 import { exportLeft, removeWords, resultsLeft } from "../../results-left.ts";
 import { controlAddress, controlImages } from "../../rigs/setup.ts";
-import { MIN_IDLE_STOP_MINUTES } from "../../runpod-rigs.ts";
+import { MIN_IDLE_STOP_MINUTES } from "../../runpod/rigs.ts";
 import {
   type ClusterRig,
   fingerprint,

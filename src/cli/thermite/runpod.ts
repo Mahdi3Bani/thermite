@@ -1,6 +1,6 @@
 import { parseArgs } from "node:util";
 import { errorText } from "../../common/errors.ts";
-import type { RunpodRigView } from "../../control/runpod-rig-view.ts";
+import type { RunpodRigView } from "../../control/runpod/rig-view.ts";
 import {
   CLOUD_LAUNCH,
   CLOUD_RIGS,

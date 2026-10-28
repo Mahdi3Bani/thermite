@@ -3,16 +3,16 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import type { CampaignDraft } from "../../src/control/campaign-builder.ts";
+import type { CampaignDraft } from "../../src/control/campaigns/builder.ts";
 import {
   campaignContextRefusal,
   contextApplies,
   type OwnModel,
   ownModels,
   rigContext,
-} from "../../src/control/campaign-context.ts";
-import { KitRepos } from "../../src/control/kit-repos.ts";
-import { startCampaign } from "../../src/control/new-campaign.ts";
+} from "../../src/control/campaigns/context.ts";
+import { startCampaign } from "../../src/control/campaigns/new.ts";
+import { KitRepos } from "../../src/control/kits/repos.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
 import { ControlStore } from "../../src/control/store/index.ts";
 import { CAMPAIGN_CONTEXT_JS, CC_CORE_JS } from "../../src/control/ui/campaign-context-client.ts";

@@ -13,7 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, test } from "node:test";
-import { tunnelRouteAllowed } from "../../src/control/tunnel.ts";
+import { tunnelRouteAllowed } from "../../src/control/runpod/tunnel.ts";
 import { uploadExportsOnce } from "../../src/supervisor/export-upload.ts";
 import { controlOnly, signIn } from "../helpers/control-stack.ts";
 

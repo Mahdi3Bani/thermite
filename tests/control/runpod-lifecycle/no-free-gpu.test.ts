@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { RunpodRefused } from "../../../src/control/runpod.ts";
-import { noFreeGpu } from "../../../src/control/runpod-lifecycle.ts";
+import { RunpodRefused } from "../../../src/control/runpod/cloud.ts";
+import { noFreeGpu } from "../../../src/control/runpod/lifecycle.ts";
 
 /**
  * RunPod's answers for a GPU it has none of (noFreeGpu): each wording is read as no GPU free, and

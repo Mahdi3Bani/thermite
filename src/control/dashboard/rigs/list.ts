@@ -1,5 +1,5 @@
 import type { Hono } from "hono";
-import type { RunpodRigView } from "../../runpod-rig-view.ts";
+import type { RunpodRigView } from "../../runpod/rig-view.ts";
 import { ago, esc } from "../../ui/components.ts";
 import {
   type RigsListRow,

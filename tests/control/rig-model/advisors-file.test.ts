@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { advisorsFileOf } from "../../../src/control/rig-model.ts";
+import { advisorsFileOf } from "../../../src/control/rigs/model.ts";
 import { mcpClient } from "../../helpers/control-stack.ts";
 import { stack, TOKENS, text } from "./stack.ts";
 

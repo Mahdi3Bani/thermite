@@ -221,7 +221,7 @@ jobs:
           RUNPOD: |
             ^src/control/runpod
             ^tests/control/runpod
-            ^src/control/(tunnel|exports)\.ts$
+            ^src/control/exports\.ts$
             ^src/control/store/(runpod|tunnels|exports)\.ts$
             ^src/core/tunnel\.ts$
             ^src/supervisor/export-upload\.ts$

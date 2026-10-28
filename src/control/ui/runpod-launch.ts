@@ -1,4 +1,4 @@
-import type { RunpodFacts, RunpodGpu } from "../runpod.ts";
+import type { RunpodFacts, RunpodGpu } from "../runpod/cloud.ts";
 import { ago, esc, icon } from "./components.ts";
 import { infoLabel } from "./new-campaign.ts";
 

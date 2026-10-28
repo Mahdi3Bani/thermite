@@ -2,7 +2,6 @@ import type { Hono } from "hono";
 import { KEY_PROVIDER_TYPES } from "../../../core/agents.ts";
 import { compactAtWords } from "../../../core/compaction.ts";
 import { isFree } from "../../../core/usage.ts";
-import { CHATGPT_REDIRECT } from "../../chatgpt.ts";
 import { type ClusterFacts, clusterLine } from "../../clusters/facts.ts";
 import {
   checkRow,
@@ -14,12 +13,12 @@ import {
 import { factsLine, type MachineFacts, missing } from "../../machines/facts.ts";
 import { RECIPES, type RecipeId, recipeScript, scriptSha } from "../../machines/recipes.ts";
 import { fingerprint as fingerprintOf } from "../../machines/ssh.ts";
-import { mcpSettingsBlocks } from "../../mcp-ui.ts";
-import { usageBlock, usageChips } from "../../plan-usage.ts";
-import { ANTHROPIC_BASE, capWords, isOpencodeOwn } from "../../providers.ts";
-import { HARNESS_NAMES } from "../../rig-model.ts";
-import { type RunpodFacts, runpodLine } from "../../runpod.ts";
-import { cheapestGpu, DEFAULT_DISK_GB, type TestView } from "../../runpod-tests.ts";
+import { CHATGPT_REDIRECT } from "../../providers/chatgpt.ts";
+import { ANTHROPIC_BASE, capWords, isOpencodeOwn } from "../../providers/models.ts";
+import { usageBlock, usageChips } from "../../providers/plan-usage.ts";
+import { HARNESS_NAMES } from "../../rigs/model.ts";
+import { type RunpodFacts, runpodLine } from "../../runpod/cloud.ts";
+import { cheapestGpu, DEFAULT_DISK_GB, type TestView } from "../../runpod/tests.ts";
 import {
   HARNESSES,
   type Machine,
@@ -31,6 +30,7 @@ import { infoLabel } from "../../ui/new-campaign.ts";
 import { checkFollowUrl, modelCheckHtml } from "../../ui/rig-checks.ts";
 import { modelPricesBlock } from "../../ui/usage.ts";
 import type { Dashboard } from "../context.ts";
+import { mcpSettingsBlocks } from "./mcp-servers.ts";
 import { modelPrefix, TYPES, usd } from "./shared.ts";
 
 /**

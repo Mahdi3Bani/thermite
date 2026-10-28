@@ -7,7 +7,8 @@ import {
   CampaignContextBody,
   campaignContextAnswer,
   setCampaignContext,
-} from "../campaign-context.ts";
+} from "../campaigns/context.ts";
+import { CopyCampaignBody, copyACampaign, copyCampaignAnswer } from "../campaigns/copy.ts";
 import {
   archiveCampaign,
   campaignFoldersAnswer,
@@ -19,15 +20,14 @@ import {
   renameFolder,
   type ShelfOutcome,
   unarchiveCampaign,
-} from "../campaign-folders.ts";
-import { CopyCampaignBody, copyACampaign, copyCampaignAnswer } from "../copy-campaign.ts";
+} from "../campaigns/folders.ts";
 import {
   bodyRefusal,
   StartRunBody,
   startARun,
   startRunAnswer,
   startRunRequest,
-} from "../start-run.ts";
+} from "../campaigns/start-run.ts";
 import { rigView } from "../views/index.ts";
 import type { ApiContext } from "./context.ts";
 

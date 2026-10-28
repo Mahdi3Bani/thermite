@@ -1,5 +1,5 @@
 import { PAPER_ACCEPTED, PAPER_REFUSED, PAPER_REQUESTED } from "../../../core/research-check.ts";
-import { researchEvent } from "../../research-view.ts";
+import { researchEvent } from "../research.ts";
 import { frozen } from "../sharing.ts";
 import type { CardView } from "../types.ts";
 import type { Handler, Handlers } from "./index.ts";

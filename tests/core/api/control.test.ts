@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { ApiError } from "../../../src/common/api/call.ts";
 import { controlClient } from "../../../src/common/api/control.ts";
-import { tunnelRouteAllowed } from "../../../src/control/tunnel.ts";
+import { tunnelRouteAllowed } from "../../../src/control/runpod/tunnel.ts";
 import * as owner from "../../../src/core/api/control/owner.ts";
 import * as rigs from "../../../src/core/api/control/rigs.ts";
 import { pathOf, type Route } from "../../../src/core/api/route.ts";

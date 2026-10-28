@@ -12,7 +12,7 @@ import {
 import { MAX_LANES } from "../../core/contract.ts";
 import { RESEARCH_TASK_KINDS, researchDirectionRefusal } from "../../core/directions.ts";
 import { McpUses, sameUses, usesWords } from "../../core/mcp.ts";
-import { campaignContextRefusal } from "../campaign-context.ts";
+import { campaignContextRefusal } from "../campaigns/context.ts";
 import { mcpRefusal } from "../mcp-servers/index.ts";
 import { usedRunRefusal } from "../run-names.ts";
 import type { ControlStore } from "../store/index.ts";

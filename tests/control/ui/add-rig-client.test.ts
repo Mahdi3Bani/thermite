@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { judgeShareOf } from "../../../src/control/cluster-resources.ts";
+import { judgeShareOf } from "../../../src/control/clusters/resources.ts";
 import { ADD_RIG_JS, JUDGE_SHARE_JS } from "../../../src/control/ui/add-rig-client.ts";
 
 describe("Add a rig's preview of the GPU split (goal 161)", () => {

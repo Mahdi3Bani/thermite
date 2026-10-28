@@ -1,5 +1,5 @@
 import type { AgentsContext } from "../../core/compaction.ts";
-import type { OwnModel } from "../campaign-context.ts";
+import type { OwnModel } from "../campaigns/context.ts";
 import type { McpServer } from "../mcp-servers/index.ts";
 import type { GitAccess } from "../store/index.ts";
 import { podStopped, type RigView } from "../views/index.ts";

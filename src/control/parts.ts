@@ -1,18 +1,18 @@
 import { createPublicKey } from "node:crypto";
 import type { BuildInfo } from "../core/version.ts";
-import { ChatGPTLogins } from "./chatgpt.ts";
 import { type ClusterKubectl, realKubectl } from "./clusters/kubectl.ts";
-import type { KitRepos } from "./kit-repos.ts";
+import type { KitRepos } from "./kits/repos.ts";
 import { RunpodDriver } from "./lifecycle.ts";
 import { type MachineSsh, openSsh } from "./machines/ssh.ts";
 import { McpServers } from "./mcp-servers/index.ts";
-import { PlanUsageReader } from "./plan-usage.ts";
+import { ChatGPTLogins } from "./providers/chatgpt.ts";
+import { PlanUsageReader } from "./providers/plan-usage.ts";
 import type { RigImages } from "./rigs/setup.ts";
-import { RunpodRigs } from "./runpod-rigs.ts";
-import { RunpodTests } from "./runpod-tests.ts";
+import { RunpodRigs } from "./runpod/rigs.ts";
+import { RunpodTests } from "./runpod/tests.ts";
+import { ControlTunnels } from "./runpod/tunnel.ts";
 import { SecretBox } from "./secrets.ts";
 import type { ControlStore } from "./store/index.ts";
-import { ControlTunnels } from "./tunnel.ts";
 import { keepFolds, type RigView } from "./views/index.ts";
 
 /**

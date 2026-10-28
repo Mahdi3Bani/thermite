@@ -5,7 +5,7 @@ import {
   rigSettingsFields,
   rigSettingsRead,
   setRigSettings,
-} from "../rig-settings.ts";
+} from "../rigs/settings.ts";
 import type { ToolContext } from "./context.ts";
 
 /**

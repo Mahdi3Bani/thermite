@@ -1,7 +1,7 @@
 import type { ExportLeft, ResultsLeft } from "../results-left.ts";
-import { RUNPOD_STEP_WORDS } from "../runpod-lifecycle.ts";
-import type { RunpodRigView } from "../runpod-rig-view.ts";
-import type { KeptPodLog } from "../runpod-rigs.ts";
+import { RUNPOD_STEP_WORDS } from "../runpod/lifecycle.ts";
+import type { RunpodRigView } from "../runpod/rig-view.ts";
+import type { KeptPodLog } from "../runpod/rigs.ts";
 import { ago, esc } from "./components.ts";
 import { infoLabel } from "./new-campaign.ts";
 import type { TimelineRow } from "./operator/index.ts";

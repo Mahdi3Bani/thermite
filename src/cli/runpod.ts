@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import type { RunpodRigView } from "../control/runpod-rig-view.ts";
+import type { RunpodRigView } from "../control/runpod/rig-view.ts";
 import type { LaunchBody, LimitsBody } from "../core/api/control/owner.ts";
 
 /**

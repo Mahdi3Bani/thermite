@@ -52,8 +52,8 @@ describe("where the snapshot and the live state are", () => {
       env[m[1] as string] = m[2] as string;
     const dir = env.THERMITE_STATE_SNAPSHOT_DIR;
     assert.ok(dir, "the image sets THERMITE_STATE_SNAPSHOT_DIR");
-    // RunPod's volume: where the launch mounts it (src/control/runpod-rigs.ts).
-    const runpod = readFileSync(repo("src/control/runpod-rigs.ts"), "utf8");
+    // RunPod's volume: where the launch mounts it (src/control/runpod/rigs.ts).
+    const runpod = readFileSync(repo("src/control/runpod/rigs.ts"), "utf8");
     const volume = /const VOLUME_PATH = "([^"]+)"/.exec(runpod)?.[1];
     assert.ok(volume && dir.startsWith(`${volume}/`), `${dir} is on the pod's volume ${volume}`);
     const areas = snapshotAreas(env);

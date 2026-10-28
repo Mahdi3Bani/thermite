@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { CHATGPT_API, ChatGPTLogins } from "../../src/control/chatgpt.ts";
+import { CHATGPT_API, ChatGPTLogins } from "../../src/control/providers/chatgpt.ts";
 import {
   CHATGPT_USAGE_URL,
   chatgptWindows,
@@ -10,7 +10,7 @@ import {
   providersWithUsage,
   usageBlock,
   usageChips,
-} from "../../src/control/plan-usage.ts";
+} from "../../src/control/providers/plan-usage.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
 import { ControlStore, type ModelProvider } from "../../src/control/store/index.ts";
 

@@ -2,7 +2,7 @@ import type { Hono } from "hono";
 import { errorText } from "../../common/errors.ts";
 import { commandFollowUrl, commandProgress, notSent } from "../command-progress.ts";
 import { issueCommand, nobodyReads, panelReviews } from "../issue/index.ts";
-import { HARNESS_NAMES } from "../rig-model.ts";
+import { HARNESS_NAMES } from "../rigs/model.ts";
 import { lastActivity } from "../ui/campaigns.ts";
 import {
   ago,

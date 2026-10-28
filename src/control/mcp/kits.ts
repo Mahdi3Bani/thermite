@@ -5,7 +5,7 @@ import {
   kitsAnswer,
   MCP_KIT_BASE64_MAX,
   MCP_KIT_BUNDLE_MAX,
-} from "../kit-add.ts";
+} from "../kits/add.ts";
 import type { ToolContext } from "./context.ts";
 
 /** The kits control keeps, and a kit written elsewhere given as a git bundle (goal 096). */

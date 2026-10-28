@@ -9,16 +9,16 @@ import {
   ownModels,
   rigContext,
   setCampaignContext,
-} from "../../campaign-context.ts";
-import { commandFollowUrl, commandProgress } from "../../command-progress.ts";
+} from "../../campaigns/context.ts";
 import {
   type CopyCampaignOutcome,
   type CopyCampaignRequest,
   copiedFromWords,
   copyACampaign,
-} from "../../copy-campaign.ts";
-import { askOwnerFrom } from "../../new-campaign.ts";
-import { type StartRunRequest, startARun } from "../../start-run.ts";
+} from "../../campaigns/copy.ts";
+import { askOwnerFrom } from "../../campaigns/new.ts";
+import { type StartRunRequest, startARun } from "../../campaigns/start-run.ts";
+import { commandFollowUrl, commandProgress } from "../../command-progress.ts";
 import { campaignBriefBlock } from "../../ui/campaign-brief.ts";
 import { type ContextRig, contextBlock } from "../../ui/campaign-context.ts";
 import { CAMPAIGN_CONTEXT_JS } from "../../ui/campaign-context-client.ts";

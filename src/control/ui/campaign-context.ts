@@ -1,5 +1,5 @@
 import type { AgentsContext } from "../../core/compaction.ts";
-import type { OwnModel, RigContext } from "../campaign-context.ts";
+import type { OwnModel, RigContext } from "../campaigns/context.ts";
 import { esc, infoLabel } from "./components.ts";
 
 /**

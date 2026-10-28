@@ -9,12 +9,12 @@ import {
 } from "../../core/commands.ts";
 import type { BuildInfo } from "../../core/version.ts";
 import type { Credential } from "../credential.ts";
-import type { KitRepos } from "../kit-repos.ts";
+import type { KitRepos } from "../kits/repos.ts";
 import type { DeploymentDriver, RunpodDriver } from "../lifecycle.ts";
 import type { McpServers } from "../mcp-servers/index.ts";
 import type { ControlParts } from "../parts.ts";
-import type { RunpodRigs } from "../runpod-rigs.ts";
-import type { RunpodTests } from "../runpod-tests.ts";
+import type { RunpodRigs } from "../runpod/rigs.ts";
+import type { RunpodTests } from "../runpod/tests.ts";
 import { keyHint } from "../secrets.ts";
 import type { ControlStore } from "../store/index.ts";
 import { type RigView, rigView } from "../views/index.ts";

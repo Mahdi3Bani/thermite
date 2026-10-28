@@ -1,7 +1,7 @@
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { errorText } from "../../../common/errors.ts";
-import { readRunpod } from "../../runpod.ts";
+import { readRunpod } from "../../runpod/cloud.ts";
 import type { ProviderType } from "../../store/index.ts";
 import type { Dashboard } from "../context.ts";
 

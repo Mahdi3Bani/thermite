@@ -1,13 +1,13 @@
 import type { Hono } from "hono";
 import { errorText } from "../../../common/errors.ts";
-import type { RunpodFacts } from "../../runpod.ts";
+import type { RunpodFacts } from "../../runpod/cloud.ts";
 import {
   DEFAULT_VOLUME_GB,
   FORM_IDLE_STOP_MINUTES,
   type LaunchRequest,
   type LimitsChange,
   MIN_IDLE_STOP_MINUTES,
-} from "../../runpod-rigs.ts";
+} from "../../runpod/rigs.ts";
 import { type LaunchForm, launchBody } from "../../ui/runpod-launch.ts";
 import { RUNPOD_LAUNCH_JS } from "../../ui/runpod-launch-client.ts";
 import { type Ctx, type Dashboard, wantsJson } from "../context.ts";

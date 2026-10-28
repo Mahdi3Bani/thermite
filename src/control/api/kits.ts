@@ -2,8 +2,8 @@ import type { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { redact } from "../../common/env.ts";
 import { KIT_ADD, KITS } from "../../core/api/control/owner.ts";
-import { addKit, kitAnswer, kitsAnswer } from "../kit-add.ts";
-import { KIT_BUNDLE_MAX } from "../kit-repos.ts";
+import { addKit, kitAnswer, kitsAnswer } from "../kits/add.ts";
+import { KIT_BUNDLE_MAX } from "../kits/repos.ts";
 import type { ApiContext } from "./context.ts";
 
 /**

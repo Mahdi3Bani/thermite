@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { RunpodRigView } from "../../../src/control/runpod-rig-view.ts";
+import type { RunpodRigView } from "../../../src/control/runpod/rig-view.ts";
 import { NO_FREE_GPU } from "../../helpers/fake-runpod.ts";
 import {
   exportName,

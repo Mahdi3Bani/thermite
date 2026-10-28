@@ -1,6 +1,6 @@
 import type { Hono } from "hono";
 import { errorText } from "../../../common/errors.ts";
-import { readRunpod } from "../../runpod.ts";
+import { readRunpod } from "../../runpod/cloud.ts";
 import { keyHint } from "../../secrets.ts";
 import type { Dashboard } from "../context.ts";
 import { settingsHelpers, settingsUrl, usd } from "./shared.ts";

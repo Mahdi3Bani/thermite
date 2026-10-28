@@ -1,14 +1,5 @@
 import { errorText } from "../../common/errors.ts";
 import { inBackground } from "../background.ts";
-import {
-  asksNothing,
-  type ClusterResourcesRequest,
-  planClusterResize,
-  type ResizeRefusal,
-  sizeChangeWords,
-  sizeOf,
-  sizeWords,
-} from "../cluster-resources.ts";
 import { issueCommand } from "../issue/index.ts";
 import type { ControlParts } from "../parts.ts";
 import { controlAddress } from "../rigs/setup.ts";
@@ -17,6 +8,15 @@ import { rigSettingsOf } from "../views/index.ts";
 import { type ClusterFacts, type SlotQuota, slotQuota } from "./facts.ts";
 import { kubeError } from "./kubectl.ts";
 import { asList, clusterNames, clusterRigResized } from "./manifests.ts";
+import {
+  asksNothing,
+  type ClusterResourcesRequest,
+  planClusterResize,
+  type ResizeRefusal,
+  sizeChangeWords,
+  sizeOf,
+  sizeWords,
+} from "./resources.ts";
 import {
   awaitNewPods,
   clusterPlan,

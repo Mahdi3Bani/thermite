@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, type TestContext, test } from "node:test";
 import { mcpUrlProblem } from "../../src/common/mcp-client.ts";
-import { KitRepos } from "../../src/control/kit-repos.ts";
+import { KitRepos } from "../../src/control/kits/repos.ts";
 import { McpServers } from "../../src/control/mcp-servers/index.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
 import { KIT_MCP_CORE_JS, NEW_CAMPAIGN_JS } from "../../src/control/ui/new-campaign-client.ts";

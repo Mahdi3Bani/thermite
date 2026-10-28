@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { promisify } from "node:util";
-import { KitRepos } from "../../src/control/kit-repos.ts";
+import { KitRepos } from "../../src/control/kits/repos.ts";
 
 describe("kits control writes", () => {
   test("a kit becomes a commit, unchanged files make no new one, and git fetches it over plain HTTP", async () => {

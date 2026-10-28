@@ -1,6 +1,6 @@
 import type { BuildInfo } from "../../core/version.ts";
-import { rigVersionWords } from "../rig-update.ts";
-import type { RunpodRigView } from "../runpod-rig-view.ts";
+import { rigVersionWords } from "../rigs/update.ts";
+import type { RunpodRigView } from "../runpod/rig-view.ts";
 import { runCampaign } from "../views/facts.ts";
 import type { RigView } from "../views/index.ts";
 import { esc, hardwareLine, runHref } from "./components.ts";

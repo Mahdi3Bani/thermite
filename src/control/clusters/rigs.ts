@@ -1,7 +1,6 @@
 import { errorText } from "../../common/errors.ts";
 import { RIG_ID_SENTENCE } from "../../core/ids.ts";
 import { inBackground } from "../background.ts";
-import { quotaRefusal } from "../cluster-resources.ts";
 import { newToken } from "../credential.ts";
 import { issueCommand } from "../issue/index.ts";
 import { MAX_RIG_GPUS } from "../machines/deploy.ts";
@@ -17,6 +16,7 @@ import {
 } from "./facts.ts";
 import { kubeError } from "./kubectl.ts";
 import { asList, clusterNames, clusterRigObjects, rigResources } from "./manifests.ts";
+import { quotaRefusal } from "./resources.ts";
 
 /**
  * Rigs control sets up on Kubernetes clusters (Add a rig, a rig's page, Edit rig, REST and MCP):

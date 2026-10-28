@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import type { ClusterFacts } from "../../src/control/clusters/facts.ts";
+import { slotQuota } from "../../src/control/clusters/facts.ts";
 import {
   ClusterResourcesBody,
   judgeShareOf,
@@ -7,9 +9,7 @@ import {
   quotaRefusal,
   sizeChangeWords,
   sizeWords,
-} from "../../src/control/cluster-resources.ts";
-import type { ClusterFacts } from "../../src/control/clusters/facts.ts";
-import { slotQuota } from "../../src/control/clusters/facts.ts";
+} from "../../src/control/clusters/resources.ts";
 import type { ClusterRig } from "../../src/control/store/index.ts";
 
 /** A slot rig with three GPUs through the device plugin and the namespace's defaults. */

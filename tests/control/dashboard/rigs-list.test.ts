@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { RunpodRigs } from "../../../src/control/runpod-rigs.ts";
+import { RunpodRigs } from "../../../src/control/runpod/rigs.ts";
+import { ControlTunnels } from "../../../src/control/runpod/tunnel.ts";
 import { SecretBox } from "../../../src/control/secrets.ts";
 import { ControlStore } from "../../../src/control/store/index.ts";
-import { ControlTunnels } from "../../../src/control/tunnel.ts";
 import { generateSigningKeys } from "../../../src/core/commands.ts";
 import { controlOnly, signIn } from "../../helpers/control-stack.ts";
 import { FAKE_RUNPOD_KEY, fakeRunpod } from "../../helpers/fake-runpod.ts";

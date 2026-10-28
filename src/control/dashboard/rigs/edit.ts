@@ -6,20 +6,20 @@ import {
   compactAtRefusal,
 } from "../../../core/compaction.ts";
 import { MAX_LANES } from "../../../core/contract.ts";
+import type { ClusterFacts } from "../../clusters/facts.ts";
+import { prepareResize } from "../../clusters/resize.ts";
+import { asksNothing, type ClusterResourcesRequest } from "../../clusters/resources.ts";
+import { issueCommand } from "../../issue/index.ts";
+import { MAX_RIG_GPUS } from "../../machines/deploy.ts";
+import { contextCapRefusal, isOpencodeOwn } from "../../providers/models.ts";
 import {
   type AgentModelPlan,
   applyAgentModel,
   checkAgentModel,
   clearRigModel,
   giveRigModel,
-} from "../../agent-models.ts";
-import { asksNothing, type ClusterResourcesRequest } from "../../cluster-resources.ts";
-import type { ClusterFacts } from "../../clusters/facts.ts";
-import { prepareResize } from "../../clusters/resize.ts";
-import { issueCommand } from "../../issue/index.ts";
-import { MAX_RIG_GPUS } from "../../machines/deploy.ts";
-import { contextCapRefusal, isOpencodeOwn } from "../../providers.ts";
-import { advisorsFileOf, neededHarness, opencodeOnly } from "../../rig-model.ts";
+} from "../../rigs/agent-models.ts";
+import { advisorsFileOf, neededHarness, opencodeOnly } from "../../rigs/model.ts";
 import {
   QUIET_TIP,
   quietField,
@@ -28,7 +28,7 @@ import {
   rigSettingsChange,
   SPLIT_RESTARTS,
   settingsCount,
-} from "../../rig-settings.ts";
+} from "../../rigs/settings.ts";
 import {
   AGENT_ROLES,
   type AgentRole,

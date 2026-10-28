@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { RunpodRigView } from "../../../src/control/runpod-rig-view.ts";
+import type { RunpodRigView } from "../../../src/control/runpod/rig-view.ts";
 import { mcpClient } from "../../helpers/control-stack.ts";
 import { pendingOf } from "../../helpers/rig-results.ts";
 import { json, setup, TOKENS, text, working } from "./setup.ts";

@@ -34,7 +34,7 @@ import { cleanEngine } from "./lib/smoke-env.mjs";
 const { createControlApi } = await import("../src/control/api/index.ts");
 const { SecretBox } = await import("../src/control/secrets.ts");
 const { ControlStore } = await import("../src/control/store/index.ts");
-const { ControlTunnels } = await import("../src/control/tunnel.ts");
+const { ControlTunnels } = await import("../src/control/runpod/tunnel.ts");
 const { generateSigningKeys } = await import("../src/core/commands.ts");
 const { keySha256 } = await import("../src/core/tunnel.ts");
 

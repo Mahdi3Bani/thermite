@@ -1,6 +1,6 @@
 import { EFFORTS } from "../../core/agents.ts";
 import { COMPACT_AT_DEFAULT } from "../../core/compaction.ts";
-import type { AdvisorSetupView, AdvisorsFileView } from "../rig-model.ts";
+import type { AdvisorSetupView, AdvisorsFileView } from "../rigs/model.ts";
 import type { AgentRole } from "../store/index.ts";
 import { esc } from "./components.ts";
 import { infoLabel } from "./new-campaign.ts";
