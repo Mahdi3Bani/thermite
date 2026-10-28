@@ -1,3 +1,4 @@
+import { frozen } from "../sharing.ts";
 import type { AttemptView, JudgeJob, RunView, StoredEvent } from "../types.ts";
 import { AGENTS } from "./agents.ts";
 import { ATTEMPTS } from "./attempts.ts";
@@ -15,7 +16,8 @@ import { emptyRun, RUNS } from "./runs.ts";
  * A rig's events folded into what its view shows, one event at a time: its runs with their
  * attempts, the judge's jobs, the rig's checks and its newest events. What it holds depends only
  * on the events applied, in order. readRig (views/rig.ts) reads it with what else a rig's view
- * shows, and never changes it. Each area of events has its own module of handlers here.
+ * shows, and never changes it. Each area of events has its own module of handlers here. A record
+ * the fold never changes once made is frozen (views/sharing.ts), so the views share it.
  */
 
 /** Folds one event of its kind into the rig's state; `b` is the event's body. */
@@ -86,8 +88,9 @@ export class RigFold {
     return v;
   }
 
-  /** Folds one event, the next of the rig's ledger. */
+  /** Folds one event, the next of the rig's ledger. The fold never changes an event: frozen. */
   apply(e: StoredEvent): void {
+    frozen(e);
     HANDLERS.get(e.kind)?.(this, e, e.body ?? {});
     const run = this.runOf(e);
     // The agents' notes are kept in the journal: the timeline tells what happened.

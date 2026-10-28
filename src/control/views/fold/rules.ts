@@ -1,4 +1,5 @@
 import { isLegacyRule } from "../../../core/directions.ts";
+import { frozen } from "../sharing.ts";
 import type { Handler, Handlers } from "./index.ts";
 
 /**
@@ -22,13 +23,9 @@ export const RULES: Handlers = {
     const v = f.run(String(e.subject));
     v.directives++;
     const body = (b.body as Record<string, unknown> | null) ?? {};
-    v.rules.push({
-      id: Number(b.id),
-      author: e.actor,
-      at: e.at,
-      body,
-      legacy: isLegacyRule(body),
-    });
+    v.rules.push(
+      frozen({ id: Number(b.id), author: e.actor, at: e.at, body, legacy: isLegacyRule(body) }),
+    );
     // A rule the planner made from one of the owner's messages: part of its answer. One
     // converted from the planner's old rule in words takes that rule's place in the answer.
     const from = v.messages.find((m) => m.id === body.from_message);
@@ -67,13 +64,17 @@ export const RULES: Handlers = {
     if (!name) return;
     const v = f.run(String(e.subject));
     if (v.families.some((x) => x.name === name)) return;
-    v.families.push({
-      name,
-      description: typeof b.description === "string" ? b.description : "",
-      by: e.actor,
-      at: e.at,
-      for_rules: Array.isArray(b.for_rules) ? b.for_rules.map(Number).filter(Number.isFinite) : [],
-    });
+    v.families.push(
+      frozen({
+        name,
+        description: typeof b.description === "string" ? b.description : "",
+        by: e.actor,
+        at: e.at,
+        for_rules: Array.isArray(b.for_rules)
+          ? b.for_rules.map(Number).filter(Number.isFinite)
+          : [],
+      }),
+    );
   },
   directives_superseded: ended,
   directive_dropped: ended,

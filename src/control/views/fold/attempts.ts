@@ -1,5 +1,6 @@
 import { clip } from "../../../core/kb-index.ts";
 import { metricValuesOf } from "../../metric-values.ts";
+import { frozen } from "../sharing.ts";
 import type { AttemptView, HeldOutView } from "../types.ts";
 import type { Handlers } from "./index.ts";
 
@@ -52,7 +53,7 @@ export const ATTEMPTS: Handlers = {
       updated_at: e.at,
       commit: typeof b.commit === "string" ? b.commit : null,
       parent: typeof b.parent === "string" ? b.parent : null,
-      known_flaws: Array.isArray(b.known_flaws) ? b.known_flaws.map((x) => String(x)) : [],
+      known_flaws: frozen(Array.isArray(b.known_flaws) ? b.known_flaws.map((x) => String(x)) : []),
       family: null,
       trial: null,
       gained: null,
@@ -62,19 +63,23 @@ export const ATTEMPTS: Handlers = {
       waiting: null,
       ci: null,
       reasons: null,
-      files: Array.isArray(b.files)
-        ? (b.files as { path: string; added: number | null; removed: number | null }[]).map(
-            (x) => ({
-              path: String(x.path),
-              added: typeof x.added === "number" ? x.added : null,
-              removed: typeof x.removed === "number" ? x.removed : null,
-            }),
-          )
-        : [],
+      files: frozen(
+        Array.isArray(b.files)
+          ? (b.files as { path: string; added: number | null; removed: number | null }[]).map(
+              (x) => ({
+                path: String(x.path),
+                added: typeof x.added === "number" ? x.added : null,
+                removed: typeof x.removed === "number" ? x.removed : null,
+              }),
+            )
+          : [],
+      ),
       files_total: typeof b.files_total === "number" ? b.files_total : 0,
-      violations: Array.isArray(b.violations)
-        ? b.violations.slice(0, 20).map((v) => clip(String(v), 300))
-        : [],
+      violations: frozen(
+        Array.isArray(b.violations)
+          ? b.violations.slice(0, 20).map((v) => clip(String(v), 300))
+          : [],
+      ),
       violations_total:
         typeof b.violations_total === "number"
           ? b.violations_total
@@ -107,7 +112,7 @@ export const ATTEMPTS: Handlers = {
       typeof b.ci_low === "number" && typeof b.ci_high === "number" ? [b.ci_low, b.ci_high] : null;
     a.reasons = typeof b.reasons === "string" ? b.reasons : null;
     a.updated_at = e.at;
-    a.history.push({ at: e.at, verdict: a.verdict, delta: a.delta });
+    a.history.push(frozen({ at: e.at, verdict: a.verdict, delta: a.delta }));
     if (b.verdict === "win_confirmed" && typeof b.delta === "number") {
       f.confirmDelta.set(a.id, b.delta);
     }

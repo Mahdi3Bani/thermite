@@ -1,5 +1,6 @@
 import { PAPER_ACCEPTED, PAPER_REFUSED, PAPER_REQUESTED } from "../../../core/research-check.ts";
 import { researchEvent } from "../../research-view.ts";
+import { frozen } from "../sharing.ts";
 import type { CardView } from "../types.ts";
 import type { Handler, Handlers } from "./index.ts";
 
@@ -11,11 +12,11 @@ import type { Handler, Handlers } from "./index.ts";
 
 /** The newest digest's or the final report's figures. */
 const digest: Handler = (f, e, b) => {
-  f.run(String(e.subject)).research = {
+  f.run(String(e.subject)).research = frozen({
     ...b,
     kind: e.kind === "research_final" ? "final" : "digest",
     at: e.at,
-  };
+  });
 };
 
 /** One of a research run's items: research-view.ts folds it. */
@@ -31,7 +32,7 @@ export const RESEARCH: Handlers = {
     const v = f.run(String(e.subject));
     const q = Number(b.question);
     if (!Number.isInteger(q) || q < 0) return;
-    const card: CardView = {
+    const card: CardView = frozen({
       question: q,
       version: Number(b.version) || 0,
       certainty: String(b.certainty ?? ""),
@@ -43,7 +44,7 @@ export const RESEARCH: Handlers = {
       }),
       by: typeof b.by === "string" ? b.by : null,
       at: e.at,
-    };
+    });
     v.cards = [...v.cards.filter((c) => c.question !== q), card].sort(
       (x, y) => x.question - y.question,
     );
@@ -55,7 +56,7 @@ export const RESEARCH: Handlers = {
     if (!Number.isInteger(q) || q < 0) return;
     v.card_refusals = [
       ...v.card_refusals.filter((r) => r.question !== q),
-      {
+      frozen({
         question: q,
         at: e.at,
         by: typeof b.by === "string" ? b.by : null,
@@ -63,7 +64,7 @@ export const RESEARCH: Handlers = {
           .filter((x): x is string => typeof x === "string")
           .slice(0, 5)
           .map((x) => x.slice(0, 300)),
-      },
+      }),
     ].sort((x, y) => x.question - y.question);
   },
   hypothesis_added: item,

@@ -1,3 +1,4 @@
+import { frozen } from "../sharing.ts";
 import type { Handler, Handlers } from "./index.ts";
 
 /**
@@ -38,20 +39,22 @@ export const MESSAGES: Handlers = {
     if (!Number.isFinite(id) || !text) return;
     const about =
       b.about && typeof b.about === "object" ? (b.about as Record<string, unknown>) : null;
-    f.run(String(e.subject)).journal.push({
-      id,
-      by: String(b.by ?? e.actor),
-      kind: typeof b.kind === "string" && b.kind ? b.kind : "note",
-      text,
-      // A note always says what it is about; one recorded before that rule is about its run.
-      about:
-        about && typeof about.type === "string" && about.id !== undefined && about.id !== null
-          ? { type: about.type, id: String(about.id) }
-          : { type: "run", id: String(e.subject) },
-      lane: typeof b.lane === "string" ? b.lane : null,
-      trial: typeof b.trial === "string" ? b.trial : null,
-      at: e.at,
-    });
+    f.run(String(e.subject)).journal.push(
+      frozen({
+        id,
+        by: String(b.by ?? e.actor),
+        kind: typeof b.kind === "string" && b.kind ? b.kind : "note",
+        text,
+        // A note always says what it is about; one recorded before that rule is about its run.
+        about:
+          about && typeof about.type === "string" && about.id !== undefined && about.id !== null
+            ? { type: about.type, id: String(about.id) }
+            : { type: "run", id: String(e.subject) },
+        lane: typeof b.lane === "string" ? b.lane : null,
+        trial: typeof b.trial === "string" ? b.trial : null,
+        at: e.at,
+      }),
+    );
   },
   // A research note (sources read, in any mode): in the journal's notes card, apart from the
   // field notes. Its id is negative so it never meets a field note's.
@@ -60,16 +63,18 @@ export const MESSAGES: Handlers = {
     const text = typeof b.text === "string" ? b.text : "";
     if (!Number.isFinite(note) || !text) return;
     const sources = Array.isArray(b.sources) ? b.sources.map(String) : [];
-    f.run(String(e.subject)).journal.push({
-      id: -note,
-      by: String(b.by ?? e.actor),
-      kind: "note",
-      text,
-      about: sources[0] ? { type: "source", id: sources[0] } : null,
-      lane: typeof b.by === "string" && /^lane-\d+$/.test(b.by) ? b.by : null,
-      trial: typeof b.trial === "string" ? b.trial : null,
-      at: e.at,
-    });
+    f.run(String(e.subject)).journal.push(
+      frozen({
+        id: -note,
+        by: String(b.by ?? e.actor),
+        kind: "note",
+        text,
+        about: sources[0] ? { type: "source", id: sources[0] } : null,
+        lane: typeof b.by === "string" && /^lane-\d+$/.test(b.by) ? b.by : null,
+        trial: typeof b.trial === "string" ? b.trial : null,
+        at: e.at,
+      }),
+    );
   },
   agent_message(f, e, b) {
     const v = f.run(String(e.subject));

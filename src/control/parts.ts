@@ -13,7 +13,7 @@ import { RunpodTests } from "./runpod-tests.ts";
 import { SecretBox } from "./secrets.ts";
 import type { ControlStore } from "./store.ts";
 import { ControlTunnels } from "./tunnel.ts";
-import { type RigView, rigView } from "./views.ts";
+import { keepFolds, type RigView } from "./views.ts";
 
 /**
  * What control is made of, built once in createControlApi (goal 125, T5): the dashboard, REST
@@ -52,7 +52,7 @@ export interface ControlParts {
   runpodRigs: RunpodRigs;
   /** Their stop, start, restart and terminate, beside the driver THERMITE_LIFECYCLE names. */
   runpodDriver: RunpodDriver;
-  /** Every rig as control sees it now (views.ts). */
+  /** Every rig as control sees it now (views.ts), through the folds control keeps. */
   views(): RigView[];
 }
 
@@ -92,6 +92,8 @@ export function controlParts(
   // A rig in pull mode makes the same calls as any rig; control's end of the tunnel brings them
   // in-process, bound to the rig whose signed answer carried them.
   const tunnels = opts.tunnels ?? new ControlTunnels(store, secrets, privateKeyPem);
+  // The rigs' events folded once and kept up to date: every view of the store reads through them.
+  const folds = keepFolds(store);
   const runpodRigs =
     opts.runpodRigs ??
     new RunpodRigs(store, secrets, tunnels, {
@@ -119,10 +121,6 @@ export function controlParts(
     tunnels,
     runpodRigs,
     runpodDriver: new RunpodDriver(runpodRigs),
-    views: () =>
-      store
-        .rigs()
-        .map((u) => rigView(store, u.id, viewOpts))
-        .filter((v): v is RigView => v !== undefined),
+    views: () => folds.views(viewOpts),
   };
 }

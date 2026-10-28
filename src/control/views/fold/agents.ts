@@ -1,3 +1,4 @@
+import { frozen } from "../sharing.ts";
 import type { Handlers } from "./index.ts";
 
 /**
@@ -62,15 +63,17 @@ export const AGENTS: Handlers = {
     const v = f.run(String(e.subject));
     if (v.at_work[String(b.lane)]?.trial === String(b.trial ?? ""))
       delete v.at_work[String(b.lane)];
-    v.trials.push({
-      trial: String(b.trial ?? ""),
-      lane: (b.lane as string | null) ?? null,
-      family: (b.family as string | null) ?? null,
-      attempt: (b.attempt as string | null) ?? null,
-      stopped: String(b.stopped ?? ""),
-      error: (b.error as string | null) ?? null,
-      at: e.at,
-    });
+    v.trials.push(
+      frozen({
+        trial: String(b.trial ?? ""),
+        lane: (b.lane as string | null) ?? null,
+        family: (b.family as string | null) ?? null,
+        attempt: (b.attempt as string | null) ?? null,
+        stopped: String(b.stopped ?? ""),
+        error: (b.error as string | null) ?? null,
+        at: e.at,
+      }),
+    );
     if (v.trials.length > KEPT_TRIALS) v.trials.shift();
     const made = b.attempt ? f.attempts.get(String(b.attempt)) : undefined;
     if (made) {
@@ -85,20 +88,22 @@ export const AGENTS: Handlers = {
   },
   planner_handout(f, e, b) {
     const v = f.run(String(e.subject));
-    v.handouts.push({
-      at: e.at,
-      round: Number.isFinite(Number(b.round)) ? Number(b.round) : null,
-      by: e.actor,
-      assignments: (Array.isArray(b.assignments) ? b.assignments : []).map((a) => {
-        const x = (a ?? {}) as Record<string, unknown>;
-        return {
-          lane: String(x.lane ?? ""),
-          experiment: typeof x.experiment === "string" ? x.experiment : null,
-          why: String(x.why ?? ""),
-        };
+    v.handouts.push(
+      frozen({
+        at: e.at,
+        round: Number.isFinite(Number(b.round)) ? Number(b.round) : null,
+        by: e.actor,
+        assignments: (Array.isArray(b.assignments) ? b.assignments : []).map((a) => {
+          const x = (a ?? {}) as Record<string, unknown>;
+          return {
+            lane: String(x.lane ?? ""),
+            experiment: typeof x.experiment === "string" ? x.experiment : null,
+            why: String(x.why ?? ""),
+          };
+        }),
+        notes: String(b.notes ?? ""),
       }),
-      notes: String(b.notes ?? ""),
-    });
+    );
     if (v.handouts.length > KEPT_HANDOUTS) v.handouts.shift();
   },
 };
