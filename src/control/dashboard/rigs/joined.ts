@@ -1,0 +1,222 @@
+import type { Hono } from "hono";
+import { errorText } from "../../../common/errors.ts";
+import { inBackground } from "../../background.ts";
+import { actOnClusterRig, type ClusterRigAction } from "../../clusters/actions.ts";
+import { cancelDrain } from "../../clusters/drain.ts";
+import { updateRigImages } from "../../clusters/images.ts";
+import { setClusterRigResources } from "../../clusters/resize.ts";
+import { notSent } from "../../command-progress.ts";
+import { newToken } from "../../credential.ts";
+import { joinMachineScript, joinNamespaceManifest } from "../../join.ts";
+import { manageScript, type RigAction } from "../../machines/deploy.ts";
+import { tail } from "../../machines/ssh.ts";
+import { removeCheck } from "../../results-left.ts";
+import { awaitFirstReport, STEP_WORDS } from "../../rigs/setup.ts";
+import { fingerprint } from "../../store.ts";
+import { type Ctx, type Dashboard, wantsJson } from "../context.ts";
+import { placeFollowUrl, rigHelpers } from "./shared.ts";
+
+/**
+ * Rigs you join yourself: their join command and the requests it makes (/v1/join). Then, for a
+ * rig control set up on a cluster or a machine, the change it follows and its stop, start,
+ * restart and remove.
+ */
+export function joinedRigRoutes(app: Hono, dash: Dashboard): void {
+  const { opts, parts, ssh, store } = dash;
+  const { joinedPage, mintJoin, placeProgress } = rigHelpers(dash);
+
+  // ---------------------------------------------------------------- rigs you join yourself
+  /** A form's answer: JSON for the page's script, else the rig's page with the words. */
+  const placeBack = (c: Ctx, rig: string, k: "ok" | "error", msg: string) =>
+    wantsJson(c)
+      ? k === "ok"
+        ? c.json({ ...placeProgress(rig), said: msg, tone: "ok", follow: placeFollowUrl(rig) })
+        : c.json(notSent(msg), 400)
+      : c.redirect(`/ui/rigs/${encodeURIComponent(rig)}?${k}=${encodeURIComponent(msg)}`, 303);
+  app.post("/ui/rigs/:rig/join/:action", async (c) => {
+    const r = store.joinedRig(c.req.param("rig"));
+    const action = c.req.param("action");
+    const back = (k: "ok" | "error", msg: string) =>
+      c.redirect(
+        `/ui/rigs/${encodeURIComponent(c.req.param("rig"))}?${k}=${encodeURIComponent(msg)}`,
+        303,
+      );
+    if (!r || r.status === "retired")
+      return back("error", "This is not a rig you run yourself, or it is retired.");
+    const f = await c.req.parseBody();
+    if (action === "new") return joinedPage(c, r, "", mintJoin(r.rig));
+    if (action === "revoke") {
+      store.revokeJoinToken(r.rig, "owner:ui");
+      store.rigSetupEvent(r.rig, "join_revoked", true);
+      return back("ok", "The join command no longer works.");
+    }
+    if (action === "retire") {
+      if (String(f.confirm ?? "").trim() !== `retire ${r.rig}`)
+        return back("error", `Type "retire ${r.rig}" to retire it.`);
+      store.revokeJoinToken(r.rig, "owner:ui");
+      if (store.enrolledRig(r.rig)) store.retireRig(r.rig, "owner:ui");
+      store.setJoinedRig(r.rig, { status: "retired" });
+      store.rigSetupEvent(r.rig, "retired", true);
+      return back(
+        "ok",
+        `${r.rig} is retired: its token no longer works. Remove its files there with the command on this page.`,
+      );
+    }
+    return back("error", "No such action.");
+  });
+  // The join command's request: no session, only the one-time join token. Control mints the rig's
+  // own token now, so the files it serves are the only copy of it.
+  app.get("/v1/join/:rig/:what", (c) => {
+    const rig = c.req.param("rig");
+    const what = c.req.param("what");
+    const r = store.joinedRig(rig);
+    const no = (status: 401 | 404 | 409, msg: string) =>
+      c.text(`thermite: ${msg}\n`, status, { "cache-control": "no-store" });
+    if (!r || what !== (r.form === "machine" ? "script" : "manifest"))
+      return no(404, "no such join command");
+    if (!parts.publicUrl) return no(409, "control's address for rigs is not set");
+    const token = (c.req.header("authorization") ?? "").replace(/^Bearer\s+/i, "");
+    if (!store.useJoinToken(rig, token))
+      return no(
+        401,
+        "this join command does not work: it was used, revoked or expired. Make a new one on the rig's page in Thermite.",
+      );
+    const rigToken = newToken();
+    if (store.enrolledRig(rig)) store.rotateRigToken(rig, rigToken.sha256, `rig:${rig}`);
+    else store.enrollRig(rig, rigToken.sha256, "owner:ui");
+    const secrets = { controlToken: rigToken.token, harnessSupervisorToken: newToken().token };
+    const s = r.spec;
+    let body: string;
+    let detail: string;
+    if (r.form === "machine") {
+      const root = c.req.query("uid") === "0";
+      body = joinMachineScript(
+        {
+          rig,
+          controlUrl: parts.publicUrl,
+          images: s.images,
+          gpus: s.gpus as number[],
+          judgeGpus: s.judgeGpus,
+          root,
+          controlPublicKey: parts.controlPublicKey,
+          controlFingerprint: fingerprint(parts.controlPublicKey),
+        },
+        secrets,
+      );
+      store.setJoinedRig(rig, { status: "joining", spec: { ...s, root } });
+      detail = root ? "as root" : "as a user, with rootless Podman";
+    } else {
+      body = joinNamespaceManifest(
+        {
+          rig,
+          namespace: s.namespace as string,
+          controlUrl: parts.publicUrl,
+          images: s.images,
+          gpus: s.gpus as number,
+          judgeGpus: s.judgeGpus,
+          gpuMode: s.gpuMode ?? "device-plugin",
+          deviceClass: s.deviceClass,
+          storageClass: s.storageClass,
+          storageGi: s.storageGi ?? 100,
+          controlPublicKey: parts.controlPublicKey,
+        },
+        secrets,
+      );
+      store.setJoinedRig(rig, { status: "joining" });
+      detail = `namespace ${s.namespace}`;
+    }
+    store.rigSetupEvent(rig, "join_used", true, detail);
+    // Pulling the images can take a while on a new machine: wait up to an hour.
+    const first = awaitFirstReport(parts, rig, (st) => store.setJoinedRig(rig, { status: st }), 60);
+    void inBackground(store, "joined", rig, "first_report", first);
+    return c.text(body, 200, { "cache-control": "no-store" });
+  });
+
+  app.get("/ui/rigs/:rig/place.json", (c) => {
+    const rig = c.req.param("rig");
+    return store.clusterRig(rig) || store.machineRig(rig)
+      ? c.json(placeProgress(rig))
+      : c.json({ error: "not found" }, 404);
+  });
+  app.post("/ui/rigs/:rig/cluster/:action", async (c) => {
+    const r = store.clusterRig(c.req.param("rig"));
+    const action = c.req.param("action");
+    const back = (k: "ok" | "error", msg: string) => placeBack(c, c.req.param("rig"), k, msg);
+    if (!r || r.status === "removed") return back("error", "Control didn't set this rig up.");
+    if (action === "images" || action === "images-now") {
+      const done = await updateRigImages(parts, r.rig, "owner:ui", {
+        wait: action !== "images-now",
+      });
+      return "error" in done ? back("error", done.error) : back("ok", done.ok);
+    }
+    if (action === "drain-cancel") {
+      const done = cancelDrain(parts, r.rig, "owner:ui");
+      return "error" in done ? back("error", done.error) : back("ok", done.ok);
+    }
+    // A change to its GPUs, CPUs or memory that waits for its drain, made now (goal 118).
+    if (action === "resources-now") {
+      if (r.status !== "draining" || !r.pending)
+        return back("error", `${r.rig} has no change to its GPUs, CPUs or memory waiting.`);
+      const done = await setClusterRigResources(parts, r.rig, {}, "owner:ui", {
+        wait: false,
+        owner: true,
+      });
+      return "error" in done ? back("error", done.error) : back("ok", done.ok);
+    }
+    if (!["stop", "start", "restart", "remove"].includes(action))
+      return back("error", "No such action.");
+    const f = await c.req.parseBody();
+    const removing =
+      action === "remove" ? removeCheck(store, r.rig, String(f.confirm ?? "").trim()) : null;
+    if (removing && "refused" in removing) return back("error", removing.refused);
+    const done = await actOnClusterRig(parts, r, action as ClusterRigAction, "owner:ui", {
+      ...removing,
+    });
+    return "error" in done ? back("error", done.error) : back("ok", done.ok);
+  });
+  app.post("/ui/rigs/:rig/machine/:action", async (c) => {
+    const r = store.machineRig(c.req.param("rig"));
+    const action = c.req.param("action") as RigAction;
+    const back = (k: "ok" | "error", msg: string) => placeBack(c, c.req.param("rig"), k, msg);
+    if (!r || r.status === "removed") return back("error", "Control didn't set this rig up.");
+    if (!["stop", "start", "restart", "remove"].includes(action))
+      return back("error", "No such action.");
+    const f = await c.req.parseBody();
+    const removing =
+      action === "remove" ? removeCheck(store, r.rig, String(f.confirm ?? "").trim()) : null;
+    if (removing && "refused" in removing) return back("error", removing.refused);
+    const m = store.machine(r.machine);
+    if (!m) return back("error", `The machine ${r.machine} is no longer in Providers.`);
+    try {
+      const out = await ssh.sshScript(
+        {
+          address: m.address,
+          port: m.port,
+          user: m.user,
+          privateKey: opts.secrets.open(m.key_sealed),
+          hostKeys: m.host_keys,
+        },
+        manageScript(r, action),
+        [],
+        5 * 60_000,
+      );
+      if (out.code !== 0) throw new Error(tail(out.stderr) || `exit ${out.code}`);
+    } catch (err) {
+      const why = errorText(err);
+      store.rigSetupEvent(r.rig, action, false, why);
+      return back("error", why);
+    }
+    store.rigSetupEvent(r.rig, action, true);
+    store.setMachineRigStatus(
+      r.rig,
+      action === "stop" ? "stopped" : action === "remove" ? "removed" : "running",
+    );
+    if (action === "remove") store.retireRig(r.rig, "owner:ui");
+    store.audit("owner:ui", `machine_rig_${action}`, {
+      rig: r.rig,
+      machine: r.machine,
+      ...removing,
+    });
+    return back("ok", `${STEP_WORDS[action]}.`);
+  });
+}

@@ -12,9 +12,6 @@
     "src/control/api.ts": {
       "lines": 1463
     },
-    "src/control/dashboard.ts": {
-      "lines": 7251
-    },
     "src/control/mcp-servers.ts": {
       "lines": 992
     },

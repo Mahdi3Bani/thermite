@@ -51,6 +51,7 @@ describe("reading imports", () => {
     assert.equal(partOf("tests/harness/x.test.ts"), null);
     assert.equal(isPage("src/control/ui/components.ts"), true);
     assert.equal(isPage("src/control/dashboard.ts"), true);
+    assert.equal(isPage("src/control/dashboard/rigs/page.ts"), true);
     assert.equal(isPage("src/control/store.ts"), false);
   });
 });
@@ -82,6 +83,7 @@ describe("the import rule", () => {
     assert.equal(rule("src/control/store.ts", "./ui/components.ts"), "page");
     assert.equal(rule("src/control/ui/runs.ts", "./components.ts"), null);
     assert.equal(rule("src/control/dashboard.ts", "./ui/components.ts"), null);
+    assert.equal(rule("src/control/dashboard/rigs/page.ts", "../../ui/components.ts"), null);
     assert.equal(rule("src/control/ui/runs.ts", "../store.ts"), null);
   });
   test("production code never imports tests or scripts; tests may import anything", () => {

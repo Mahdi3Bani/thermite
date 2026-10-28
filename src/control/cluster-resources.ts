@@ -10,7 +10,7 @@ import type { ClusterRig, ClusterRigSize } from "./store.ts";
  * A new size for a rig control set up on a cluster (goal 118): its GPUs, the judge's share of them,
  * and its CPUs and memory. Edit rig, REST's `POST /v1/rigs/<rig>/cluster/resources` and MCP's
  * `set_cluster_rig_resources` check a change here (planClusterResize), with the words Add a rig
- * uses; the dashboard applies it as an image update moves a rig (dashboard.ts's resizeClusterRig):
+ * uses; the dashboard applies it as an image update moves a rig (clusters/resize.ts's setClusterRigResources):
  * its two deployments again, on the images it runs, draining first while it works. Its secret (so
  * its tokens), volume claim, service and network rules stay.
  *

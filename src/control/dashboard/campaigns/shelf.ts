@@ -1,0 +1,185 @@
+import type { Hono } from "hono";
+import {
+  archiveCampaign,
+  createFolder,
+  deleteFolder,
+  moveCampaign,
+  renameFolder,
+  type ShelfOutcome,
+  unarchiveCampaign,
+} from "../../campaign-folders.ts";
+import { campaignHref } from "../../ui/components.ts";
+import { campaignModes } from "../../views.ts";
+import { backTo, type Ctx, type Dashboard } from "../context.ts";
+
+/**
+ * Archive, the navigation's folders (goal 077), and the knowledge base's folders a campaign
+ * reads (grant and revoke).
+ */
+export function shelfRoutes(app: Hono, dash: Dashboard): void {
+  const { store, views } = dash;
+
+  // ---------------------------------------- Archive, and the navigation's folders (goal 077)
+  /**
+   * Where Archive or a folder's form returns: its page, with what control did (sent) or what it
+   * refused (error, on=shelf), in words. The navigation's script asks for JSON instead.
+   */
+  const shelfAnswer = <T>(
+    c: Ctx,
+    f: Record<string, unknown>,
+    out: ShelfOutcome<T>,
+    done: (a: T) => string,
+    not: string,
+    fallback: string,
+  ) => {
+    if (c.req.header("accept")?.includes("application/json")) {
+      if (out.ok) return c.json({ ...out.answer, said: done(out.answer) });
+      // A redirect's refusal is audited from its address; this answer says it itself.
+      store.audit("owner:ui", "refused", { path: new URL(c.req.url).pathname, why: out.error });
+      return c.json({ error: `${not} ${out.error}` });
+    }
+    const to = backTo(f, fallback);
+    const [path = fallback, hash] = to.split("#");
+    const q = out.ok
+      ? `sent=${encodeURIComponent(done(out.answer))}`
+      : `error=${encodeURIComponent(`${not} ${out.error}`)}&on=shelf`;
+    return c.redirect(`${path}${path.includes("?") ? "&" : "?"}${q}${hash ? `#${hash}` : ""}`, 303);
+  };
+  /** A folder of the navigation by the id its forms carry. */
+  const folderById = (id: string) => store.campaignFolders().find((x) => String(x.id) === id);
+  const goneFolder = {
+    ok: false,
+    error: "That folder is not there any more.",
+    status: 404,
+  } as const;
+  app.post("/ui/campaigns/:campaign/archive", async (c) => {
+    const name = c.req.param("campaign");
+    return shelfAnswer(
+      c,
+      await c.req.parseBody(),
+      archiveCampaign(store, views(), name, "owner:ui"),
+      (a) =>
+        a.changed
+          ? `Archived ${name}. It left the navigation, Needs you and the Overview.`
+          : `${name} is archived already.`,
+      "Not archived.",
+      campaignHref(name),
+    );
+  });
+  app.post("/ui/campaigns/:campaign/unarchive", async (c) => {
+    const name = c.req.param("campaign");
+    return shelfAnswer(
+      c,
+      await c.req.parseBody(),
+      unarchiveCampaign(store, views(), name, "owner:ui"),
+      (a) =>
+        a.changed
+          ? `Unarchived ${name}. It is back in the navigation, ${a.folder ? `in ${a.folder}` : "in no folder"}.`
+          : `${name} is not archived.`,
+      "Not unarchived.",
+      campaignHref(name),
+    );
+  });
+  app.post("/ui/campaigns/:campaign/folder", async (c) => {
+    const name = c.req.param("campaign");
+    const f = await c.req.parseBody();
+    const id = String(f.folder ?? "");
+    const to = id ? folderById(id) : undefined;
+    return shelfAnswer(
+      c,
+      f,
+      id && !to ? goneFolder : moveCampaign(store, views(), name, to?.name ?? null, "owner:ui"),
+      (a) =>
+        !a.changed
+          ? a.folder
+            ? `${name} is in ${a.folder} already.`
+            : `${name} is in no folder already.`
+          : a.folder
+            ? `Moved ${name} to ${a.folder}.`
+            : `Moved ${name} out of its folder.`,
+      "Not moved.",
+      campaignHref(name),
+    );
+  });
+  app.post("/ui/campaign-folders", async (c) => {
+    const f = await c.req.parseBody();
+    return shelfAnswer(
+      c,
+      f,
+      createFolder(store, String(f.name ?? ""), "owner:ui"),
+      (a) =>
+        `Made the folder ${a.folder.name}. Drag a campaign onto it, or use Move to folder on a campaign's page.`,
+      "No folder made.",
+      "/ui/campaigns",
+    );
+  });
+  app.post("/ui/campaign-folders/:id/rename", async (c) => {
+    const f = await c.req.parseBody();
+    const folder = folderById(c.req.param("id"));
+    return shelfAnswer(
+      c,
+      f,
+      folder ? renameFolder(store, folder.name, String(f.name ?? ""), "owner:ui") : goneFolder,
+      (a) => (a.changed ? `Renamed ${a.was} to ${a.folder.name}.` : "Nothing to rename."),
+      "Not renamed.",
+      "/ui/campaigns",
+    );
+  });
+  app.post("/ui/campaign-folders/:id/delete", async (c) => {
+    const f = await c.req.parseBody();
+    const folder = folderById(c.req.param("id"));
+    return shelfAnswer(
+      c,
+      f,
+      folder ? deleteFolder(store, folder.name, "owner:ui") : goneFolder,
+      (a) => `Deleted the folder ${a.deleted}.`,
+      "Not deleted.",
+      "/ui/campaigns",
+    );
+  });
+
+  // The folders a campaign's agents may read besides its own (goal 065): the owner's, any time.
+  const grantBack = (c: Ctx, campaign: string, k: "ok" | "error", m: string) =>
+    c.redirect(
+      `${campaignHref(campaign)}?${k}=${encodeURIComponent(m)}${k === "error" ? "&on=kb" : ""}#knowledge`,
+      303,
+    );
+  app.post("/ui/campaigns/:campaign/kb/grant", async (c) => {
+    const campaign = c.req.param("campaign");
+    const reads = String((await c.req.parseBody()).reads ?? "").trim();
+    const known = campaignModes(store, views());
+    if (!known.has(campaign)) return c.text("No such campaign.", 404);
+    if (!reads) return grantBack(c, campaign, "error", "Choose a folder to add.");
+    if (reads === campaign)
+      return grantBack(
+        c,
+        campaign,
+        "error",
+        "A campaign always reads its own folder: choose another campaign's.",
+      );
+    if (!known.has(reads))
+      return grantBack(c, campaign, "error", `Control has no campaign named ${reads}.`);
+    if (!store.kb().grant(campaign, reads, "owner:ui"))
+      return grantBack(c, campaign, "ok", `${campaign} reads ${reads} already.`);
+    store.audit("owner:ui", "kb_grant", { campaign, reads });
+    return grantBack(
+      c,
+      campaign,
+      "ok",
+      `${campaign}'s agents may now read ${reads}'s folder. Runs at work get it at their next sync.`,
+    );
+  });
+  app.post("/ui/campaigns/:campaign/kb/revoke", async (c) => {
+    const campaign = c.req.param("campaign");
+    const reads = String((await c.req.parseBody()).reads ?? "").trim();
+    if (!store.kb().revoke(campaign, reads))
+      return grantBack(c, campaign, "error", `${campaign} does not read ${reads}.`);
+    store.audit("owner:ui", "kb_revoke", { campaign, reads });
+    return grantBack(
+      c,
+      campaign,
+      "ok",
+      `${campaign}'s agents no longer read ${reads}'s folder. Runs at work drop it at their next sync.`,
+    );
+  });
+}

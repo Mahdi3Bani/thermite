@@ -14,7 +14,7 @@
   "src/control/campaign-context.ts": ["src/control/ui/campaigns.ts"],
   "src/control/command-progress.ts": ["src/control/ui/exports.ts"],
   "src/control/copy-campaign.ts": ["src/control/ui/campaigns.ts"],
-  "src/control/dashboard.ts": ["src/harness/goal-checks.ts", "src/harness/kit.ts"],
+  "src/control/dashboard/campaigns/shared.ts": ["src/harness/goal-checks.ts", "src/harness/kit.ts"],
   "src/control/kit-add.ts": ["src/harness/kit.ts"],
   "src/control/kit-repos.ts": ["src/harness/kit.ts"],
   "src/control/kit-upload.ts": ["src/harness/kit.ts"],
