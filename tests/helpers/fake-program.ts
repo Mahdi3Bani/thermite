@@ -20,13 +20,13 @@ const done = (): RunOutcome =>
 
 /**
  * A stand-in runner for one program: every other run succeeds (`onSetup` sees each first); the
- * program's nth run (from 1) gives `lines`, or `lines(n)`, and ends 30 ms later as `outcome`
+ * program's nth run (from 1) gives `lines`, or `lines(n, req)`, and ends 30 ms later as `outcome`
  * says, or, with `hang`, only once its role is killed. With `submit`, the agent has submitted by
- * the time a run ends.
+ * the time a run ends. It records the folders handed over and removed.
  */
 export function fakeProgramRunner(
   program: Program,
-  lines: string[] | ((n: number) => string[]),
+  lines: string[] | ((n: number, req: RunRequest) => string[]),
   o: {
     submit?: boolean;
     hang?: boolean;
@@ -37,6 +37,8 @@ export function fakeProgramRunner(
   const { word, events } = PROGRAMS[program];
   const runs: RunRequest[] = [];
   const killed: string[] = [];
+  const handed: { dir: string; role: string }[] = [];
+  const removed: string[] = [];
   let submitted = false;
   let release: () => void = () => undefined;
   const programRuns = () => runs.filter((x) => x.argv.includes(word));
@@ -47,7 +49,9 @@ export function fakeProgramRunner(
         o.onSetup?.(req);
         return done();
       }
-      const out = (typeof lines === "function" ? lines(programRuns().length) : lines).join("\n");
+      const out = (typeof lines === "function" ? lines(programRuns().length, req) : lines).join(
+        "\n",
+      );
       const file = req.env?.[events];
       if (file) appendFileSync(file, `${out}\n`);
       await new Promise<void>((r) => {
@@ -62,8 +66,12 @@ export function fakeProgramRunner(
       release();
       return 0;
     },
-    handOver: async () => undefined,
-    remove: async () => undefined,
+    handOver: async (dir: string, role: string) => {
+      handed.push({ dir, role });
+    },
+    remove: async (dir: string) => {
+      removed.push(dir);
+    },
   } as unknown as Runner;
-  return { runner, runs, killed, submitted: () => submitted, programRuns };
+  return { runner, runs, killed, handed, removed, submitted: () => submitted, programRuns };
 }

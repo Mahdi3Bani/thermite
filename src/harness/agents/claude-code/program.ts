@@ -1,3 +1,4 @@
+import { writeFileSync } from "node:fs";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WORKER_CLAUDE_CODE_SYSTEM } from "../../../agents/roles/worker.ts";
@@ -160,11 +161,13 @@ export function claudeArgs(
 }
 
 /**
- * Claude Code in the CLI trial loop: its token on file descriptor 3 and its prompt from a file the
- * lane writes before each run, a run cut short that keeps its usage, and the subscription's usage
- * windows, a full one of which ends the trial.
+ * Claude Code in the CLI trial loop and the one-prompt call: its token on file descriptor 3 and
+ * its prompt from a file the lane (or, for a call, the controller) writes before each run, a run
+ * cut short that keeps its usage, and the subscription's usage windows, a full one of which ends
+ * the trial.
  */
 export const claudeProgram: CliProgram<ClaudeTally> = {
+  id: "claude-code",
   name: "Claude Code",
   prefix: "claude",
   eventsVar: "THERMITE_CLAUDE_EVENTS",
@@ -227,9 +230,7 @@ export const claudeProgram: CliProgram<ClaudeTally> = {
   beforeRun: (prompt, run, runner) => writeClaudePrompt(runner, run.role, run.area, prompt),
   // A run cut off before its result (a submission, the cap) keeps what its stream showed.
   closeRun: closeClaudeRun,
-  onRead: (t, deps) => {
-    if (t.usage) deps.usage?.(t.usage);
-  },
+  windows: (t) => t.usage,
   // A full usage window: the trial ends, and the lane waits for the reset (never paid credits).
   stopAfterRun: (t) =>
     t.limitedUntil
@@ -240,4 +241,54 @@ export const claudeProgram: CliProgram<ClaudeTally> = {
           error: `the Claude subscription's usage window is full until ${t.limitedUntil}`,
         }
       : undefined,
+  call: {
+    setup: (c) => {
+      const mcp = claudeMcpConfig(c.mcp);
+      return {
+        script: `mkdir -p home tmp${c.keptAt ? " compactions" : ""}${mcp ? " && umask 077 && cat > home/mcp.json" : ""}`,
+        stdin: mcp,
+      };
+    },
+    env: (c) => ({
+      ...claudeEnv({
+        home: c.home,
+        apiUrl: c.apiUrl,
+        auth: "",
+        tmp: c.tmp,
+        maxCommandMs: c.timeoutMs,
+      }),
+      // A planner's call compacts as the workers' trials do (goal 070).
+      ...claudeCompactionEnv(c.model),
+      [PROMPT_VAR]: join(c.dir, CLAUDE_PROMPT),
+    }),
+    args: (c) => [
+      "-p",
+      ...claudeArgs(c.model, {
+        tools: c.tools,
+        mcpConfig: c.mcp ? join(c.home, "mcp.json") : undefined,
+        // Its PreCompact hook, when the call's conversation is kept (goal 070).
+        settings: c.keptAt ? claudeHookSettings(join(c.dir, "compactions"), c.keptAt) : undefined,
+      }),
+    ],
+    // The prompt for Claude Code's stdin, handed over with the folder.
+    prepare: (c, prompt) => writeFileSync(join(c.dir, CLAUDE_PROMPT), prompt, { mode: 0o600 }),
+    own: (c, title, t) =>
+      claudeOwn({
+        root: c.dir,
+        drops: ["compactions"],
+        home: ["home"],
+        title,
+        session: () => t.session,
+      }),
+  },
+  answer: (t) => t.result,
+  // No tools, or the read-only file tools when it has past research to read.
+  plannerTools: (read) => (read ? "Read,Grep,Glob" : ""),
+  check: {
+    tool: "Bash",
+    why: (t) =>
+      t.limitedUntil
+        ? `the subscription's usage window is full until ${t.limitedUntil}`
+        : undefined,
+  },
 };

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { reaches, routeRefusal } from "../core/agents.ts";
 import {
   COMPACT_AT_DEFAULT,
   COMPACT_AT_MAX,
@@ -9,7 +10,6 @@ import { isOpencodeOwn } from "./providers.ts";
 import {
   type AgentRole,
   type ControlStore,
-  codexTakes,
   EFFORTS,
   type Effort,
   HARNESSES,
@@ -366,11 +366,14 @@ export function harnessRefusal(
   harness: Harness,
   who: string,
 ): string | undefined {
-  if (p.type === "claude" && harness !== "claude-code")
+  // The rules of the provider's kind (core/agents.ts), then OpenCode's free models, which are
+  // told apart by more than their provider's kind.
+  const refused = routeRefusal(p.type, harness);
+  if (refused === "claude-code" && harness !== "claude-code")
     return `A Claude subscription runs only in Claude Code: choose Claude Code for ${who}, or another model.`;
-  if (harness === "claude-code" && p.type !== "claude")
-    return `Claude Code runs only with a Claude subscription here: choose ${codexTakes(p.type) ? "Pi, OpenCode v2 or Codex" : "Pi or OpenCode v2"} for this provider.`;
-  if (harness === "codex" && !codexTakes(p.type))
+  if (refused === "claude-code")
+    return `Claude Code runs only with a Claude subscription here: choose ${reaches("codex", p.type) ? "Pi, OpenCode v2 or Codex" : "Pi or OpenCode v2"} for this provider.`;
+  if (refused === "codex")
     return "Codex runs only with a ChatGPT subscription or an OpenAI-compatible provider: choose Pi or OpenCode v2 for this provider.";
   if (harness !== "opencode" && opencodeOnly(p, model))
     return `OpenCode's free models run only in OpenCode: choose OpenCode v2 for ${who}, or another model.`;

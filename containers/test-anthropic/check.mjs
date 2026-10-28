@@ -1,6 +1,7 @@
 // Test only (scripts/claude-real-acceptance.mjs): Thermite's own calls of Claude Code, run in the
 // harness container with the image's real Claude Code and the stand-in for Anthropic's API
-// (anthropic.mjs). It prints one JSON line: { checks: [{ name, ok, detail }] }.
+// (anthropic.mjs). It prints one JSON line: { checks: [{ name, ok, detail }], peakRssBytes }, the
+// last the peak memory the broker recorded for Claude Code's runs in the first trial.
 //   node check.mjs harness   as the controller's user: the model check, a planner call and a
 //                            trial, through the broker (each as its role's user)
 //   node check.mjs advisor   as the supervisor's user, with its own TMPDIR: an advisor's call,
@@ -22,6 +23,8 @@ import { startAnthropicStandIn } from "./anthropic.mjs";
 /** A made-up sign-in token: letters only, never a real one. */
 const TOKEN = "madeupsignintokenforthestandin";
 const checks = [];
+/** The most memory the broker recorded for one of Claude Code's runs in the first trial. */
+let peakRssBytes;
 /** One check; `log`: lines that say why it failed, printed in full when it does. */
 const check = (name, ok, detail, log) =>
   checks.push({ name, ok: Boolean(ok), detail, ...(!ok && log?.length ? { log } : {}) });
@@ -124,6 +127,20 @@ async function harness() {
     command: `node ${here}/probe.mjs ${TOKEN.slice(0, half)} ${TOKEN.slice(half)} && thermite-trial submit --hypothesis "value two, from the real Claude Code"`,
   };
   const live = [];
+  // What the broker records of each of Claude Code's runs (the program's run is the one it may
+  // spare from the memory limit), for the figure in Claude Code's limits note.
+  const measured = new Proxy(runner, {
+    get(target, key) {
+      if (key === "run")
+        return async (req) => {
+          const r = await target.run(req);
+          if (req.spareExe) peakRssBytes = Math.max(peakRssBytes ?? 0, r.peakRssBytes ?? 0);
+          return r;
+        };
+      const v = target[key];
+      return typeof v === "function" ? v.bind(target) : v;
+    },
+  });
   const trial = await runClaudeTrial(
     {
       trialId: "t-check",
@@ -138,7 +155,7 @@ async function harness() {
       wallMs: 180_000,
     },
     {
-      runner,
+      runner: measured,
       model,
       apiUrl: `http://127.0.0.1:${harnessApi.address().port}`,
       live: (entries) => live.push(...entries),
@@ -384,4 +401,4 @@ check(
   api.seen,
 );
 await api.close();
-console.log(JSON.stringify({ checks }));
+console.log(JSON.stringify({ checks, ...(peakRssBytes !== undefined ? { peakRssBytes } : {}) }));

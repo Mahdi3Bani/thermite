@@ -131,9 +131,25 @@ export function runEnv(home: string, apiUrl: string, auth: string, extra: Record
   };
 }
 
-/** OpenCode in the CLI trial loop: `opencode run` continues its session with each continuation. */
+/** `opencode run` as Thermite starts it, headless with its permissions approved, for this model. */
+const runArgs = (m: ModelConfig) => [
+  "run",
+  "--standalone",
+  "--auto",
+  "--format",
+  "json",
+  "--model",
+  opencodeModelId(m),
+];
+
+/**
+ * OpenCode in the CLI trial loop and the one-prompt call: `opencode run` continues its session
+ * with each continuation. It runs research trials too.
+ */
 export const opencodeProgram: CliProgram<OpencodeTally> = {
+  id: "opencode",
   name: "OpenCode",
+  research: true,
   prefix: "opencode",
   eventsVar: "THERMITE_OPENCODE_EVENTS",
   system: WORKER_OPENCODE_SYSTEM,
@@ -159,13 +175,7 @@ export const opencodeProgram: CliProgram<OpencodeTally> = {
     ...(run.keptAt ? opencodeKeepEnv(join(run.area, OPENCODE_DROPS), run.keptAt) : {}),
   }),
   args: (run, session) => [
-    "run",
-    "--standalone",
-    "--auto",
-    "--format",
-    "json",
-    "--model",
-    opencodeModelId(run.model),
+    ...runArgs(run.model),
     ...(session ? ["--session", session] : ["--title", `trial ${run.trialId}`]),
   ],
   newTally,
@@ -174,4 +184,26 @@ export const opencodeProgram: CliProgram<OpencodeTally> = {
   // Each compaction Thermite's plugin saw end, with the session it kept before it (goal 070).
   own: (run) => opencodeOwn({ root: run.area, drops: [OPENCODE_DROPS], title: run.title }),
   exitWords: opencodeExitWords,
+  call: {
+    // Thermite's compaction plugin, when the call's conversation is kept (goal 070).
+    setup: (c) => {
+      const keep = c.keptAt !== undefined;
+      return {
+        script: `mkdir -p home/.config/opencode tmp && umask 077 && cat > home/.config/opencode/opencode.jsonc${keep ? ` && mkdir -p home/.config/opencode/plugins compactions && ln -sf "$1" home/${OPENCODE_PLUGIN_LINK}` : ""}`,
+        args: keep ? ["sh", OPENCODE_PLUGIN] : [],
+        stdin: JSON.stringify(opencodeConfig(c.model, `${c.apiUrl}/v1/model-proxy`, c.mcp)),
+      };
+    },
+    // A credential minted for the call reaches the proxy (none needed for OpenCode's own models).
+    env: (c) => ({
+      ...runEnv(c.home, c.apiUrl, c.proxyAuth(), {}),
+      TMPDIR: c.tmp,
+      ...(c.keptAt ? opencodeKeepEnv(join(c.dir, "compactions"), c.keptAt) : {}),
+    }),
+    args: (c) => runArgs(c.model),
+    // The plugin's records, which the controller reads once it has the call's folder back.
+    kept: (c, at) => opencodeFound(c.dir, ["compactions"], 0, at),
+    own: (c, title) => opencodeOwn({ root: c.dir, drops: ["compactions"], title }),
+  },
+  check: { baseUrl: (m) => (m.api === "opencode" ? "opencode" : m.baseUrl) },
 };

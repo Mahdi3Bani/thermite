@@ -52,8 +52,8 @@ async function planWith(
   await env.start();
   const asked: string[] = [];
   const models: string[] = [];
-  const ask = (name: string) => async (m: ModelConfig) => {
-    asked.push(name);
+  const ask = async (via: string, m: ModelConfig) => {
+    asked.push(via);
     models.push(m.model);
     return PLAN;
   };
@@ -63,9 +63,7 @@ async function planWith(
     model: workers,
     plannerModel: () => planner,
     owner: "planner-harness-test",
-    askOpencode: ask("opencode"),
-    askClaude: ask("claude-code"),
-    askCodex: ask("codex"),
+    ask,
     runTrial: async () => ({ stopped: "error", turns: 0, toolCalls: 0, tokensIn: 0, tokensOut: 0 }),
   });
   await scheduler.tick();
@@ -150,7 +148,7 @@ describe("the planner's own harness", () => {
       runner: new LocalRunner(env.paths.scratchDir),
       model: keyed({ api: "claude", harness: "claude-code", model: "claude-opus-5-5" }),
       owner: "planner-compaction-test",
-      askClaude: async (_m, _prompt, _signal, o) => {
+      ask: async (_via, _m, _prompt, _signal, o) => {
         given.push(o);
         // Claude Code compacted the call's conversation once, and the harness keeps it.
         o?.compaction?.compacted({
@@ -206,7 +204,7 @@ describe("the planner's own harness", () => {
       runner: new LocalRunner(codexEnv.paths.scratchDir),
       model: keyed({ harness: "codex" }),
       owner: "planner-compaction-codex",
-      askCodex: async (_m, _p, _s, o) => {
+      ask: async (_via, _m, _p, _s, o) => {
         viaCodex.push(o);
         return PLAN;
       },
@@ -232,7 +230,7 @@ describe("the planner's own harness", () => {
       runner: new LocalRunner(env.paths.scratchDir),
       model: keyed({ api: "chatgpt", harness: "codex", model: "workers-model", provider: "sub" }),
       owner: "planner-usage-test",
-      askCodex: async (_m, _prompt, _signal, o) => {
+      ask: async (_via, _m, _prompt, _signal, o) => {
         o?.usage?.(callUsage({ at: 0, tokensIn: 900, cachedIn: 300, tokensOut: 40 }));
         return PLAN;
       },

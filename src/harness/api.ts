@@ -6,6 +6,7 @@ import { z } from "zod";
 import { log } from "../common/env.ts";
 import { answerOf } from "../common/errors.ts";
 import { sameSecret } from "../common/secrets.ts";
+import { throughProxy } from "../core/agents.ts";
 import { laneLimits } from "../core/contract.ts";
 import { McpConnection, McpUnavailable } from "../core/mcp.ts";
 import { AdvisorAgent, CallUsage, UsageHarness } from "../core/usage.ts";
@@ -154,8 +155,7 @@ export function createHarnessApi(
     if (!ok) return c.json({ error: "unauthorized" }, 401);
     const m = (trial ? undefined : service.proxyTokenModel(given)) ?? service.models?.current();
     // OpenCode's own models need no proxy; a Claude subscription is used only by Claude Code.
-    if (!m || m.api === "opencode" || m.api === "claude")
-      return c.json({ error: "no provider to reach" }, 404);
+    if (!m || !throughProxy(m.api)) return c.json({ error: "no provider to reach" }, 404);
     return forwardToProvider(
       {
         method: c.req.method,

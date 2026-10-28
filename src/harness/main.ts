@@ -19,24 +19,19 @@ import {
 } from "../common/env.ts";
 import { log, startLogging } from "../common/log.ts";
 import { generateSigningKeys } from "../core/commands.ts";
-import { claudeModelCheck, claudeOnce, mergeUsage, runClaudeTrial } from "./agents/claude-code.ts";
-import type { CliCompacted } from "./agents/cli-compaction.ts";
-import { codexModelCheck, codexOnce, runCodexTrial } from "./agents/codex.ts";
 import { DevRuns } from "./agents/devrun.ts";
 import { type ModelConfig, modelConfigFromEnv, withAgentsContext } from "./agents/model.ts";
-import { checkModel } from "./agents/model-check.ts";
 import { ModelSource } from "./agents/model-source.ts";
+import { mergeUsage, type PlanWindows } from "./agents/plan-windows.ts";
 import {
-  opencodeModelCheck,
-  opencodeOnce,
-  PLANNER_ROLE,
-  runOpencodeResearchTrial,
-  runOpencodeTrial,
-  takeUsage,
-} from "./agents/opencode.ts";
+  CLI_PROGRAMS,
+  programOf,
+  researchProgramOf,
+  researchRefusal,
+  type TrialLink,
+} from "./agents/programs.ts";
 import { Scheduler } from "./agents/scheduler.ts";
-import { spawnTrial } from "./agents/spawn.ts";
-import { laneCacheEnv, prepareResearchArea } from "./agents/workspace.ts";
+import { laneCacheEnv } from "./agents/workspace.ts";
 import { createHarnessApi } from "./api.ts";
 import { BrokerClient } from "./broker/client.ts";
 import {
@@ -48,7 +43,7 @@ import {
   readLayout,
   runRole,
 } from "./broker/devices.ts";
-import { LocalRunner, type Role, type Runner } from "./broker/runner.ts";
+import { LocalRunner, type Runner } from "./broker/runner.ts";
 import { Compactions, compactionOf } from "./compactions.ts";
 import { collectHardware } from "./hardware.ts";
 import { Judge, type PromotionPolicy } from "./judge/judge.ts";
@@ -482,23 +477,22 @@ async function main(): Promise<void> {
     scratchDir: paths.scratchDir,
     mintProxyToken: (m?: ModelConfig) => service.mintProxyToken(m),
   };
+  // The model check in the program the route names (programs.ts).
   service.rigChecks.model = {
     run: async () => {
       const m = model();
       return m
-        ? m.harness === "opencode"
-          ? opencodeModelCheck(m, once)
-          : m.harness === "claude-code"
-            ? claudeModelCheck(m, once)
-            : m.harness === "codex"
-              ? codexModelCheck(m, once)
-              : checkModel(m)
+        ? programOf(m).modelCheck(m, once)
         : {
             ok: false,
             summary:
               "no model route: set one on control's settings page (or in the rig's settings)",
           };
     },
+  };
+  // The subscription's windows, as Claude Code reports them: in the rig's report.
+  const windows = (u: PlanWindows) => {
+    service.subscriptionUsage = mergeUsage(service.subscriptionUsage, u);
   };
   // The smoke check: a judge-only campaign from the smoke kit in the image, on this target.
   service.rigChecks.smoke = {
@@ -512,40 +506,46 @@ async function main(): Promise<void> {
         scratchDir: paths.scratchDir,
       }),
   };
-  const trialOf = (spec: { trialId: string; run: string; lane: string }) => ({
-    id: spec.trialId,
-    run: spec.run,
-    lane: spec.lane,
-  });
-  // A compaction OpenCode, Codex or Claude Code reported (goal 070): kept and recorded as a Pi
-  // worker's are, with the program's own conversation where Thermite could read it.
-  const compactedIn =
-    (
-      spec: { trialId: string; run: string; lane: string },
-      harness: "opencode" | "codex" | "claude-code",
-    ) =>
-    (c: CliCompacted) =>
-      service.compactions?.fromHarness(compactionOf(trialOf(spec)), harness, c);
-  // Where a trial's conversation is kept before each compaction, for the program's own summary to
-  // name it: the run's research folder, which the worker may read (goal 070).
-  const keptAtFor = (spec: { trialId: string; run: string; lane: string }) =>
-    service.compactions?.keptAt(compactionOf(trialOf(spec)), true);
-  // Each model call's usage (goal 075): the harness records what OpenCode, Codex and Claude Code
-  // report of a trial's calls; a Pi worker's own code hands its records over, with the trial's
-  // token, while the trial runs.
-  const workerUsage = (spec: { trialId: string; run: string }, m: ModelConfig) =>
-    service.usage.recorder(spec.run, { trial: spec.trialId, agent: "workers" }, routeOf(m));
-  const inPi = async <T>(
-    spec: { trialId: string; run: string },
+  // What a trial takes from the harness, whichever program runs it (programs.ts).
+  const link = (
+    spec: { trialId: string; run: string; lane: string },
     m: ModelConfig | undefined,
-    run: () => Promise<T>,
-  ): Promise<T> => {
-    if (m) service.usage.open({ id: spec.trialId, run: spec.run }, routeOf(m, "pi"));
-    try {
-      return await run();
-    } finally {
-      service.usage.close(spec.trialId);
-    }
+    signal: AbortSignal,
+  ): TrialLink => {
+    const trial = { id: spec.trialId, run: spec.run, lane: spec.lane };
+    return {
+      runner,
+      model: m,
+      apiUrl,
+      scratchDir: paths.scratchDir,
+      port,
+      live: (entries) => service.trialReport(trial, { entries }),
+      progress: (progress) => service.trialReport(trial, { progress }),
+      submitted: () => service.trialSubmission(spec.trialId),
+      messages: service.trialInbox(trial),
+      usage: windows,
+      // A compaction the program reported (goal 070): kept and recorded as a Pi worker's are,
+      // with the program's own conversation where Thermite could read it.
+      compacted: (harness, c) => service.compactions?.fromHarness(compactionOf(trial), harness, c),
+      // Where its conversation is kept before each compaction, for the program's own summary to
+      // name it: the run's research folder, which the worker may read (goal 070).
+      keptAt: service.compactions?.keptAt(compactionOf(trial), true),
+      // Each model call's usage (goal 075): the harness records what OpenCode, Codex and Claude
+      // Code report of a trial's calls; a Pi worker's own code hands its records over, with the
+      // trial's token, while the trial runs.
+      modelUsage: m
+        ? service.usage.recorder(spec.run, { trial: spec.trialId, agent: "workers" }, routeOf(m))
+        : undefined,
+      handOverUsage: (harness) => {
+        if (m) service.usage.open(trial, routeOf(m, harness));
+        return () => service.usage.close(spec.trialId);
+      },
+      // The provider's error answers the model proxy saw, and each wait for it (goal 079).
+      providerAnswer: (since) => service.providerAnswerSince(spec.trialId, since),
+      waiting: (w) => service.trialWait(trial, w),
+      env: laneCacheEnv(paths.scratchDir, spec.lane),
+      signal,
+    };
   };
   // Agents wait while no route is set; one set later starts them without a restart.
   const scheduler = new Scheduler({
@@ -565,135 +565,21 @@ async function main(): Promise<void> {
     // Claude Code or Codex.
     runTrial: (spec, signal) => {
       const m = modelFor(spec.run);
-      if (m?.harness === "codex")
-        return runCodexTrial(spec, {
-          runner,
-          model: m,
-          apiUrl,
-          live: (entries) => service.trialReport(trialOf(spec), { entries }),
-          progress: (progress) => service.trialReport(trialOf(spec), { progress }),
-          submitted: () => service.trialSubmission(spec.trialId),
-          messages: service.trialInbox({ id: spec.trialId, run: spec.run, lane: spec.lane }),
-          compacted: compactedIn(spec, "codex"),
-          keptAt: keptAtFor(spec),
-          modelUsage: workerUsage(spec, m),
-          // The provider's error answers the model proxy saw, and each wait for it (goal 079).
-          providerAnswer: (since) => service.providerAnswerSince(spec.trialId, since),
-          waiting: (w) => service.trialWait(trialOf(spec), w),
-          env: laneCacheEnv(paths.scratchDir, spec.lane),
-          signal,
-        });
-      if (m?.harness === "claude-code")
-        return runClaudeTrial(spec, {
-          runner,
-          model: m,
-          apiUrl,
-          live: (entries) => service.trialReport(trialOf(spec), { entries }),
-          progress: (progress) => service.trialReport(trialOf(spec), { progress }),
-          submitted: () => service.trialSubmission(spec.trialId),
-          messages: service.trialInbox({ id: spec.trialId, run: spec.run, lane: spec.lane }),
-          // The subscription's windows, as Claude Code reports them: in the rig's report.
-          usage: (u) => {
-            service.subscriptionUsage = mergeUsage(service.subscriptionUsage, u);
-          },
-          compacted: compactedIn(spec, "claude-code"),
-          keptAt: keptAtFor(spec),
-          modelUsage: workerUsage(spec, m),
-          // The provider's error answers the model proxy saw, and each wait for it (goal 079).
-          providerAnswer: (since) => service.providerAnswerSince(spec.trialId, since),
-          waiting: (w) => service.trialWait(trialOf(spec), w),
-          env: laneCacheEnv(paths.scratchDir, spec.lane),
-          signal,
-        });
-      if (m?.harness !== "opencode")
-        return inPi(spec, m, () =>
-          spawnTrial({ kind: "code", spec }, runner, paths.scratchDir, port, signal, m),
-        );
-      return runOpencodeTrial(spec, {
-        runner,
-        model: m,
-        apiUrl,
-        live: (entries) => service.trialReport(trialOf(spec), { entries }),
-        progress: (progress) => service.trialReport(trialOf(spec), { progress }),
-        submitted: () => service.trialSubmission(spec.trialId),
-        messages: service.trialInbox({ id: spec.trialId, run: spec.run, lane: spec.lane }),
-        compacted: compactedIn(spec, "opencode"),
-        keptAt: keptAtFor(spec),
-        modelUsage: workerUsage(spec, m),
-        // The provider's error answers the model proxy saw, and each wait for it (goal 079).
-        providerAnswer: (since) => service.providerAnswerSince(spec.trialId, since),
-        waiting: (w) => service.trialWait(trialOf(spec), w),
-        env: laneCacheEnv(paths.scratchDir, spec.lane),
-        signal,
-      });
+      return programOf(m).runTrial({ mode: "code", spec }, link(spec, m, signal));
     },
-    // The planner through OpenCode, as the planner's own user: its own tools; with past research,
-    // the prompt names the run's knowledge/ folder, which every agent user may read and none may
-    // change.
-    askOpencode: async (m, prompt, signal, o) => {
-      const t = await opencodeOnce(m, prompt, once, {
-        role: PLANNER_ROLE,
-        signal,
-        // The MCP servers the run's kit gives the planner, at the gateway (goal 068).
-        mcp: o?.mcp,
-        // Its conversation before each of the program's own compactions (goal 070).
-        compaction: o?.compaction,
-      });
-      takeUsage(t, o?.usage);
-      if (!t.lastText) throw new Error(t.errors.at(-1) ?? "OpenCode gave no answer");
-      return t.lastText;
-    },
+    // The planner through OpenCode, Claude Code or Codex, as the planner's own user (cli/once.ts).
+    ask: (via, m, prompt, signal, o) =>
+      CLI_PROGRAMS[via].ask(m, prompt, once, { ...o, signal, windows }),
     // The planner's own model, when control gave it one.
     plannerModel: () => models.planner(),
-    // The planner on a Claude subscription: Claude Code as the planner's own user, with no tools,
-    // or with the read-only file tools when it has past research to read (the run's knowledge/,
-    // which every agent user may read and none may change).
-    askClaude: async (m, prompt, signal, o) => {
-      const t = await claudeOnce(m, prompt, once, {
-        tools: o?.read ? "Read,Grep,Glob" : "",
-        signal,
-        role: PLANNER_ROLE,
-        mcp: o?.mcp,
-        // Its conversation before each of Claude Code's own compactions (goal 070).
-        compaction: o?.compaction,
-      });
-      takeUsage(t, o?.usage);
-      if (t.usage) service.subscriptionUsage = mergeUsage(service.subscriptionUsage, t.usage);
-      const answer = t.result ?? t.lastText;
-      if (!answer) throw new Error(t.errors.at(-1) ?? "Claude Code gave no answer");
-      return answer;
-    },
-    // The planner of a route whose agents run in Codex: Codex as the planner's own user, through
-    // the model proxy with a credential minted for the call; with past research, the prompt names
-    // the run's knowledge/ folder, which every agent user may read and none may change.
-    askCodex: async (m, prompt, signal, o) => {
-      const t = await codexOnce(m, prompt, once, {
-        role: PLANNER_ROLE,
-        signal,
-        // The MCP servers the run's kit gives the planner, at the gateway (goal 068).
-        mcp: o?.mcp,
-        // Its conversation before each of the program's own compactions (goal 070).
-        compaction: o?.compaction,
-      });
-      takeUsage(t, o?.usage);
-      if (!t.lastText) throw new Error(t.errors.at(-1) ?? "Codex gave no answer");
-      return t.lastText;
-    },
     research,
-    // Research workers run in the harness the rig's route names: Pi (a worker process with the
-    // research tools only) or OpenCode (its own tools plus `thermite-trial research`); a route
-    // whose code trials run in Codex runs its research workers in Pi, which reaches the same
-    // provider (a ChatGPT sign-in or an OpenAI-compatible route). A Claude subscription runs only
-    // in Claude Code, and OpenCode's own (free) models only in OpenCode: say so, in words.
+    // Research workers run in Pi (a worker process with the research tools only) or OpenCode (its
+    // own tools plus `thermite-trial research`); a route whose code trials run in another program
+    // runs its research workers in Pi, which reaches the same provider. A model that neither can
+    // serve says so, in words.
     runResearchTrial: async (spec, signal) => {
       const m = modelFor(spec.run);
-      const cannot = !m
-        ? "this rig has no model for its agents: give it one on its Edit rig page"
-        : m.api === "claude"
-          ? "research workers run in Pi or OpenCode, and a Claude subscription runs only in Claude Code: give this rig another model for research"
-          : m.api === "opencode" && m.harness !== "opencode"
-            ? `${m.model} is one of OpenCode's own models, which work only inside OpenCode: set this rig's agents' harness to OpenCode on its Edit rig page`
-            : undefined;
+      const cannot = researchRefusal(m);
       if (cannot)
         return {
           stopped: "error",
@@ -705,56 +591,18 @@ async function main(): Promise<void> {
         };
       // The run's research folder, with the lane's working area given to the user the trial
       // runs as: the worker's (Pi) or the lane's (OpenCode). Its files are saved when it ends.
-      const pi = m?.harness !== "opencode";
-      const lane = spec.lane as Role;
-      const as = (pi ? spec.lane.replace(/^lane-/, "agent-") : spec.lane) as Role;
-      const folder = await researchFolder.prepareLane(spec.run, spec.lane, as);
-      const save = () =>
-        researchFolder.captureLane(spec.run, spec.lane, spec.trialId).catch((err) => {
+      const program = researchProgramOf(m);
+      const folder = await researchFolder.prepareLane(
+        spec.run,
+        spec.lane,
+        program.runsAs(spec.lane),
+      );
+      try {
+        return await program.runTrial({ mode: "research", spec, folder }, link(spec, m, signal));
+      } finally {
+        await researchFolder.captureLane(spec.run, spec.lane, spec.trialId).catch((err) => {
           log("harness", "research files not saved", { lane: spec.lane, error: String(err) });
         });
-      if (pi) {
-        try {
-          return await inPi(spec, m, () =>
-            spawnTrial(
-              { kind: "research", spec: { ...spec, folder } },
-              runner,
-              paths.scratchDir,
-              port,
-              signal,
-              m,
-            ),
-          );
-        } finally {
-          await save();
-        }
-      }
-      const area = await prepareResearchArea({ runner, scratchDir: paths.scratchDir, lane });
-      try {
-        return await runOpencodeResearchTrial(spec, {
-          runner,
-          model: m,
-          apiUrl,
-          area: area.dir,
-          folder,
-          live: (entries) => service.trialReport(trialOf(spec), { entries }),
-          progress: (progress) => service.trialReport(trialOf(spec), { progress }),
-          messages: service.trialInbox({ id: spec.trialId, run: spec.run, lane: spec.lane }),
-          compacted: compactedIn(spec, "opencode"),
-          keptAt: keptAtFor(spec),
-          modelUsage: m ? workerUsage(spec, m) : undefined,
-          // The provider's error answers the model proxy saw, and each wait for it (goal 079).
-          providerAnswer: (since) => service.providerAnswerSince(spec.trialId, since),
-          waiting: (w) => service.trialWait(trialOf(spec), w),
-          env: laneCacheEnv(paths.scratchDir, spec.lane),
-          signal,
-        });
-      } finally {
-        // What the agent started from its shell ends with the trial, and so does its own area;
-        // its working area in the folder is saved.
-        await runner.killRole(lane).catch(() => 0);
-        await runner.remove(area.dir).catch(() => undefined);
-        await save();
       }
     },
     devRuns,

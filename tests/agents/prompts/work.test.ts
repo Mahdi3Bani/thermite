@@ -303,7 +303,7 @@ describe("every role's whole prompt for a sample run (goal 166)", () => {
         },
         owner: "prompts-test",
         ...(research ? { research } : {}),
-        askOpencode: async (_m, p) => {
+        ask: async (_via, _m, p) => {
           prompt ??= p;
           throw new Error("no answer");
         },

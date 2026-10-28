@@ -1,3 +1,5 @@
+import type { ResearchFolderPaths } from "../../../agents/tools/research.ts";
+import type { Harness } from "../../../core/agents.ts";
 import type { LiveKind } from "../../../core/live.ts";
 import type { CallUsage } from "../../../core/usage.ts";
 import type { Role, Runner } from "../../broker/runner.ts";
@@ -7,13 +9,27 @@ import type { McpAccess } from "../mcp-tools.ts";
 import type { ModelConfig } from "../model.ts";
 import type { PlanWindows } from "../plan-windows.ts";
 import type { ProviderLink } from "../provider-errors.ts";
-import type { SubmitOutcome, TrialResult } from "../worker.ts";
+import type { ResearchTrialSpec } from "../research-worker.ts";
+import type { SubmitOutcome, TrialResult, TrialSpec } from "../worker.ts";
 
 /**
  * The agent programs that run as command-line programs (OpenCode, Claude Code, Codex), as one
- * trial loop sees them (cli/loop.ts, goal 125, T7): each program's entry holds only what differs
- * between them, and the loop does the rest.
+ * trial loop (cli/loop.ts) and one one-prompt call (cli/once.ts) see them (goal 125, T7): each
+ * program's entry holds only what differs between them, and the loop and the call do the rest.
  */
+
+/** The agent programs that run as command-line programs, by their ids. */
+export type CliHarness = Exclude<Harness, "pi">;
+
+/**
+ * A trial the loop runs: a code trial, in its workspace, which a submission ends; or a research
+ * trial (in a program whose entry says it runs them), in its lane's working area of the run's
+ * research folder, which ends when the agent stops. `area`: the research trial's own area in the
+ * lane, for the program's home, temporary files and events.
+ */
+export type CliTrial =
+  | { mode: "code"; spec: TrialSpec }
+  | { mode: "research"; spec: ResearchTrialSpec; area: string; folder: ResearchFolderPaths };
 
 /** What every program's output has said so far: the fields each program's tally has. */
 export interface CliTally {
@@ -59,7 +75,34 @@ export interface CliRun {
   env: Record<string, string> | undefined;
 }
 
-/** What a program's setup runs in the trial's area, as the lane: a shell line and its input. */
+/**
+ * One one-prompt call of a program outside a trial (a planner call, a model check), as its entry
+ * sees it: in a folder of its own, which the call's user owns, removed afterwards.
+ */
+export interface CliCall {
+  model: ModelConfig;
+  /** The call's folder, and the program's home and temporary folder in it. */
+  dir: string;
+  home: string;
+  tmp: string;
+  /** The harness API as the call's user reaches it, for example http://127.0.0.1:8700. */
+  apiUrl: string;
+  /** A credential for the harness's model proxy, minted for this call when the entry asks. */
+  proxyAuth(): string;
+  /** The MCP servers the call may use (a planner's), at the gateway with their credential. */
+  mcp: McpAccess | undefined;
+  /** Where its conversation is kept before each compaction (goal 070). */
+  keptAt: KeptAt | undefined;
+  /** None unless given: a planner call runs until it answers or its run stops (goal 079). */
+  timeoutMs: number | undefined;
+  /** The tools it may use, in a program that takes a list (Claude Code's; "": none). */
+  tools: string | undefined;
+}
+
+/**
+ * What a program's setup runs in the trial's area (or the call's folder), as the lane (or the
+ * call's user): a shell line and its input.
+ */
 export interface CliSetup {
   script: string;
   /** The shell's positional arguments ($0 first). */
@@ -71,14 +114,17 @@ export interface CliSetup {
 export type OwnStop = Pick<TrialResult, "stopped" | "error" | "errorKind" | "retryAfter">;
 
 /**
- * One program, as the trial loop runs it. Its compaction settings go in through its setup, its
- * environment or its command line (Codex's configuration, Claude Code's environment and hook
- * settings, OpenCode's configuration and plugin); `found` and `own` say how its compactions are
- * found and read.
+ * One program, as the trial loop and the one-prompt call run it. Its compaction settings go in
+ * through its setup, its environment or its command line (Codex's configuration, Claude Code's
+ * environment and hook settings, OpenCode's configuration and plugin); `found` and `own` say how
+ * its compactions are found and read.
  */
 export interface CliProgram<T extends CliTally> {
+  id: CliHarness;
   /** Its name in what people read: "Codex", "Claude Code", "OpenCode". */
   name: string;
+  /** It runs research trials too (only OpenCode does). */
+  research?: boolean | undefined;
   /** The start of its folders' and events file's names in the trial's area: `<prefix>-home`. */
   prefix: string;
   /** The variable that names its events file to the shell that starts it. */
@@ -98,10 +144,10 @@ export interface CliProgram<T extends CliTally> {
   env(run: CliRun): Record<string, string>;
   /** Its command line after the binary; `session`: the one to continue. */
   args(run: CliRun, session: string | undefined): string[];
-  /** The shell that starts it, with `into` (where its output goes) after it. */
-  shell?(argv: string[], into: string): string[];
-  /** Its standard input (else the prompt). */
-  stdin?(prompt: string, run: CliRun): string;
+  /** The shell that starts it, with `into` (where a trial's output goes) after it. */
+  shell?(argv: string[], into?: string): string[];
+  /** Its standard input (else the prompt), in a trial or a call. */
+  stdin?(prompt: string, run: { model: ModelConfig }): string;
   newTally(): T;
   /** Reads lines of its output into the tally; returns them as live-view lines. */
   read(lines: string[], t: T): { kind: LiveKind; text: string }[];
@@ -119,10 +165,44 @@ export interface CliProgram<T extends CliTally> {
   beforeRun?(prompt: string, run: CliRun, runner: Runner): Promise<string | undefined>;
   /** After each run (Claude Code: a run cut short keeps the usage its output showed). */
   closeRun?(t: T): void;
-  /** After each read that had lines (Claude Code: its subscription's usage windows). */
-  onRead?(t: T, deps: CliTrialDeps): void;
+  /** Its subscription's usage windows, as its output reported them (Claude Code). */
+  windows?(t: T): PlanWindows | undefined;
   /** Its own reason to end the trial after a run (Claude Code: a full usage window). */
   stopAfterRun?(t: T): OwnStop | undefined;
+  /** A one-prompt call in it (cli/once.ts). */
+  call: CliCallEntry<T>;
+  /** Its answer to a one-prompt call (else its last text). */
+  answer?(t: T): string | undefined;
+  /** The tools a planner call may use, in a program that takes a list (`read`: past research). */
+  plannerTools?(read: boolean): string;
+  /**
+   * The model check in it: the tool its prompt names (else its shell tool), where its route goes
+   * in the report, and why it failed when its output says more than an error.
+   */
+  check: {
+    tool?: string | undefined;
+    baseUrl?(m: ModelConfig): string;
+    why?(t: T): string | undefined;
+  };
+}
+
+/** What a program's entry gives a one-prompt call in its folder, as the call's user. */
+export interface CliCallEntry<T extends CliTally> {
+  /** Its home, configuration and folders, made in the call's folder. */
+  setup(c: CliCall): CliSetup;
+  env(c: CliCall): Record<string, string>;
+  /** Its command line after the binary. */
+  args(c: CliCall): string[];
+  /** Before the folder is handed to the call's user, as the controller (Claude Code: the prompt). */
+  prepare?(c: CliCall, prompt: string): void;
+  /**
+   * The compactions its own files in the folder record (OpenCode's plugin), read once the
+   * controller has the folder back; `at`: the live entries the call gave. Without it, those its
+   * output reported (`found`).
+   */
+  kept?(c: CliCall, at: number): FoundCompaction[];
+  /** Its own conversation before each compaction, from the call's folder (goal 070). */
+  own(c: CliCall, title: string, t: T): OwnConversation;
 }
 
 /** What the trial loop takes from the harness. */
@@ -134,8 +214,8 @@ export interface CliTrialDeps extends ProviderLink {
   /** Lines for the live view, and the session's counters. */
   live(entries: { kind: LiveKind; text: string }[]): void;
   progress(p: TrialProgress): void;
-  /** The trial's submission, once it has one (from the ledger). */
-  submitted(): SubmitOutcome | undefined;
+  /** The trial's submission, once it has one (from the ledger); a research trial makes none. */
+  submitted?(): SubmitOutcome | undefined;
   /**
    * The owner's messages for this trial. No program takes a message into a running session: one
    * waiting when a run ends is given by continuing the session with it, and is read once the

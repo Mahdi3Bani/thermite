@@ -3,6 +3,13 @@ import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messag
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
 import { readNumber } from "../../common/settings.ts";
+import {
+  HARNESSES,
+  type Harness,
+  PROVIDER_TYPES,
+  type ProviderType,
+  routeRefusal,
+} from "../../core/agents.ts";
 import { type AgentsContext, contextApplied } from "../../core/compaction.ts";
 import { HARNESS_NUMBERS } from "../settings.ts";
 import { logStall, modelStallMs, stallGuard } from "./model-stall.ts";
@@ -36,12 +43,12 @@ export interface ModelConfig {
    * (only Claude Code may use it; apiKey is then its token), or a ChatGPT sign-in (OpenAI's
    * Responses API; apiKey is then a one-hour access token that control renews).
    */
-  api?: "openai" | "anthropic" | "opencode" | "claude" | "chatgpt" | undefined;
+  api?: ProviderType | undefined;
   /**
    * The harness the agents run in: Pi, in-process (the default), OpenCode v2, Claude Code or the
    * Codex CLI (OpenAI's Responses API only: a ChatGPT sign-in or an OpenAI-compatible route).
    */
-  harness?: "pi" | "opencode" | "claude-code" | "codex" | undefined;
+  harness?: Harness | undefined;
   /**
    * The provider's name in control's Providers, for the agents' model usage (goal 075). None: the
    * rig's own settings, which name no provider.
@@ -71,15 +78,6 @@ export interface ModelConfig {
   effort?: "low" | "medium" | "high" | "xhigh" | "max" | undefined;
   /** The key at the time of each call, when it is renewed while the route stays (a ChatGPT sign-in). */
   keyNow?: (() => string) | undefined;
-}
-
-/**
- * Whether the Codex CLI can reach a provider of this API. It speaks only OpenAI's Responses API:
- * a ChatGPT sign-in, or an OpenAI-compatible route whose server answers /responses (OpenAI's own
- * does). Never Anthropic's API, OpenCode's own models or a Claude subscription.
- */
-export function codexReaches(api: string | undefined): boolean {
-  return api === undefined || api === "openai" || api === "chatgpt";
 }
 
 export function reasoningFromEnv(raw: string | undefined): ReasoningEffort | undefined {
@@ -144,47 +142,34 @@ export function modelConfigFromEnv(env: NodeJS.ProcessEnv = process.env): ModelC
   const model = setting(env, MODEL_SETTINGS.model);
   const apiKey = setting(env, MODEL_SETTINGS.apiKey);
   if (!baseUrl || !model || !apiKey) return undefined;
-  const api = setting(env, MODEL_SETTINGS.api);
-  if (
-    api !== undefined &&
-    api !== "openai" &&
-    api !== "anthropic" &&
-    api !== "opencode" &&
-    api !== "claude" &&
-    api !== "chatgpt"
-  )
+  const rawApi = setting(env, MODEL_SETTINGS.api);
+  const api = PROVIDER_TYPES.find((t) => t === rawApi);
+  if (rawApi !== undefined && !api)
     throw new Error(
-      `THERMITE_MODEL_API must be openai, anthropic, opencode, claude or chatgpt, not ${api}`,
+      `THERMITE_MODEL_API must be openai, anthropic, opencode, claude or chatgpt, not ${rawApi}`,
     );
-  const harness = setting(env, MODEL_SETTINGS.harness);
-  if (
-    harness !== undefined &&
-    harness !== "pi" &&
-    harness !== "opencode" &&
-    harness !== "claude-code" &&
-    harness !== "codex"
-  )
+  const rawHarness = setting(env, MODEL_SETTINGS.harness);
+  const harness = HARNESSES.find((h) => h === rawHarness);
+  if (rawHarness !== undefined && !harness)
     throw new Error(
-      `THERMITE_AGENT_HARNESS must be pi, opencode, claude-code or codex, not ${harness}`,
+      `THERMITE_AGENT_HARNESS must be pi, opencode, claude-code or codex, not ${rawHarness}`,
     );
-  // A Claude subscription runs only in Claude Code, and Claude Code only on one.
-  if ((api === "claude") !== (harness === "claude-code"))
+  // A Claude subscription runs only in Claude Code, and Claude Code only on one; the Codex CLI
+  // speaks only OpenAI's Responses API. A Pi route of OpenCode's own models is taken: its planner
+  // calls go to OpenCode, and its research trials say why they cannot run.
+  const refused = routeRefusal(api, harness ?? "pi");
+  if (refused === "claude-code")
     throw new Error(
       "a Claude subscription (THERMITE_MODEL_API=claude) runs only with THERMITE_AGENT_HARNESS=claude-code, and that harness only with it",
     );
-  if (harness === "codex" && !codexReaches(api))
+  if (refused === "codex")
     throw new Error(
       "the Codex CLI speaks only OpenAI's Responses API: THERMITE_AGENT_HARNESS=codex needs THERMITE_MODEL_API chatgpt or openai",
     );
   return {
-    api:
-      api === "anthropic" || api === "opencode" || api === "claude" || api === "chatgpt"
-        ? api
-        : undefined,
-    harness:
-      harness === "opencode" || harness === "claude-code" || harness === "codex"
-        ? harness
-        : undefined,
+    // An OpenAI-compatible route and Pi are the defaults, left unnamed.
+    api: api === "openai" ? undefined : api,
+    harness: harness === "pi" ? undefined : harness,
     baseUrl: baseUrl.replace(/\/$/, ""),
     model,
     apiKey,
@@ -203,9 +188,7 @@ export function modelConfigFromEnv(env: NodeJS.ProcessEnv = process.env): ModelC
 export function modelEnv(cfg: ModelConfig): Record<string, string> {
   return {
     ...(cfg.api && cfg.api !== "openai" ? { THERMITE_MODEL_API: cfg.api } : {}),
-    ...(cfg.harness === "opencode" || cfg.harness === "claude-code" || cfg.harness === "codex"
-      ? { THERMITE_AGENT_HARNESS: cfg.harness }
-      : {}),
+    ...(cfg.harness && cfg.harness !== "pi" ? { THERMITE_AGENT_HARNESS: cfg.harness } : {}),
     THERMITE_MODEL_BASE_URL: cfg.baseUrl,
     THERMITE_MODEL: cfg.model,
     THERMITE_MODEL_API_KEY: cfg.apiKey,

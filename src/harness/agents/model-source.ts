@@ -1,8 +1,15 @@
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { z } from "zod";
-import { EFFORTS, HARNESSES, PROVIDER_TYPES } from "../../core/agents.ts";
+import {
+  EFFORTS,
+  HARNESSES,
+  type Harness,
+  PROVIDER_TYPES,
+  reaches,
+  routeRefusal,
+} from "../../core/agents.ts";
 import { COMPACT_AT_MAX, COMPACT_AT_MIN } from "../../core/compaction.ts";
-import { codexReaches, type ModelConfig, reasoningFromEnv } from "./model.ts";
+import { type ModelConfig, reasoningFromEnv } from "./model.ts";
 
 /** A model route as control hands it to the rig (through its supervisor), key included. */
 export const ControlRoute = z
@@ -38,10 +45,11 @@ export const ControlRoute = z
      */
     api_key: z.string().max(4096),
   })
-  .refine((r) => (r.type === "claude") === (r.harness === "claude-code"), {
+  .refine((r) => routeRefusal(r.type, r.harness) !== "claude-code", {
     message: "a Claude subscription runs only in Claude Code, and Claude Code only on one",
   })
-  .refine((r) => r.harness !== "codex" || codexReaches(r.type), {
+  // Said apart, so that a route that breaks both rules is told both.
+  .refine((r) => r.harness !== "codex" || reaches("codex", r.type), {
     message:
       "the Codex CLI speaks only OpenAI's Responses API: a ChatGPT sign-in or an OpenAI route",
   });
@@ -54,7 +62,7 @@ export interface ModelInfo {
   version?: number | undefined;
   revision?: string | undefined;
   /** The harness the agents run in. */
-  harness?: "pi" | "opencode" | "claude-code" | "codex" | undefined;
+  harness?: Harness | undefined;
   model?: string | undefined;
   base_url?: string | undefined;
   key_hint?: string | undefined;
@@ -112,10 +120,7 @@ export class ModelSource {
     const type = r.type ?? "openai";
     return {
       api: type === "openai" ? undefined : type,
-      harness:
-        r.harness === "opencode" || r.harness === "claude-code" || r.harness === "codex"
-          ? r.harness
-          : undefined,
+      harness: r.harness === "pi" ? undefined : r.harness,
       provider: r.name,
       baseUrl: r.base_url.replace(/\/$/, ""),
       model: r.model,

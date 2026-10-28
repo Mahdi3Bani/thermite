@@ -65,7 +65,7 @@ describe("a campaign's own context settings in a run (goal 070)", () => {
       // The planner's own model, with a larger window than the campaign's.
       plannerModel: () => ({ ...route, model: "gpt-planner", contextWindow: 400_000 }),
       owner: "context-test",
-      askCodex: async (m) => {
+      ask: async (_via, m) => {
         asked.push(m);
         return JSON.stringify({
           new_families: [{ id: "cx-tidy", description: "Small tidy-ups." }],

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { PLAN_LIMITS, PLANNER_ASK_SYSTEM, PLANNER_PI_SYSTEM } from "../../agents/roles/planner.ts";
 import { PAST_SEARCH_DESCRIPTION, PAST_SEARCH_TOOL } from "../../agents/tools/names.ts";
 import { errorText } from "../../common/errors.ts";
+import { routeRefusal } from "../../core/agents.ts";
 import type { BriefData } from "../../core/brief.ts";
 import { canonicalJson } from "../../core/canonical.ts";
 import { DIRECTIVE_KINDS, QueuePosition, type StoredRule } from "../../core/commands.ts";
@@ -1150,8 +1151,7 @@ async function callPlanner(
   usage?: (u: CallUsage) => void,
   spec: PlannerCallSpec = PLAN_SPEC,
 ): Promise<unknown> {
-  // Only Claude Code may use a Claude subscription: the planner never calls it itself.
-  if (cfg.api === "claude")
+  if (routeRefusal(cfg.api, "pi") === "claude-code")
     throw new Error(
       "a Claude subscription runs only in Claude Code, and none is set up for the planner",
     );

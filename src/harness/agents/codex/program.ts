@@ -157,8 +157,12 @@ export function codexEnv(o: {
   };
 }
 
-/** Codex in the CLI trial loop: `codex exec` resumes its thread with each continuation. */
+/**
+ * Codex in the CLI trial loop and the one-prompt call: `codex exec` resumes its thread with each
+ * continuation.
+ */
 export const codexProgram: CliProgram<CodexTally> = {
+  id: "codex",
   name: "Codex",
   prefix: "codex",
   eventsVar: "THERMITE_CODEX_EVENTS",
@@ -195,4 +199,25 @@ export const codexProgram: CliProgram<CodexTally> = {
       thread: () => t.session,
     }),
   exitWords: codexExitWords,
+  call: {
+    setup: (c) => ({
+      script: "mkdir -p home/.codex tmp && cat > home/.codex/config.toml",
+      stdin: codexConfig(c.model, `${c.apiUrl}/v1/model-proxy`, c.mcp, c.keptAt),
+    }),
+    // It reaches the model through the proxy with a credential minted for this call.
+    env: (c) =>
+      codexEnv({
+        home: c.home,
+        apiUrl: c.apiUrl,
+        auth: "",
+        proxyAuth: c.proxyAuth(),
+        mcpAuth: c.mcp?.auth,
+        tmp: c.tmp,
+      }),
+    args: (c) => codexArgs(c.model),
+    // Each compaction's conversation, from its rollout in the call's folder (goal 070).
+    own: (c, title, t) =>
+      codexOwn({ root: c.dir, home: ["home", ".codex"], title, thread: () => t.session }),
+  },
+  check: { baseUrl: (m) => m.baseUrl },
 };

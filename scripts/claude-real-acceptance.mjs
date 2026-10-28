@@ -16,6 +16,8 @@
 //     process's environment;
 //   - every call to the stand-in was signed in with the token;
 //   - the image has no bubblewrap: no call of Claude Code needs it.
+// It prints the peak memory the broker recorded for Claude Code's runs in its trial, the figure
+// Claude Code's limits note states.
 //
 // Usage: COMPOSE="podman compose" node scripts/claude-real-acceptance.mjs
 //   CLAUDE_CODE_VERSION  the version the image is built with (default 2.1.308)
@@ -192,6 +194,10 @@ try {
   ]);
   results.push(inside("10001:10001", "advisor", ["-e", "TMPDIR=/var/lib/claude-real-sup"]));
   for (const r of results) for (const c of r.checks) report(c);
+  const peak = results[0]?.peakRssBytes;
+  console.log(
+    `Claude Code's peak memory in its trial: ${typeof peak === "number" ? `${Math.round(peak / 2 ** 20)} MiB` : "not recorded (the trial did not run)"}`,
+  );
 } catch (err) {
   report({
     name: "the test ran",

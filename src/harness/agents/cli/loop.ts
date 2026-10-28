@@ -1,12 +1,20 @@
 import { dirname, join } from "node:path";
+import { RESEARCH_WORKER_SYSTEM } from "../../../agents/roles/research-worker.ts";
+import { NOTE_USAGE } from "../../../agents/tools/names.ts";
+import {
+  type ResearchFolderPaths,
+  researchCommands,
+  researchFolderNote,
+} from "../../../agents/tools/research.ts";
 import { type LaneLimitValues, laneLimits } from "../../../core/contract.ts";
-import type { Runner, RunOutcome } from "../../broker/runner.ts";
+import { notesInstruction } from "../../../core/journal.ts";
+import type { Role, Runner, RunOutcome } from "../../broker/runner.ts";
 import { CliCompactions } from "../cli-compaction.ts";
 import { mcpLine } from "../mcp-tools.ts";
 import { readNew } from "../opencode/events.ts";
 import { afterProgramFailure, type FailureCount, failingOf } from "../provider-errors.ts";
 import { trialBudget } from "../trial-clock.ts";
-import { stopNudging, type TrialResult, type TrialSpec } from "../worker.ts";
+import { stopNudging, type TrialResult } from "../worker.ts";
 import {
   AFTER_SUBMIT_MS,
   breachError,
@@ -18,34 +26,35 @@ import {
   trialEnd,
   turnsUp,
 } from "./common.ts";
-import type { CliProgram, CliRun, CliTally, CliTrialDeps } from "./program.ts";
+import type { CliProgram, CliRun, CliSetup, CliTally, CliTrial, CliTrialDeps } from "./program.ts";
 
 /**
- * Sets a program up in its run's area, as the run's user: relative to that area, since the lane
- * may not walk the harness's directories by name. Undefined when it is set up; else why not.
+ * Sets a program up in its run's area (or its call's folder), as the run's user: relative to that
+ * folder, since the user may not walk the harness's directories by name. Undefined when it is set
+ * up; else why not.
  */
-export async function setUp<T extends CliTally>(
-  p: CliProgram<T>,
+export async function setUp(
+  name: string,
+  s: CliSetup,
   runner: Runner,
-  run: CliRun,
+  at: { role: Role; cwd: string },
 ): Promise<string | undefined> {
-  const s = p.setup(run);
   const r = await runner.run({
-    role: run.role,
+    role: at.role,
     argv: ["sh", "-c", s.script, ...(s.args ?? [])],
-    cwd: run.area,
+    cwd: at.cwd,
     timeoutMs: 30_000,
     ...(s.stdin !== undefined ? { stdin: s.stdin } : {}),
     captureBytes: 4096,
   });
-  return r.exitCode === 0 ? undefined : `could not set ${p.name} up: ${r.stderr.slice(-300)}`;
+  return r.exitCode === 0 ? undefined : `could not set ${name} up: ${r.stderr.slice(-300)}`;
 }
 
 /**
  * One run of a program as its run's user, in `cwd`, under the lane's limits. Its output goes to
  * its events file, which the harness follows while it runs.
  */
-export function startRun<T extends CliTally>(
+function startRun<T extends CliTally>(
   p: CliProgram<T>,
   runner: Runner,
   run: CliRun,
@@ -82,24 +91,68 @@ export function startRun<T extends CliTally>(
   });
 }
 
+/** What a research worker in a program is told about its tools, on top of the research brief. */
+function researchPrompt(
+  limits: LaneLimitValues,
+  brief: string,
+  minutes: number | undefined,
+  folder: ResearchFolderPaths,
+  program: { name: string; memory?: string | undefined },
+): string {
+  return `${RESEARCH_WORKER_SYSTEM}
+
+Your research tools are commands you run with your shell tool:
+
+${researchCommands()}
+
+Only pages fetched with "thermite-trial research fetch" are archived, and only archived sources can verify a claim: a page you read another way (your own web search, curl, a fetch from code) verifies nothing until you fetch it with that command.
+
+To propose another research task for the run's queue (the planner or the campaign's owner decides whether it is queued; your trial goes on): thermite-trial idea TITLE [--why TEXT] [--family TEXT] [--question N] (N: the index of the question it is about, from 0). A task that only a measurement could settle is refused: record it as a next experiment instead.
+
+${notesInstruction(`with "${NOTE_USAGE}" (KIND: observation, decision, surprise, question, lesson or note; TYPE: run, experiment, attempt, source, claim, finding, round, trial or message; no --about: the run)`)} Field notes are not research notes (add_note), which record what sources say for the report.
+
+${researchFolderNote(folder)} Your shell starts in your working area; use grep, rg and your file tools on the folder.
+
+${limitsNote(limits, program.name, program.memory)}
+
+${brief}${
+  minutes !== undefined
+    ? `
+
+This trial lasts ${minutes} minutes.`
+    : ""
+}`;
+}
+
 /**
  * One worker trial in a program: its home and configuration in the lane's own area, then the
- * program in the workspace until the agent submits or the trial's time ends. A run that ends
- * without a submission is continued in the same session, twice at most, and after that for as
- * long as the owner's messages wait and the agent keeps working. No program takes a message into
- * a running session: a message waits until the run ends without a submission, and goes into the
- * continuation's prompt. A turn cap, when the rig sets one, is kept by counting its turns.
+ * program in the trial's working place until the trial ends.
+ *
+ * A code trial works in its workspace until the agent submits or the trial's time ends. A run that
+ * ends without a submission is continued in the same session, twice at most, and after that for
+ * as long as the owner's messages wait and the agent keeps working. A research trial works in its
+ * lane's working area of the research folder and ends when the agent stops; a run that ends with
+ * the owner's messages waiting is continued with them, for as long as they wait and the agent keeps
+ * working. No program takes a message into a running session: a message waits until the run ends,
+ * and goes into the continuation's prompt. A run cut short by a provider's failure waits and goes
+ * on in its session. A turn cap, when the rig sets one, is kept by counting its turns.
  */
 export async function runCliTrial<T extends CliTally>(
   p: CliProgram<T>,
-  spec: TrialSpec,
+  trial: CliTrial,
   deps: CliTrialDeps,
 ): Promise<TrialResult> {
-  const area = spec.workspaceRoot ?? dirname(spec.workspace);
+  const { spec } = trial;
+  const code = trial.mode === "code";
+  if (!code && !p.research) throw new Error(`${p.name} runs no research trials`);
+  // A research trial makes no submission, and its ends name none.
+  const submitted = () => (code ? deps.submitted?.() : undefined);
+  const before = code ? " before a submission" : "";
+  const area = code ? (trial.spec.workspaceRoot ?? dirname(trial.spec.workspace)) : trial.area;
   const events = join(area, `${p.prefix}-events.jsonl`);
   const tally = p.newTally();
   const result: TrialResult = {
-    stopped: "no_submission",
+    stopped: code ? "no_submission" : "finished",
     turns: 0,
     toolCalls: 0,
     tokensIn: 0,
@@ -110,7 +163,7 @@ export async function runCliTrial<T extends CliTally>(
   const title = `Trial ${spec.trialId} (${spec.lane})`;
   const run: CliRun = {
     trialId: spec.trialId,
-    role: spec.lane,
+    role: spec.lane as Role,
     title,
     model: deps.model,
     apiUrl: deps.apiUrl,
@@ -127,8 +180,13 @@ export async function runCliTrial<T extends CliTally>(
   };
   const env = {
     ...p.env(run),
-    THERMITE_EDITABLE_PATHS: JSON.stringify(spec.editablePaths),
-    THERMITE_WORKSPACE: spec.workspace,
+    // What a code trial's submission takes: the workspace and the paths it may change.
+    ...(code
+      ? {
+          THERMITE_EDITABLE_PATHS: JSON.stringify(trial.spec.editablePaths),
+          THERMITE_WORKSPACE: trial.spec.workspace,
+        }
+      : {}),
     [p.eventsVar]: events,
   };
   // Each compaction the program reported, with its own conversation before it (goal 070).
@@ -138,7 +196,7 @@ export async function runCliTrial<T extends CliTally>(
     on: deps.compacted,
     own: p.own(run, tally),
   });
-  const setupError = await setUp(p, deps.runner, run);
+  const setupError = await setUp(p.name, p.setup(run), deps.runner, { role: run.role, cwd: area });
   if (setupError) return { ...result, stopped: "error", error: setupError };
   const started = Date.now();
   // A trial's length only when the campaign or the rig sets one (goal 079).
@@ -146,7 +204,11 @@ export async function runCliTrial<T extends CliTally>(
   const minutes = spec.wallMs !== undefined ? Math.round(spec.wallMs / 60_000) : undefined;
   // Failed model calls in a row, rate limits in a row, and since when the calls fail (goal 079).
   const count: FailureCount = { failures: 0, rateWaits: 0 };
-  let message = `${p.system}${run.mcp ? `\n\n${mcpLine(run.mcp.servers)}` : ""}\n\n${limitsNote(limits, p.name, p.memory)}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. ${trialBudget(minutes, spec.maxTurns, p.turnWords, deadline)}`;
+  const mcp = run.mcp ? `\n\n${mcpLine(run.mcp.servers)}` : "";
+  // A research prompt keeps its MCP line last.
+  let message = code
+    ? `${p.system}${mcp}\n\n${limitsNote(limits, p.name, p.memory)}\n\n${spec.brief}\n\nThe editable paths: ${trial.spec.editablePaths.join(", ")}. ${trialBudget(minutes, spec.maxTurns, p.turnWords, deadline)}`
+    : `${researchPrompt(limits, spec.brief, minutes, trial.folder, p)}${mcp}`;
   let offset = 0;
   const carried = new CarriedMessages(deps.messages);
   const pump = () => {
@@ -164,7 +226,8 @@ export async function runCliTrial<T extends CliTally>(
         tokens_in: tally.tokensIn,
         tokens_out: tally.tokensOut,
       });
-      p.onRead?.(tally, deps);
+      const windows = p.windows?.(tally);
+      if (windows) deps.usage?.(windows);
     }
   };
   for (let nudges = 0; ; nudges++) {
@@ -184,7 +247,7 @@ export async function runCliTrial<T extends CliTally>(
       break;
     }
     const running = startRun(p, deps.runner, run, {
-      cwd: spec.workspace,
+      cwd: code ? trial.spec.workspace : trial.folder.work,
       env,
       prompt: message,
       session: tally.session,
@@ -205,7 +268,7 @@ export async function runCliTrial<T extends CliTally>(
       }
       // A submission ends the trial: its command finishes, and the agent's next reply is not waited for.
       // Without one, the trial's turns used up end it (goal 163: code trials keep the cap too).
-      if (deps.submitted()) {
+      if (submitted()) {
         submittedAt ??= Date.now();
         if (Date.now() - submittedAt >= (deps.afterSubmitMs ?? AFTER_SUBMIT_MS))
           await deps.runner.killRole(spec.lane).catch(() => 0);
@@ -229,10 +292,10 @@ export async function runCliTrial<T extends CliTally>(
     }
     // After a submission the trial is over: messages still waiting go to the lane's next trial,
     // which can act on them.
-    if (deps.submitted()) break;
+    if (submitted()) break;
     if (turnsUp(spec, tally)) {
       result.stopped = "turns";
-      result.error = `the trial reached its limit of ${spec.maxTurns} turns before a submission`;
+      result.error = `the trial reached its limit of ${spec.maxTurns} turns${before}`;
       break;
     }
     const own = p.stopAfterRun?.(tally);
@@ -284,23 +347,25 @@ export async function runCliTrial<T extends CliTally>(
       );
       break;
     }
-    // Continued to get a submission (goal 079) for as long as the agent keeps working (a tool
-    // call in this run), with no number unless the campaign sets lanes.limits.nudges; a nudge it
-    // answers without any work ends the trial, its own choice. The owner's messages continue it
-    // while they wait and it keeps working. A message is read only once the agent starts on the
-    // prompt.
-    if (
-      stopNudging(nudges, tally.toolCalls > callsBefore, progressed, limits.nudges, deps.messages)
-    )
-      break;
-    message = [NUDGE, ...ownerLines(carried.take(tally))].join("\n\n");
+    // A code trial is continued to get a submission (goal 079) for as long as the agent keeps
+    // working (a tool call in this run), with no number unless the campaign sets
+    // lanes.limits.nudges; a nudge it answers without any work ends the trial, its own choice. The
+    // owner's messages continue either trial while they wait and the agent keeps working. A
+    // message is read only once the agent starts on the prompt: none is ever dropped.
+    const ends = code
+      ? stopNudging(nudges, tally.toolCalls > callsBefore, progressed, limits.nudges, deps.messages)
+      : !(progressed && deps.messages?.waiting().length);
+    if (ends) break;
+    message = [code ? NUDGE : "Continue your research.", ...ownerLines(carried.take(tally))].join(
+      "\n\n",
+    );
   }
-  const sub = deps.submitted();
+  const sub = submitted();
   if (sub) {
     result.submitted = sub;
     result.stopped = "submitted";
   } else if (result.stopped === "wall") {
-    result.error = `the trial reached its ${minutes}-minute limit before a submission`;
+    result.error = `the trial reached its ${minutes}-minute limit${before}`;
   } else if (result.stopped === "no_submission" && tally.errors.length) {
     result.error = tally.errors.at(-1);
   }

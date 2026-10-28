@@ -7,6 +7,7 @@ import {
   HARNESSES,
   type Harness,
   type ProviderType,
+  reaches,
 } from "../core/agents.ts";
 import { canonicalJson, sha256Hex } from "../core/canonical.ts";
 import type { SignedCommand } from "../core/commands.ts";
@@ -98,8 +99,7 @@ export type { IngestReport };
 export { EFFORTS, type Effort, HARNESSES, type Harness, type ProviderType };
 /** A harness from a form or a row; anything else is Pi, the default. */
 export const harnessOf = (v: unknown): Harness => HARNESSES.find((h) => h === v) ?? "pi";
-/** Whether the Codex CLI can reach a provider of this type (OpenAI's Responses API only). */
-export const codexTakes = (type: ProviderType): boolean => type === "chatgpt" || type === "openai";
+export const codexTakes = (type: ProviderType): boolean => reaches("codex", type);
 /**
  * A rig's agents other than its workers, each of which may have its own model (goal 074): the
  * planner; the teachers' first model (`teachers`), their second (`second_teacher`: a second

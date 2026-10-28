@@ -500,7 +500,8 @@ describe("the Codex CLI", () => {
       runner: new LocalRunner(env.paths.scratchDir),
       model,
       owner: "codex-test",
-      askCodex: async (m, prompt) => {
+      ask: async (via, m, prompt) => {
+        if (via !== "codex") throw new Error(`not ${via}`);
         asked.push({ model: m.model, prompt });
         return JSON.stringify({
           new_families: [{ id: "cx-tidy", description: "Small tidy-ups." }],
@@ -509,9 +510,6 @@ describe("the Codex CLI", () => {
           ],
           notes: "planned in Codex",
         });
-      },
-      askClaude: async () => {
-        throw new Error("not Claude Code");
       },
       runTrial: async () => ({
         stopped: "error",
@@ -539,7 +537,7 @@ describe("the Codex CLI", () => {
       runner: new LocalRunner(pi.paths.scratchDir),
       model: { ...model, harness: undefined, baseUrl: "http://127.0.0.1:9/v1" },
       owner: "codex-test",
-      askCodex: async (m, prompt) => {
+      ask: async (_via, m, prompt) => {
         asked.push({ model: m.model, prompt });
         return "{}";
       },

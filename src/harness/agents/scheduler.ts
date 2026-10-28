@@ -6,6 +6,7 @@ import { renderWorkerBrief } from "../../agents/roles/worker.ts";
 import { errorText } from "../../common/errors.ts";
 import { writeAtomic } from "../../common/fs.ts";
 import { log, logError, logWarn } from "../../common/log.ts";
+import { type Harness, programForApi } from "../../core/agents.ts";
 import { BRIEF_FILE, briefData, briefFile, briefSection } from "../../core/brief.ts";
 import { EXPERIMENT_DETAILS, type StoredRule } from "../../core/commands.ts";
 import type { Contract, ResearchContract } from "../../core/contract.ts";
@@ -67,6 +68,7 @@ import { statusEvents } from "../run-status.ts";
 import type { HarnessService } from "../service.ts";
 import { routeOf } from "../usage.ts";
 import { violationsOf, violationsText } from "../v0.ts";
+import type { CliHarness } from "./cli/program.ts";
 import type { OnceKeeping } from "./cli-compaction.ts";
 import {
   Coordinator,
@@ -96,6 +98,7 @@ import {
   plan,
   toDesign,
 } from "./planner.ts";
+import { isCliProgram, programOf } from "./programs.ts";
 import {
   classifyProviderError,
   FAILING_SAID,
@@ -161,20 +164,16 @@ export interface PlannerCallOptions {
 
 /**
  * The harness a planner call runs in. With a model of its own (`own`), the harness its route names
- * (goal 073): Pi, OpenCode, Claude Code or Codex. Following the workers' route: OpenCode for
- * OpenCode's own models, Codex when the workers run in Codex, else Pi. A Claude subscription runs
- * only in Claude Code, and OpenCode's own models only in OpenCode, whatever the route says.
+ * (goal 073): Pi, OpenCode, Claude Code or Codex. Following the workers' route: the program they
+ * run in when the planner follows them there (programs.ts: Codex), else Pi. A Claude subscription
+ * runs only in Claude Code, and OpenCode's own models only in OpenCode, whatever the route says.
  */
-export function plannerHarness(
-  m: ModelConfig | undefined,
-  own: boolean,
-): "pi" | "opencode" | "claude-code" | "codex" {
+export function plannerHarness(m: ModelConfig | undefined, own: boolean): Harness {
   if (!m) return "pi";
-  if (m.api === "claude") return "claude-code";
-  if (m.api === "opencode") return "opencode";
-  if (m.harness === "codex") return "codex";
-  if (own && m.harness === "opencode") return "opencode";
-  return "pi";
+  const only = programForApi(m.api);
+  if (only) return only;
+  const program = programOf(m);
+  return own || program.plannerFollows ? program.id : "pi";
 }
 
 export interface SchedulerOptions {
@@ -186,11 +185,13 @@ export interface SchedulerOptions {
    */
   model?: ModelConfig | (() => ModelConfig | undefined) | undefined;
   /**
-   * A planner call through OpenCode, for OpenCode's own models: the answer's text. `read`: a
-   * folder it may read and search (the run's past research), read only.
+   * A planner call through a program other than Pi (`via`: OpenCode, Claude Code or Codex, as
+   * plannerHarness picks it): the answer's text. `read`: a folder it may read and search (the
+   * run's past research), which its user may read and not change.
    */
-  askOpencode?:
+  ask?:
     | ((
+        via: CliHarness,
         model: ModelConfig,
         prompt: string,
         signal?: AbortSignal,
@@ -199,30 +200,6 @@ export interface SchedulerOptions {
     | undefined;
   /** The planner's own model route, when control gave the planner one. */
   plannerModel?: (() => ModelConfig | undefined) | undefined;
-  /**
-   * A planner call through Claude Code, for a Claude subscription (only Claude Code may use one).
-   * `read`: a folder it may read and search with read-only tools (the run's past research).
-   */
-  askClaude?:
-    | ((
-        model: ModelConfig,
-        prompt: string,
-        signal?: AbortSignal,
-        o?: PlannerCallOptions,
-      ) => Promise<string>)
-    | undefined;
-  /**
-   * A planner call through the Codex CLI, for a route whose agents run in Codex. `read`: a folder
-   * it may read and search (the run's past research), which its user may read and not change.
-   */
-  askCodex?:
-    | ((
-        model: ModelConfig,
-        prompt: string,
-        signal?: AbortSignal,
-        o?: PlannerCallOptions,
-      ) => Promise<string>)
-    | undefined;
   /** Runs one trial (in a child process in the harness; in-process in tests); abortable. */
   runTrial: (spec: TrialSpec, signal: AbortSignal) => Promise<TrialResult>;
   /** Research mode: the research service and its trial runner. */
@@ -1113,9 +1090,9 @@ export class Scheduler {
           routeOf(m, via),
         )
       : undefined;
-    // Each call through OpenCode, Claude Code or Codex keeps its conversation before each of its
-    // compactions in the run's research folder, as a Pi call does (goal 070).
-    const keeping = via !== "pi" ? this.cliPlannerCompaction(run, via) : undefined;
+    // A call through a program of its own (OpenCode, Claude Code or Codex) keeps its conversation
+    // before each of its compactions in the run's research folder, as a Pi call does (goal 070).
+    const keeping = isCliProgram(via) ? this.cliPlannerCompaction(run, via) : undefined;
     const withMcp = (o: Parameters<Ask>[2]): PlannerCallOptions => ({
       ...(o?.read !== undefined ? { read: o.read } : {}),
       ...(o?.mcp?.length
@@ -1124,32 +1101,11 @@ export class Scheduler {
       usage,
       ...(keeping ? { compaction: keeping() } : {}),
     });
+    const through = this.o.ask;
     const ask: Ask | undefined =
-      via === "opencode" && m && this.o.askOpencode
-        ? (prompt, sig, o) =>
-            (this.o.askOpencode as NonNullable<SchedulerOptions["askOpencode"]>)(
-              m,
-              prompt,
-              sig,
-              withMcp(o),
-            )
-        : via === "claude-code" && m && this.o.askClaude
-          ? (prompt, sig, o) =>
-              (this.o.askClaude as NonNullable<SchedulerOptions["askClaude"]>)(
-                m,
-                prompt,
-                sig,
-                withMcp(o),
-              )
-          : via === "codex" && m && this.o.askCodex
-            ? (prompt, sig, o) =>
-                (this.o.askCodex as NonNullable<SchedulerOptions["askCodex"]>)(
-                  m,
-                  prompt,
-                  sig,
-                  withMcp(o),
-                )
-            : undefined;
+      isCliProgram(via) && m && through
+        ? (prompt, sig, o) => through(via, m, prompt, sig, withMcp(o))
+        : undefined;
     const mcp: PlannerMcp | undefined = mcpServers.length
       ? {
           servers: mcpServers,
@@ -2742,10 +2698,7 @@ export class Scheduler {
    * in the run's research folder, named as a Pi call's are. The planner is not told it may read
    * the file: its summary names it, for the owner.
    */
-  private cliPlannerCompaction(
-    run: string,
-    harness: "opencode" | "claude-code" | "codex",
-  ): (() => OnceKeeping) | undefined {
+  private cliPlannerCompaction(run: string, harness: CliHarness): (() => OnceKeeping) | undefined {
     const store = this.o.service.compactions;
     if (!store) return undefined;
     return () => {
