@@ -3,8 +3,9 @@ import { StorePart } from "./part.ts";
 
 /**
  * The message bus's keys in control's store (goal 168): the user key each rig's supervisor
- * registered, its public part only, and control's own two keys, their seeds sealed with control's
- * secrets key. The audit log and the rig's history keep each change of a rig's key.
+ * registered, its public part only, with the seal key control seals the rig's config to, its public
+ * part too; and control's own two keys, their seeds sealed with control's secrets key. The audit
+ * log and the rig's history keep each change of a rig's keys.
  */
 
 /** Control's own keys on the bus: its user in the account, and its user in the system account. */
@@ -23,6 +24,13 @@ export function busKeyTables(db: DatabaseSync): void {
   seed_sealed text not null,
   created_at text not null
 )`);
+}
+
+/** A rig's seal key beside its user key, made by the store's migration to schema version 9. */
+export function busSealKeyColumn(db: DatabaseSync): void {
+  const cols = db.prepare("pragma table_info(rig_bus_key)").all() as { name: string }[];
+  if (!cols.some((c) => c.name === "seal_key"))
+    db.exec("alter table rig_bus_key add column seal_key text");
 }
 
 export class BusKeys extends StorePart {
@@ -45,13 +53,25 @@ export class BusKeys extends StorePart {
       .run(rig, key, new Date().toISOString());
   }
 
-  /** Every rig's registered key, by rig. */
-  rigKeys(): { rig: string; key: string }[] {
-    const rows = this.db.prepare("select rig, public_key from rig_bus_key order by rig").all() as {
-      rig: string;
-      public_key: string;
-    }[];
-    return rows.map((r) => ({ rig: r.rig, key: r.public_key }));
+  /** The seal key a rig registered, or undefined when it has none. */
+  rigSealKey(rig: string): string | undefined {
+    const r = this.db.prepare("select seal_key from rig_bus_key where rig = ?").get(rig) as
+      | { seal_key: string | null }
+      | undefined;
+    return r?.seal_key ?? undefined;
+  }
+
+  /** Records the seal key a rig registered, in place of the one before: after its user key. */
+  setRigSealKey(rig: string, key: string): void {
+    this.db.prepare("update rig_bus_key set seal_key = ? where rig = ?").run(key, rig);
+  }
+
+  /** Every rig's registered key, by rig, with its seal key when it registered one. */
+  rigKeys(): { rig: string; key: string; sealKey?: string | undefined }[] {
+    const rows = this.db
+      .prepare("select rig, public_key, seal_key from rig_bus_key order by rig")
+      .all() as { rig: string; public_key: string; seal_key: string | null }[];
+    return rows.map((r) => ({ rig: r.rig, key: r.public_key, sealKey: r.seal_key ?? undefined }));
   }
 
   /** One of control's own keys, or undefined before it was made. */

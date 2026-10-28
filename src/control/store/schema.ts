@@ -1,7 +1,7 @@
 import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import { copyBeforeMigration, newerSchemaWords } from "../../common/db-copy.ts";
 import { transaction } from "../../common/sqlite.ts";
-import { busKeyTables } from "./bus.ts";
+import { busKeyTables, busSealKeyColumn } from "./bus.ts";
 import { eventsInOrderIndex } from "./events.ts";
 import { runRegistryTable } from "./runs.ts";
 
@@ -706,6 +706,8 @@ const STORE_MIGRATIONS: readonly ((db: DatabaseSync) => void)[] = [
   busKeyTables,
   // A rig's events by ledger in control's order, for the views' pages (goal 168).
   eventsInOrderIndex,
+  // The key control seals a rig's config to on the message bus, beside its user key (goal 168).
+  busSealKeyColumn,
 ];
 
 /**

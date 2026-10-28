@@ -11,7 +11,9 @@ import { MCP_SERVERS_GET, MCP_SERVERS_PUT } from "../core/api/harness/supervisor
  * rig name, each with its sign-in as headers. The supervisor reads them with its own token as it
  * reads the model route, hands the harness the servers its workers and planner use (the harness
  * makes their calls), and keeps the advisors' in memory for the calls it makes for them. Nothing
- * here writes a secret to disk or a log. An older control, with no such route, gives none.
+ * here writes a secret to disk or a log. An older control, with no such route, gives none. With
+ * the message bus, the servers come in the rig's config there instead (config/), and are handed
+ * over the same way.
  */
 
 export interface McpSync {
@@ -36,8 +38,8 @@ async function unlessMissing<T>(call: Promise<T>): Promise<T | undefined> {
 }
 
 /**
- * One round: read control's servers; hand the harness its share when it changed. Returns what
- * control gave (all of it: the advisors' share stays with the supervisor).
+ * One round of the poll: read control's servers; hand the harness its share when it changed.
+ * Returns what control gave (all of it: the advisors' share stays with the supervisor).
  */
 export async function syncMcpServers(
   s: McpSync,
@@ -48,15 +50,26 @@ export async function syncMcpServers(
     rig: s.rig,
     fetchImpl: s.fetchImpl,
   });
+  const answer = await unlessMissing(control.call(MCP_SERVERS));
+  if (!answer) return { servers: [], unavailable: [], handed: "unchanged" };
+  // With what control left out filled in: no kind of agent, nothing unavailable.
+  return handMcpServers(s, MCP_SERVERS.answer.parse(answer));
+}
+
+/**
+ * Hands the harness its share of the servers control gave (from the poll, or from the rig's
+ * config on the message bus) when it differs from what the harness holds. Returns what control
+ * gave, all of it: the advisors' share stays with the supervisor.
+ */
+export async function handMcpServers(
+  s: Pick<McpSync, "harnessUrl" | "harnessToken" | "fetchImpl">,
+  given: McpFromControl,
+): Promise<McpFromControl & { handed: "unchanged" | "set" | "no_agents" }> {
   const harness = harnessClient({
     url: s.harnessUrl,
     token: s.harnessToken,
     fetchImpl: s.fetchImpl,
   });
-  const answer = await unlessMissing(control.call(MCP_SERVERS));
-  if (!answer) return { servers: [], unavailable: [], handed: "unchanged" };
-  // With what control left out filled in: no kind of agent, nothing unavailable.
-  const given = MCP_SERVERS.answer.parse(answer);
   // The harness gets only the servers its agents use: workers and the planner.
   const share = given.servers.filter((c) =>
     c.agents.some((a) => a === "workers" || a === "planner"),

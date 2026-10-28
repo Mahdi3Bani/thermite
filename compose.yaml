@@ -56,8 +56,9 @@ services:
 
   # The message bus (goal 168): NATS with JetStream, for control. With the `bus` profile and
   # THERMITE_NATS_URL=nats://nats:4222, the supervisors send their reports and live lines here and
-  # take their commands from here; control folds the reports and the live lines and publishes the
-  # commands. It is on the control network only: the harness never reaches it. It knows only the
+  # take their commands and their rig's config from here; control folds the reports and the live
+  # lines, publishes the commands and writes each rig's config, sealed to the rig. It is on the
+  # control network only: the harness never reaches it. It knows only the
   # users control writes to its users file: control's own, and one for each rig whose supervisor
   # registered its key.
   nats:
@@ -164,7 +165,7 @@ services:
       THERMITE_RESULTS_REMOTE: "${THERMITE_RESULTS_REMOTE:-file:///results/results.git}"
       # The advisors: teachers, their merged by model, auditor and review panel (off unless a config file is given).
       THERMITE_ADVISORS_FILE: "${THERMITE_ADVISORS_FILE:-}"
-      # With the `bus` profile, nats://nats:4222: reports, commands and live lines go over the bus.
+      # With the `bus` profile, nats://nats:4222: reports, commands, live lines and config go over it.
       # Empty: HTTP.
       THERMITE_NATS_URL: "${THERMITE_NATS_URL:-}"
     volumes:
@@ -234,7 +235,7 @@ services:
       THERMITE_CONTROL_TOKEN_FILE: /run/secrets/control-rig-token-2
       THERMITE_RESULTS_REMOTE: "${THERMITE_RESULTS_REMOTE:-file:///results/results.git}"
       THERMITE_ADVISORS_FILE: "${THERMITE_ADVISORS_FILE:-}"
-      # With the `bus` profile, nats://nats:4222: reports, commands and live lines go over the bus.
+      # With the `bus` profile, nats://nats:4222: reports, commands, live lines and config go over it.
       # Empty: HTTP.
       THERMITE_NATS_URL: "${THERMITE_NATS_URL:-}"
     volumes:

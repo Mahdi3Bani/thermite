@@ -72,7 +72,12 @@ export {
   type ReviewOutput,
   reviewOne,
 } from "./review-panel.ts";
-export { type ControlAdvisors, fetchControlAdvisors, mergeAdvisors } from "./routes.ts";
+export {
+  advisorsOf,
+  type ControlAdvisors,
+  fetchControlAdvisors,
+  mergeAdvisors,
+} from "./routes.ts";
 export { runAdvisor } from "./run.ts";
 export { lastJsonObject } from "./runtimes/index.ts";
 export { SynthesizerAnswer, synthesisProblems, synthesizeCards } from "./synthesizer.ts";

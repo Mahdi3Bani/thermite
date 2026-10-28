@@ -17,12 +17,30 @@ describe("the message bus's keys in control's store", () => {
     six.db.close();
     const store = new ControlStore(path);
     const v = store.db.prepare("select max(version) as v from schema_migrations").get();
-    assert.equal(v?.v, 8);
+    assert.equal(v?.v, 9);
     assert.deepEqual(store.busKeys.rigKeys(), []);
     store.db.close();
     assert.deepEqual(
       copiesOf(path).map((c) => c.version),
       [6],
+    );
+  });
+
+  test("a store at version 8 gets the seal key beside each rig's key, kept as it was", () => {
+    const path = fresh();
+    const eight = new ControlStore(path);
+    eight.busKeys.setRigKey("rig-a", "UA");
+    eight.db.exec("alter table rig_bus_key drop column seal_key");
+    eight.db.exec("delete from schema_migrations where version >= 9");
+    eight.db.close();
+    const store = new ControlStore(path);
+    assert.deepEqual(store.busKeys.rigKeys(), [{ rig: "rig-a", key: "UA", sealKey: undefined }]);
+    store.busKeys.setRigSealKey("rig-a", "SA");
+    assert.equal(store.busKeys.rigSealKey("rig-a"), "SA");
+    store.db.close();
+    assert.deepEqual(
+      copiesOf(path).map((c) => c.version),
+      [8],
     );
   });
 
@@ -34,9 +52,17 @@ describe("the message bus's keys in control's store", () => {
     store.busKeys.setRigKey("rig-a", "UA2");
     assert.equal(store.busKeys.rigKey("rig-a"), "UA2");
     assert.deepEqual(store.busKeys.rigKeys(), [
-      { rig: "rig-a", key: "UA2" },
-      { rig: "rig-b", key: "UB" },
+      { rig: "rig-a", key: "UA2", sealKey: undefined },
+      { rig: "rig-b", key: "UB", sealKey: undefined },
     ]);
+    // A seal key is kept beside a rig's key, and replaced by its next; none without a rig's key.
+    store.busKeys.setRigSealKey("rig-a", "SA1");
+    store.busKeys.setRigSealKey("rig-a", "SA2");
+    store.busKeys.setRigSealKey("rig-c", "SC");
+    assert.equal(store.busKeys.rigSealKey("rig-a"), "SA2");
+    assert.equal(store.busKeys.rigSealKey("rig-b"), undefined);
+    assert.equal(store.busKeys.rigSealKey("rig-c"), undefined);
+    assert.equal(store.busKeys.rigKeys()[0]?.sealKey, "SA2");
     store.busKeys.addIdentity("control", "UC1", "s1:first");
     store.busKeys.addIdentity("control", "UC2", "s1:second");
     assert.deepEqual(store.busKeys.identity("control"), {

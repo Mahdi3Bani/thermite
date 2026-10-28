@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { createAccount, createUser } from "@nats-io/nkeys";
 import { commandConsumerConfig } from "../../../src/core/link/commands.ts";
+import { configConsumerConfig } from "../../../src/core/link/config.ts";
 import {
   BUS_ACCOUNT,
   isUserKey,
@@ -57,7 +58,7 @@ describe("who may do what on the message bus", () => {
     assert.ok(!key.includes(fp));
   });
 
-  test("a rig may publish its own reports and live lines and take its own commands, and nothing else", () => {
+  test("a rig may publish its own reports and live lines, take its own commands and read its own config, and nothing else", () => {
     assert.deepEqual(rigPermissions("rig-a"), {
       publish: {
         allow: [
@@ -67,14 +68,23 @@ describe("who may do what on the message bus", () => {
           "$JS.API.CONSUMER.INFO.COMMANDS.rig-rig-a-commands",
           "$JS.API.CONSUMER.MSG.NEXT.COMMANDS.rig-rig-a-commands",
           "$JS.ACK.COMMANDS.rig-rig-a-commands.>",
+          "$JS.API.CONSUMER.CREATE.CONFIG.rig-rig-a-config.thermite.rig.rig-a.config.*",
+          "$JS.API.CONSUMER.INFO.CONFIG.rig-rig-a-config",
+          "$JS.API.CONSUMER.DELETE.CONFIG.rig-rig-a-config",
+          "$JS.API.CONSUMER.MSG.NEXT.CONFIG.rig-rig-a-config",
+          "$JS.ACK.CONFIG.rig-rig-a-config.>",
         ],
       },
       subscribe: { allow: ["_INBOX.rig.rig-a.>"] },
     });
-    // The consumer it may make is the one the supervisor follows its commands with.
+    // The consumers it may make are the ones the supervisor follows its commands and watches its
+    // config with; it may publish nothing to a config subject, which only control writes.
+    const allow = rigPermissions("rig-a").publish.allow;
     const c = commandConsumerConfig("rig-a");
-    const create = rigPermissions("rig-a").publish.allow[2] ?? "";
-    assert.ok(create.endsWith(`.${c.durable_name}.${c.filter_subject}`));
+    assert.ok(allow[2]?.endsWith(`.${c.durable_name}.${c.filter_subject}`));
+    const w = configConsumerConfig("rig-a");
+    assert.ok(allow[6]?.endsWith(`.${w.durable_name}.${w.filter_subject}`));
+    assert.ok(!allow.some((x) => x.startsWith("thermite.rig.rig-a.config")));
     assert.equal(rigInboxPrefix("rig-a"), "_INBOX.rig.rig-a");
     // Nothing of one rig's is in another's: no subject of rig-a's is open to rig-b.
     const b = JSON.stringify(rigPermissions("rig-b"));

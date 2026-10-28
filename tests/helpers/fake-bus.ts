@@ -29,10 +29,13 @@ function takes(pattern: string, subject: string): boolean {
 /**
  * A stand-in for the NATS server, in memory, for tests of what control and the supervisor do on
  * the message bus (common/bus.ts talks to a real one). It keeps the streams made, each message
- * published to a subject one of them takes, once by its id, and removes one by its id. `take`
- * hands a subject's messages to a handler as a work queue's consumer does.
+ * published to a subject one of them takes, once by its id, removes one by its id, and gives a
+ * subject's newest. `take` hands a subject's messages to a handler as a work queue's consumer
+ * does.
  */
-export class FakeBus implements Pick<Bus, "publish" | "makeStream" | "remove" | "streams"> {
+export class FakeBus
+  implements Pick<Bus, "publish" | "makeStream" | "remove" | "streams" | "last">
+{
   /** The streams made, by name. */
   readonly made = new Map<string, StreamSettings>();
   readonly kept: Kept[] = [];
@@ -76,6 +79,15 @@ export class FakeBus implements Pick<Bus, "publish" | "makeStream" | "remove" | 
     if (at < 0) return false;
     this.kept.splice(at, 1);
     return true;
+  }
+
+  /** The newest message on a subject, of a stream made; undefined when it has none. */
+  async last(stream: string, subject: string): Promise<BusMessage | undefined> {
+    await this.hold;
+    if (this.failing) throw new Error("TimeoutError: no answer from the server");
+    if (!this.made.has(stream)) return undefined;
+    const m = this.on(subject).at(-1);
+    return m ? asMessage(m) : undefined;
   }
 
   /** Each stream made, with the messages it keeps; no consumers. */

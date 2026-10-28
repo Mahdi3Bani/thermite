@@ -58,6 +58,8 @@ export const STEP_WORDS: Record<string, string> = {
   check: "Control checked where it runs",
   bus_key: "Its key on the message bus registered",
   bus_key_changed: "Its key on the message bus changed",
+  seal_key: "Its seal key for its config on the message bus registered",
+  seal_key_changed: "Its seal key for its config on the message bus changed",
   ...UPDATE_STEP_WORDS,
 };
 

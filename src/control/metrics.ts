@@ -75,10 +75,11 @@ export function metricsText(store: ControlStore, staleAfterMs: number, now = Dat
 
 /**
  * The message bus's series, with the bus on (goal 168): whether control reached its server, each
- * stream's messages and bytes and each consumer's backlog, and the live stream's lines: those
- * control took and refused, and those each rig's supervisor published and dropped. Bounded: by
- * stream, consumer (one for each rig at most), rig, and the fixed reasons for a refusal. Empty
- * with the bus off.
+ * stream's messages and bytes and each consumer's backlog, the live stream's lines (those control
+ * took and refused, and those each rig's supervisor published and dropped), and the config
+ * bucket's values (those control wrote and failed to write, and the updates each rig's supervisor
+ * took and refused). Bounded: by stream, consumer (two for each rig at most), rig, config key, and
+ * the fixed reasons for a refusal. Empty with the bus off.
  */
 export async function busMetricsText(
   store: ControlStore,
@@ -122,6 +123,24 @@ export async function busMetricsText(
       `thermite_live_lines_published_total{rig="${label(r.rig)}"} ${r.supervisor.published}`,
     );
     lines.push(`thermite_live_lines_dropped_total{rig="${label(r.rig)}"} ${r.supervisor.dropped}`);
+  }
+  const config = state.config;
+  help("thermite_config_values_written_total", "counter", "Config values control wrote, by key");
+  for (const [key, n] of Object.entries(config.written.values))
+    lines.push(`thermite_config_values_written_total{key="${label(key)}"} ${n}`);
+  help("thermite_config_writes_failed_total", "counter", "Config writes the bus did not take");
+  lines.push(`thermite_config_writes_failed_total ${config.written.failed}`);
+  help("thermite_config_updates_taken_total", "counter", "Config updates a rig's supervisor took");
+  help(
+    "thermite_config_updates_refused_total",
+    "counter",
+    "Config messages a rig's supervisor refused",
+  );
+  for (const r of config.rigs) {
+    if (!r.supervisor) continue;
+    const l = `rig="${label(r.rig)}"`;
+    lines.push(`thermite_config_updates_taken_total{${l}} ${r.supervisor.taken}`);
+    lines.push(`thermite_config_updates_refused_total{${l}} ${r.supervisor.refused}`);
   }
   return `${lines.join("\n")}\n`;
 }

@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { BusView } from "../../../src/control/bus/index.ts";
+import { type BusView, ConfigWritten } from "../../../src/control/bus/index.ts";
 import { LiveTaken } from "../../../src/control/live/index.ts";
 import { COMMAND_STREAM } from "../../../src/core/link/commands.ts";
+import { CONFIG_MAX_BYTES, CONFIG_STREAM_CONFIG } from "../../../src/core/link/config.ts";
 import {
   LIVE_KEPT_BYTES,
   LIVE_KEPT_PER_SUBJECT,
@@ -16,8 +17,8 @@ import { FakeBus } from "../../helpers/fake-bus.ts";
 
 /**
  * The message bus's state (goal 168): its server, its streams and their consumers' backlog, and
- * the live stream's figures from control and from each rig's supervisor, over REST, MCP and
- * /metrics, for the reader's token too.
+ * the live stream's and the config bucket's figures from control and from each rig's supervisor,
+ * over REST, MCP and /metrics, for the reader's token too.
  */
 
 const READ = "read-token-abcdef";
@@ -30,12 +31,12 @@ function setup(bus?: BusView) {
   });
   const read = (path: string) =>
     s.control.request(path, { headers: { authorization: `Bearer ${READ}` } });
-  /** The rig's supervisor's figures, with its live counts. */
-  const figures = (live: unknown) =>
+  /** The rig's supervisor's figures, with its live counts, and its config counts when given. */
+  const figures = (live: unknown, config?: unknown) =>
     s.control.request("/v1/rigs/rig-a/supervisor", {
       method: "POST",
       headers: { authorization: `Bearer ${RIG_TOKEN}`, "content-type": "application/json" },
-      body: JSON.stringify({ at: new Date().toISOString(), live }),
+      body: JSON.stringify({ at: new Date().toISOString(), live, ...(config ? { config } : {}) }),
     });
   return { ...s, read, figures };
 }
@@ -56,7 +57,8 @@ async function onBus() {
   live.leftOut = 1;
   live.refused["bad live signature"] = 1;
   live.rigs.set("rig-a", 3);
-  return { bus, live, view: { server: "nats:4222", bus, live } };
+  const config = new ConfigWritten();
+  return { bus, live, config, view: { server: "nats:4222", bus, live, config } };
 }
 
 describe("the message bus's state", () => {
@@ -136,6 +138,70 @@ describe("the message bus's state", () => {
       assert.ok(metrics.includes(`\n${series}\n`), series);
     assert.match(metrics, /# TYPE thermite_live_lines_published_total counter/);
     assert.match(metrics, /# TYPE thermite_rig_up gauge/, "control's own series first");
+  });
+
+  test("with the bus on: the config bucket's stream, what control wrote, and each rig's updates", async () => {
+    const b = await onBus();
+    await b.bus.makeStream(CONFIG_STREAM_CONFIG);
+    await b.bus.publish("thermite.rig.rig-a.config.model-route", "{}", { id: "c1" });
+    b.config.written["model-route"] = 2;
+    b.config.written["mcp-servers"] = 1;
+    b.config.failed = 1;
+    b.config.rigs.set("rig-a", 3);
+    const s = setup(b.view);
+    const config = {
+      taken: 3,
+      refused: 1,
+      subjects: {
+        "thermite.rig.rig-a.config.model-route": { taken: 2, refused: 1 },
+        "thermite.rig.rig-a.config.mcp-servers": { taken: 1, refused: 0 },
+      },
+    };
+    assert.equal((await s.figures({ published: 0, dropped: 0, subjects: {} }, config)).status, 200);
+    const state = (await (await s.read("/v1/bus")).json()) as {
+      streams: { name: string; messages: number }[];
+      config: {
+        keys: string[];
+        message_bytes: number;
+        written: Record<string, unknown>;
+        rigs: { rig: string; sealed: boolean; written: number; supervisor: { at: string } }[];
+      };
+    };
+    assert.deepEqual(
+      state.streams.map((x) => [x.name, x.messages]),
+      [
+        ["REPORTS", 0],
+        ["LIVE", 2],
+        ["CONFIG", 1],
+      ],
+    );
+    assert.deepEqual(state.config.keys, ["model-route", "advisor-routes", "mcp-servers"]);
+    assert.equal(state.config.message_bytes, CONFIG_MAX_BYTES);
+    assert.deepEqual(state.config.written, {
+      since: b.config.since,
+      values: { "model-route": 2, "advisor-routes": 0, "mcp-servers": 1 },
+      failed: 1,
+      too_large: 0,
+      not_made: 0,
+    });
+    const [rig] = state.config.rigs;
+    assert.equal(rig?.rig, "rig-a");
+    // No seal key registered in this store: control writes it nothing of its own now.
+    assert.equal(rig?.sealed, false);
+    assert.equal(rig?.written, 3);
+    assert.deepEqual({ ...rig?.supervisor, at: undefined }, { ...config, at: undefined });
+    const metrics = await (await s.read("/metrics")).text();
+    for (const series of [
+      'thermite_bus_stream_messages{stream="CONFIG"} 1',
+      'thermite_config_values_written_total{key="model-route"} 2',
+      'thermite_config_values_written_total{key="advisor-routes"} 0',
+      "thermite_config_writes_failed_total 1",
+      'thermite_config_updates_taken_total{rig="rig-a"} 3',
+      'thermite_config_updates_refused_total{rig="rig-a"} 1',
+    ])
+      assert.ok(metrics.includes(`\n${series}\n`), series);
+    // The figures hold counts only: no value, revision or key reaches the state.
+    assert.doesNotMatch(JSON.stringify(state.config), /"sealed":"|revision|api_key/);
   });
 
   test("a server that does not answer is said in words; the rest still shows", async () => {

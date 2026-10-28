@@ -12,6 +12,8 @@ import type { AnswerOf } from "../core/api/route.ts";
  * keeps its key sealed. The supervisor fetches its rig's route over its own authenticated channel
  * and hands it to its harness when it changed. It never logs or keeps the key. Only control's
  * explicit "no route" returns the agents to the rig's own settings; an error changes nothing.
+ * With the message bus, the route comes in the rig's config there instead (config/), and is
+ * handed over the same way.
  */
 export interface RouteSync {
   rig: string;
@@ -43,6 +45,7 @@ export async function syncModelRouteRound(
   }
 }
 
+/** One round of the poll: control's routes, handed to the harness when they changed. */
 export async function syncModelRoute(s: RouteSync): Promise<RouteSyncResult> {
   const control = controlClient({
     url: s.controlUrl,
@@ -50,13 +53,24 @@ export async function syncModelRoute(s: RouteSync): Promise<RouteSyncResult> {
     rig: s.rig,
     fetchImpl: s.fetchImpl,
   });
+  return handModelRoute(s, await control.call(MODEL_ROUTE));
+}
+
+/**
+ * Hands the harness control's routes, the workers' and the planner's (newer controls), when they
+ * differ from the ones it holds: from the poll, or from the rig's config on the message bus.
+ */
+export async function handModelRoute(
+  s: Pick<RouteSync, "harnessUrl" | "harnessToken" | "fetchImpl">,
+  given: AnswerOf<typeof MODEL_ROUTE>,
+): Promise<RouteSyncResult> {
   const harness = harnessClient({
     url: s.harnessUrl,
     token: s.harnessToken,
     fetchImpl: s.fetchImpl,
   });
   // The planner's own route, when the owner gave the planner a model (newer controls).
-  const { route, planner = null } = await control.call(MODEL_ROUTE);
+  const { route, planner = null } = given;
   let info: AnswerOf<typeof MODEL_ROUTE_GET>;
   try {
     info = await harness.call(MODEL_ROUTE_GET);

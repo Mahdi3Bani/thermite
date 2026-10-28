@@ -74,6 +74,16 @@ export function takeRigBusKey(
   return "changed";
 }
 
+/**
+ * The rigs that have a user on the bus: each with a registered key, known to control and not
+ * retired, with its seal key when it registered one.
+ */
+export function busRigs(store: ControlStore) {
+  return store.busKeys
+    .rigKeys()
+    .filter((r) => store.enrollments.knownRig(r.rig) && !store.retired.get(r.rig));
+}
+
 export interface BusUsersOptions {
   store: ControlStore;
   /** Seals control's own keys in its store. */
@@ -122,10 +132,11 @@ export class BusUsers {
   text(): string {
     const { store } = this.o;
     const runs = store.runRegistry.runsByRig(LIVE_RUNS_PER_RIG);
-    const rigs = store.busKeys
-      .rigKeys()
-      .filter((r) => store.enrollments.knownRig(r.rig) && !store.retired.get(r.rig))
-      .map((r) => ({ ...r, runs: runs.get(r.rig) ?? [] }));
+    const rigs = busRigs(store).map((r) => ({
+      rig: r.rig,
+      key: r.key,
+      runs: runs.get(r.rig) ?? [],
+    }));
     return usersFile({ control: this.control.publicKey, system: this.system.publicKey, rigs });
   }
 

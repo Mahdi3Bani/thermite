@@ -12,7 +12,8 @@ import { type AdvisorRuntime, AdvisorsConfig } from "./config.ts";
  * replaces the supervisor's own configuration for that role; a role it gives none keeps it. Each
  * runs in the harness its route names (goal 073): Pi here with read-only tools, Claude Code (a
  * Claude subscription, and only it), OpenCode v2 (OpenCode's own models too) or the Codex CLI.
- * A ChatGPT sign-in's access token lasts an hour; control's routes are read each round.
+ * A ChatGPT sign-in's access token lasts an hour; control's routes are read each round, or, on
+ * the message bus, taken as control writes them.
  *
  * The roles (goal 074): the teachers (one or two models), their merged by model, the auditor and
  * the review panel.
@@ -146,6 +147,15 @@ export async function fetchControlAdvisors(o: {
     if (err instanceof ApiError && err.code === "not_found") return {};
     throw err;
   }
+  return advisorsOf(r);
+}
+
+/**
+ * Control's advisors' routes (from the poll, or from the rig's config on the message bus) as
+ * runtimes by role: each teacher's model (teacher-1 and teacher-2), the merged by model, the
+ * auditor, and the review panel three times (reviewer-1 to reviewer-3).
+ */
+export function advisorsOf(r: AnswerOf<typeof ADVISOR_ROUTES>): ControlAdvisors {
   const many = (route: AdvisorRoute | null | undefined, base: string, n: number) => {
     if (!route) return undefined;
     const list = Array.from({ length: n }, (_, i) => runtimeOf(route, `${base}-${i + 1}`)).filter(

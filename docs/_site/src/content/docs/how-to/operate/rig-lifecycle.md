@@ -280,4 +280,4 @@ Over the REST API, with the owner's token: `POST /v1/rigs/<rig>/reset` with `{"c
 | | Control's [knowledge base](../../reference/knowledge-base.md): the items of the rig's earlier runs stay in their campaigns' folders |
 | | Files outside the rig's state: the advisors file, its tokens, and its environment settings |
 
-After the wipe, the rig refuses commands issued before it. Its model route comes back from control within about half a minute.
+After the wipe, the rig refuses commands issued before it. Its model route comes back from control within about half a minute, or at once with the message bus.

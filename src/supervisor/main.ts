@@ -27,12 +27,13 @@ import {
 import { EXPORTS_DONE, MCP_EVENTS } from "../core/api/harness/supervisor.ts";
 import { untoldKinds } from "../core/kb.ts";
 import { rigInboxPrefix } from "../core/link/users.ts";
-import type { McpUse } from "../core/mcp.ts";
+import type { McpConnection, McpUnavailable, McpUse } from "../core/mcp.ts";
 import {
   type AdviseState,
   AdvisorsConfig,
   adviseOnce,
   advisorsFileReport,
+  advisorsOf,
   type ControlAdvisors,
   emptyAdviseState,
   fetchControlAdvisors,
@@ -41,6 +42,7 @@ import {
   teachersCalled,
 } from "./advisors/index.ts";
 import { type ChampionUpload, championsIn, uploadChampions } from "./champions.ts";
+import { applyConfig, ConfigCounts, followConfig, keepConfig, RigConfig } from "./config/index.ts";
 import { type UploadState, uploadExportsOnce } from "./export-upload.ts";
 import { type ExportState, exportOnce } from "./git-export.ts";
 import { emptyKbSyncState, type KbSyncState, syncKnowledgeOnce } from "./kb-sync.ts";
@@ -51,9 +53,7 @@ import {
   relayLiveOnce,
   supervisorLive,
 } from "./live/index.ts";
-import { syncMcpServers } from "./mcp-sync.ts";
 import { ModelDownloads } from "./model-download.ts";
-import { syncModelRouteRound } from "./model-route.ts";
 import {
   BUS_KEY_FILE,
   busKey,
@@ -66,6 +66,7 @@ import {
   type RelayState,
   relayCommandsOnce,
   relayOnce,
+  SEAL_KEY_FILE,
 } from "./relay/index.ts";
 import { dailyReport } from "./report.ts";
 import { SUPERVISOR_NUMBERS, supervisorMs } from "./settings.ts";
@@ -118,8 +119,9 @@ async function main(): Promise<void> {
       ? controlClient({ url: controlUrl, token: controlToken, rig })
       : undefined;
   // The message bus (goal 168): with THERMITE_NATS_URL, reports go there instead of to control's
-  // ingest route, and commands come from there; a bad address stops the supervisor here. It signs
-  // in with the rig's own key, which control learns from the supervisor's figures.
+  // ingest route, and commands and the rig's config come from there; a bad address stops the
+  // supervisor here. It signs in with the rig's own key, which control learns from the
+  // supervisor's figures with the seal key its config is sealed to.
   const natsUrl = busUrl(env);
   const key = natsUrl ? busKey(home) : undefined;
   const bus =
@@ -130,17 +132,21 @@ async function main(): Promise<void> {
         })
       : undefined;
   if (natsUrl)
-    log("supervisor", "reports, commands and live lines go over the message bus", {
+    log("supervisor", "reports, commands, live lines and the rig's config go over the bus", {
       bus: new URL(natsUrl).host,
     });
-  // The live lines it published to the bus and dropped there, by subject, for its figures.
+  // The live lines it published to the bus and dropped there, and the config updates it took
+  // and refused, by subject, for its figures; and the rig's config as the bus gave it.
   const liveCounts = bus ? new LiveCounts() : undefined;
-  // A full reset keeps the tunnel's keys and enrollment, and the rig's key on the bus: control's
+  const configCounts = bus ? new ConfigCounts() : undefined;
+  const known = bus ? new RigConfig() : undefined;
+  // A full reset keeps the tunnel's keys and enrollment, and the rig's keys on the bus: control's
   // trust in the rig stays.
   const keepOnWipe = new Set(
     (pull?.dirs ?? []).filter((d) => dirname(d) === home).map((d) => basename(d)),
   );
   keepOnWipe.add(BUS_KEY_FILE);
+  keepOnWipe.add(SEAL_KEY_FILE);
   const remote = env.THERMITE_RESULTS_REMOTE || undefined;
   const sshKeyFile = env.THERMITE_RESULTS_KEY_FILE || undefined;
   const knownHostsFile = env.THERMITE_RESULTS_KNOWN_HOSTS || undefined;
@@ -229,11 +235,16 @@ async function main(): Promise<void> {
   const fileAdvisors = advisorsFile
     ? AdvisorsConfig.parse(JSON.parse(readFileSync(advisorsFile, "utf8")))
     : undefined;
-  // The roles control gives models (the owner's choice per rig) over the file's; read each round.
+  // The roles control gives models (the owner's choice per rig) over the file's; read each round,
+  // from the rig's config on the bus, or from control.
   let controlAdvisors: ControlAdvisors = {};
   let advisors = mergeAdvisors(fileAdvisors, controlAdvisors);
   const refreshAdvisors = async () => {
-    if (controlUrl && controlToken) {
+    if (known) {
+      // Nothing from the bus yet: the roles taken last stay.
+      const onBus = known.get("advisor-routes");
+      if (onBus) controlAdvisors = advisorsOf(onBus);
+    } else if (controlUrl && controlToken) {
       try {
         controlAdvisors = await fetchControlAdvisors({ rig, controlUrl, controlToken });
       } catch (err) {
@@ -340,9 +351,11 @@ async function main(): Promise<void> {
           file: advisorsFileReport(fileAdvisors),
         }
       : null,
-    // The rig's key on the bus, its public part: control gives it a user.
+    // The rig's keys on the bus, their public parts: control gives it a user, and seals its config
+    // to the second.
     ...busKeyFigure(key),
     ...(liveCounts ? { live: liveCounts.figures() } : {}),
+    ...(configCounts ? { config: configCounts.figures() } : {}),
   });
 
   // With the bus, the figures go once now, before the first report: control gives the rig's key
@@ -359,10 +372,12 @@ async function main(): Promise<void> {
     while (!stopping) {
       const advisors = await refreshAdvisors();
       if (!advisors) {
-        // No role has an advisor: look again later (the owner may give one a model).
+        // No role has an advisor: look again later (the owner may give one a model), or as soon
+        // as the bus gives the advisors new routes.
         await tellAdvisors({ auditor: false, review_panel: 0, writer: false });
         const until = Date.now() + Math.max(intervalMs, 30_000);
-        while (!stopping && Date.now() < until) {
+        const seen = known?.revision("advisor-routes");
+        while (!stopping && Date.now() < until && known?.revision("advisor-routes") === seen) {
           await new Promise((r) => setTimeout(r, 250));
           await retell();
         }
@@ -506,50 +521,34 @@ async function main(): Promise<void> {
     while (!stopping && !wipeRequested && Date.now() < until)
       await new Promise((r) => setTimeout(r, 250));
   };
-  // The MCP servers control gives the rig (goal 068), read on the same beat: the harness gets
-  // its workers' and planner's share, and the advisors' share stays here, in memory.
-  let mcpFailing = false;
-  const syncMcp = async () => {
-    try {
-      const r = await syncMcpServers({
-        rig,
-        controlUrl: controlUrl as string,
-        controlToken: controlToken as string,
-        harnessUrl,
-        harnessToken,
-      });
-      advisorMcp.gateway.set(
-        r.servers.filter((c) => c.agents.includes("advisors")),
-        r.unavailable,
-      );
-      mcpFailing = false;
-    } catch (err) {
-      // Control or the harness unreachable: the servers they gave last stay.
-      if (!mcpFailing)
-        log("supervisor", "MCP servers error", { error: String(err).slice(0, 300) }, "error");
-      mcpFailing = true;
-    }
+  // The agents' model route and the MCP servers control gives the rig (goal 068): the harness gets
+  // its workers' and planner's share, and the advisors' share stays here, in memory. With the bus,
+  // each change comes from the rig's config there and is applied at once; on this beat the
+  // supervisor only hands its harness again what it lost. Without it, control is asked on this beat.
+  const keep = {
+    rig,
+    harnessUrl,
+    harnessToken,
+    controlUrl,
+    controlToken,
+    known,
+    setAdvisorMcp: (servers: McpConnection[], unavailable: McpUnavailable[]) =>
+      advisorMcp.gateway.set(servers, unavailable),
+    everyMs: routeMs,
+    stopping: () => stopping,
+    pause,
   };
-  const routing = async () => {
-    let failing = false;
-    while (!stopping && controlUrl && controlToken && routeMs > 0) {
-      try {
-        // A failure is tried again after 5 s before it is logged (control may still be starting).
-        await syncModelRouteRound(
-          { rig, controlUrl, controlToken, harnessUrl, harnessToken },
-          Math.min(5000, routeMs),
-          pause,
-        );
-        failing = false;
-      } catch (err) {
-        if (!failing) log("supervisor", "model route error", { error: String(err) }, "error");
-        failing = true;
-      }
-      await syncMcp();
-      await pause(routeMs);
-    }
-  };
-  const routingDone = routing();
+  if (bus && known && configCounts && key)
+    followConfig(bus, {
+      rig,
+      sealKey: key.seal.privatePem,
+      known,
+      counts: configCounts,
+      apply: (k) => applyConfig(keep, known, k),
+    }).catch((err) =>
+      log("supervisor", "the rig's config from the bus stopped", { error: String(err) }, "error"),
+    );
+  const routingDone = keepConfig(keep);
 
   // Past research for each running run, from control's knowledge base into the run's research
   // folder (knowledge/), every few minutes. The cursor of each run is kept here.

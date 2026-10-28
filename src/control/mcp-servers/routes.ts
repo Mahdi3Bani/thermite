@@ -177,32 +177,12 @@ export function mountMcpServerRoutes(
   });
 
   // What a rig's supervisor gets: the servers its runs' kits name, each with its sign-in as
-  // headers. Audited when the servers a rig gets change; a restart of control reads the last
-  // entry back, so it writes none of its own.
-  const handed = new Map<string, string>();
+  // headers. Audited when the servers a rig gets change (McpServers.handed).
   app.get(MCP_SERVERS.path, o.rigAuth, async (c) => {
     c.header("cache-control", "no-store");
     const rig = c.req.param("rig");
     const r = await servers.forRig(rig);
-    const what = JSON.stringify([r.servers.map((s) => s.name), r.unavailable.map((u) => u.name)]);
-    if (!handed.has(rig)) {
-      const last = store.auditLog.last(`rig:${rig}`, "mcp_servers_handed") as
-        | { servers?: unknown; unavailable?: unknown }
-        | undefined;
-      handed.set(
-        rig,
-        last
-          ? JSON.stringify([last.servers ?? [], last.unavailable ?? []])
-          : JSON.stringify([[], []]),
-      );
-    }
-    if (handed.get(rig) !== what) {
-      handed.set(rig, what);
-      store.auditLog.add(`rig:${rig}`, "mcp_servers_handed", {
-        servers: r.servers.map((s) => s.name),
-        unavailable: r.unavailable.map((u) => u.name),
-      });
-    }
+    servers.handed(rig, r);
     return c.json(r);
   });
 }

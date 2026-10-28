@@ -8,7 +8,14 @@ import { startLogging } from "../common/log.ts";
 import { readNumber } from "../common/settings.ts";
 import { generateSigningKeys } from "../core/commands.ts";
 import { createControlApi } from "./api/index.ts";
-import { BUS_USERS_SYNC_MS, BusUsers, busUsersFile } from "./bus/index.ts";
+import {
+  BUS_USERS_SYNC_MS,
+  BusUsers,
+  busUsersFile,
+  CONFIG_WRITE_MS,
+  ConfigWriter,
+  ConfigWritten,
+} from "./bus/index.ts";
 import { Credential } from "./credential.ts";
 import { mountDashboard } from "./dashboard/index.ts";
 import { followReports } from "./ingest.ts";
@@ -104,10 +111,11 @@ async function main(): Promise<void> {
       })
     : undefined;
   // Control's connection to the bus, signed in as its own user; and what it took from the live
-  // stream, which the bus's state shows.
+  // stream and wrote to the config bucket, which the bus's state shows.
   const bus =
     natsUrl && busUsers ? natsBus(natsUrl, "control", { seed: busUsers.controlSeed }) : undefined;
   const liveTaken = new LiveTaken();
+  const configWritten = new ConfigWritten();
   // What the dashboard, REST, MCP and the loops below share, made once here (parts.ts): the test
   // pods on GPU clouds, the agents' MCP servers (goal 068), the rigs in pull mode and the rigs the
   // owner launches on RunPod among them, and the bus.
@@ -132,11 +140,16 @@ async function main(): Promise<void> {
               supervisor: env.THERMITE_RIG_SUPERVISOR_IMAGE,
             }
           : undefined,
-      bus: bus && natsUrl ? { server: new URL(natsUrl).host, bus, live: liveTaken } : undefined,
+      bus:
+        bus && natsUrl
+          ? { server: new URL(natsUrl).host, bus, live: liveTaken, config: configWritten }
+          : undefined,
     },
     { staleAfterMs, offlineAfterMs, control: buildInfo() },
   );
   const { runpodTests, tunnels, runpodRigs } = parts;
+  // Each rig's config, written to the config bucket when it changes (bus/config.ts).
+  const busConfig = bus ? new ConfigWriter({ parts, bus, figures: configWritten }) : undefined;
   const server = serve({
     fetch: createControlApi(store, tokens, privateKeyPem, {
       staleAfterMs,
@@ -149,8 +162,10 @@ async function main(): Promise<void> {
       pages: mountDashboard,
       // Exports from rigs without a results repository, kept in control's state.
       exportsDir: join(dir, "exports"),
-      // Who may use the message bus: a rig's new key gets its user there.
+      // Who may use the message bus: a rig's new key gets its user there, and a new seal key its
+      // config.
       busUsers,
+      busConfig,
     }).fetch,
     hostname: host,
     port,
@@ -168,13 +183,16 @@ async function main(): Promise<void> {
     bus: natsUrl ? new URL(natsUrl).host : null,
   });
   // Reports from the bus, folded through the ingest route's checks as they arrive; live lines,
-  // folded into the live view as they arrive; and each command control issues, published to its
-  // rig's subject as well as kept in the store. The users file is written first, so that the
-  // server can start, and kept up to date after.
+  // folded into the live view as they arrive; each command control issues, published to its
+  // rig's subject as well as kept in the store; and each rig's config, written when it changes.
+  // The users file is written first, so that the server can start, and kept up to date after.
   let usersSync: NodeJS.Timeout | undefined;
-  if (bus && busUsers) {
+  let configWrite: NodeJS.Timeout | undefined;
+  if (bus && busUsers && busConfig) {
     void busUsers.sync();
     usersSync = setInterval(() => void busUsers.sync(), BUS_USERS_SYNC_MS);
+    void busConfig.start().then(() => busConfig.write());
+    configWrite = setInterval(() => void busConfig.write(), CONFIG_WRITE_MS);
     followReports(bus, { store, control: buildInfo(), requireKeyAcceptance }).catch((err) =>
       log("control", "reports from the bus stopped", { error: String(err) }, "error"),
     );
@@ -245,6 +263,7 @@ async function main(): Promise<void> {
     clearInterval(quiet);
     clearInterval(clouds);
     clearInterval(usersSync);
+    clearInterval(configWrite);
     server.close();
     process.exit(0);
   };

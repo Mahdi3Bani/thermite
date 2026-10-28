@@ -1,8 +1,8 @@
 /**
  * One rig, wherever it runs: its setup and the steps of its history (setup.ts, setup-view.ts),
  * where it runs and control's look there (place.ts, watch.ts), its move onto control's images
- * (update.ts), its settings (settings.ts), its agents' models (agent-models.ts, model.ts) and its
- * GPU split (gpu-split.ts).
+ * (update.ts), its settings (settings.ts), its agents' models (agent-models.ts, model.ts), the
+ * model routes they get with their keys (model-routes.ts) and its GPU split (gpu-split.ts).
  */
 
 export {
@@ -32,6 +32,12 @@ export {
   rigModelRequest,
   rigModelsAnswer,
 } from "./model.ts";
+export {
+  advisorRoutesOf,
+  type ModelRoutes,
+  modelRoutesOf,
+  type RouteParts,
+} from "./model-routes.ts";
 export { checkRigPlace } from "./place.ts";
 export {
   QUIET_TIP,

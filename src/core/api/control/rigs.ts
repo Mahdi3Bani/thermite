@@ -131,6 +131,24 @@ export const LiveFigures = LiveLines.extend({
 });
 export type LiveFigures = z.infer<typeof LiveFigures>;
 
+/** The most config subjects the supervisor's figures count by name: its rig's keys. */
+export const FIGURE_CONFIG_SUBJECTS = 20;
+
+/** Config updates taken from the bus and refused there. */
+const ConfigUpdates = z.object({ taken: Count, refused: Count });
+
+/**
+ * The config updates a supervisor on the message bus took and refused, since it started (goal
+ * 168): in all, and by subject, one for each of its rig's keys. An update taken is a value it did
+ * not hold yet; one refused, a message it could not take (its value known stays).
+ */
+export const ConfigFigures = ConfigUpdates.extend({
+  subjects: z
+    .record(z.string().max(200), ConfigUpdates)
+    .refine((r) => Object.keys(r).length <= FIGURE_CONFIG_SUBJECTS, "too many subjects"),
+});
+export type ConfigFigures = z.infer<typeof ConfigFigures>;
+
 /**
  * What a supervisor may say about itself. A field this control does not know, at any level, is
  * dropped, never stored or shown: a newer supervisor that reports more still has the rest of its
@@ -212,8 +230,12 @@ export const SupervisorFigures = z.object({
     .optional(),
   /** The public part of the rig's key on the message bus (goal 168), checked by control. */
   bus_key: z.string().max(100).optional(),
+  /** The public part of the key control seals the rig's config to on the bus, checked by control. */
+  bus_seal_key: z.string().max(100).optional(),
   /** Its live lines on the message bus. A malformed one is dropped, not the figures. */
   live: LiveFigures.optional().catch(undefined),
+  /** Its config updates from the message bus. A malformed one is dropped, not the figures. */
+  config: ConfigFigures.optional().catch(undefined),
 });
 
 /**

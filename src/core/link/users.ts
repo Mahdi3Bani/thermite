@@ -2,6 +2,7 @@ import { fromPublic } from "@nats-io/nkeys";
 import { sha256Hex } from "../canonical.ts";
 import { RIG_ID } from "../ids.ts";
 import { COMMAND_STREAM, commandConsumerName, commandSubject } from "./commands.ts";
+import { CONFIG_STREAM, configConsumerConfig, configConsumerName } from "./config.ts";
 import { LIVE_RUNS_PER_RIG, liveSubject, rigLiveSubject } from "./live.ts";
 import { reportSubject } from "./report.ts";
 
@@ -44,8 +45,8 @@ export function userKeyFingerprint(key: string): string {
 
 /**
  * The start of every subject a rig's supervisor takes replies on: the server's acks of its
- * reports, its answers about the rig's consumer, and the rig's commands. Its user may subscribe
- * there and nowhere else.
+ * reports, its answers about the rig's consumers, the rig's commands and its config. Its user may
+ * subscribe there and nowhere else.
  */
 export function rigInboxPrefix(rig: string): string {
   if (!RIG_ID.test(rig)) throw new Error(`not a rig's name for an inbox: ${rig}`);
@@ -67,12 +68,14 @@ const anySource = (subject: string) => subject.replace(/\.[^.]+$/, ".*");
 /**
  * What a rig's user may do: publish its own reports, and the live lines of its own runs and its
  * own (`runs`: the runs control's run registry gives the rig, the newest LIVE_RUNS_PER_RIG); make,
- * read and take from its own consumer of the commands stream, and ack what it took. The server
- * checks that a consumer it makes takes the rig's own commands alone: the subject names the
+ * read and take from its own consumer of the commands stream, and ack what it took; and make
+ * again, read and take from its own consumer of its config keys, and ack what it took. The server
+ * checks that a consumer it makes takes the rig's own subjects alone: the subject names the
  * consumer's filter. A run whose name a subject can't hold has no subject of its own.
  */
 export function rigPermissions(rig: string, runs: readonly string[] = []): Permissions {
   const consumer = `${COMMAND_STREAM}.${commandConsumerName(rig)}`;
+  const config = `${CONFIG_STREAM}.${configConsumerName(rig)}`;
   const own = anySource(rigLiveSubject(rig, "judge"));
   const live = runs
     .slice(0, LIVE_RUNS_PER_RIG)
@@ -88,6 +91,11 @@ export function rigPermissions(rig: string, runs: readonly string[] = []): Permi
         `${API}.CONSUMER.INFO.${consumer}`,
         `${API}.CONSUMER.MSG.NEXT.${consumer}`,
         `$JS.ACK.${consumer}.>`,
+        `${API}.CONSUMER.CREATE.${config}.${configConsumerConfig(rig).filter_subject}`,
+        `${API}.CONSUMER.INFO.${config}`,
+        `${API}.CONSUMER.DELETE.${config}`,
+        `${API}.CONSUMER.MSG.NEXT.${config}`,
+        `$JS.ACK.${config}.>`,
       ],
     },
     subscribe: { allow: [`${rigInboxPrefix(rig)}.>`] },

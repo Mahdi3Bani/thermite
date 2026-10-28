@@ -22,8 +22,9 @@ import { log } from "./env.ts";
  * The message bus (goal 168): a NATS server with JetStream, which control runs. Control and the
  * rigs' supervisors reach it through this module alone, which hides the NATS library behind a few
  * calls: a publish that waits for the server's ack, a durable consumer whose messages are handed
- * over one at a time, a stream made, a message removed, and the streams' state. The harness and
- * the agents never reach the bus.
+ * over one at a time, a key-value bucket watched from the latest of each key, a subject's last
+ * message, a stream made, a message removed, and the streams' state. The harness and the agents
+ * never reach the bus.
  */
 
 /** The setting that names the server. Not set: the part keeps to HTTP. */
@@ -121,6 +122,19 @@ export interface Bus {
     handle: (m: BusMessage) => Handled | Promise<Handled>,
   ): Promise<void>;
   /**
+   * As follow, for a key-value bucket's reader: the durable consumer is made again each time
+   * watching starts, and after a failure, so `handle` gets the newest message of each subject the
+   * consumer takes first (its deliver policy `last_per_subject`), then each new one. The stream is
+   * another part's, and is waited for.
+   */
+  watch(
+    stream: string,
+    consumer: ConsumerSettings,
+    handle: (m: BusMessage) => Handled | Promise<Handled>,
+  ): Promise<void>;
+  /** The newest message on `subject`; undefined when it has none, or there is no such stream. */
+  last(stream: string, subject: string): Promise<BusMessage | undefined>;
+  /**
    * Makes the stream, or brings an existing one to these settings, and tries again every
    * BUS_RETRY_MS until it has, or the bus is closed.
    */
@@ -193,14 +207,21 @@ async function ensureStream(nc: NatsConnection, stream: StreamSettings): Promise
   await jsm.streams.update(stream.name, stream);
 }
 
-/** Makes the durable consumer unless it exists. */
+/** Makes the durable consumer unless it exists; `again`: removes it first, and makes it anew. */
 async function ensureConsumer(
   nc: NatsConnection,
   stream: string,
   consumer: ConsumerSettings,
+  again = false,
 ): Promise<void> {
   // No check of the account's JetStream first: a rig's user may not read the account's figures.
   const jsm = await jetstreamManager(nc, { checkAPI: false });
+  if (again)
+    await jsm.consumers.delete(stream, consumer.durable_name).catch((err: unknown) => {
+      // Not there to remove: made below. No such stream: said below, as for any consumer.
+      const gone: number[] = [JetStreamApiCodes.ConsumerNotFound, JetStreamApiCodes.StreamNotFound];
+      if (!(err instanceof JetStreamApiError && gone.includes(err.code))) throw err;
+    });
   try {
     await jsm.consumers.info(stream, consumer.durable_name);
   } catch (err) {
@@ -225,7 +246,8 @@ export function natsBus(url: string, name: string, signIn?: BusSignIn): Bus {
   const server = where(url);
   let conn: Promise<NatsConnection> | undefined;
   let closed = false;
-  let reading: ConsumerMessages | undefined;
+  /** The consumers being read now, each by its own loop: a close stops them all. */
+  const readings = new Set<ConsumerMessages>();
   const connection = (): Promise<NatsConnection> => {
     if (conn) return conn;
     const made = connect({
@@ -253,6 +275,60 @@ export function natsBus(url: string, name: string, signIn?: BusSignIn): Bus {
     conn = made;
     return made;
   };
+  /** Follows or watches a consumer (`again`: made anew each time), until the bus is closed. */
+  const consume = async (
+    stream: StreamSettings | string,
+    consumer: ConsumerSettings,
+    handle: (m: BusMessage) => Handled | Promise<Handled>,
+    again: boolean,
+  ): Promise<void> => {
+    const name = typeof stream === "string" ? stream : stream.name;
+    // A failure is logged as an error once, and again only after following worked.
+    let failing = false;
+    while (!closed) {
+      let reading: ConsumerMessages | undefined;
+      try {
+        const nc = await connection();
+        if (typeof stream !== "string") await ensureStream(nc, stream);
+        await ensureConsumer(nc, name, consumer, again);
+        const c = await jetstream(nc).consumers.get(name, consumer.durable_name);
+        reading = await c.consume();
+        readings.add(reading);
+        failing = false;
+        log("bus", "following", { stream: name, consumer: consumer.durable_name });
+        for await (const m of reading) {
+          let handled: Handled;
+          try {
+            handled = await handle({
+              subject: m.subject,
+              seq: m.seq,
+              data: m.data,
+              header: (k) => m.headers?.get(k) || undefined,
+            });
+          } catch (err) {
+            // Handed again after the wait; a consumer with one message in flight hands no later
+            // message first.
+            m.nak(BUS_RETRY_MS);
+            throw err;
+          }
+          if (handled) m.nak(handled.againInMs);
+          else m.ack();
+        }
+      } catch (err) {
+        if (closed) break;
+        const error = String(err);
+        const level = failing ? "debug" : "error";
+        log("bus", "following failed; trying again", { stream: name, error }, level);
+        failing = true;
+      } finally {
+        if (reading) {
+          reading.stop();
+          readings.delete(reading);
+        }
+      }
+      if (!closed) await pause(BUS_RETRY_MS);
+    }
+  };
   return {
     async publish(subject, data, o) {
       const nc = await connection();
@@ -270,49 +346,28 @@ export function natsBus(url: string, name: string, signIn?: BusSignIn): Bus {
         });
       return { seq: ack.seq, duplicate: ack.duplicate };
     },
-    async follow(stream, consumer, handle) {
-      const name = typeof stream === "string" ? stream : stream.name;
-      // A failure is logged as an error once, and again only after following worked.
-      let failing = false;
-      while (!closed) {
-        try {
-          const nc = await connection();
-          if (typeof stream !== "string") await ensureStream(nc, stream);
-          await ensureConsumer(nc, name, consumer);
-          const c = await jetstream(nc).consumers.get(name, consumer.durable_name);
-          reading = await c.consume();
-          failing = false;
-          log("bus", "following", { stream: name, consumer: consumer.durable_name });
-          for await (const m of reading) {
-            let handled: Handled;
-            try {
-              handled = await handle({
-                subject: m.subject,
-                seq: m.seq,
-                data: m.data,
-                header: (k) => m.headers?.get(k) || undefined,
-              });
-            } catch (err) {
-              // Handed again after the wait; a consumer with one message in flight hands no later
-              // message first.
-              m.nak(BUS_RETRY_MS);
-              throw err;
-            }
-            if (handled) m.nak(handled.againInMs);
-            else m.ack();
-          }
-        } catch (err) {
-          if (closed) break;
-          const error = String(err);
-          const level = failing ? "debug" : "error";
-          log("bus", "following failed; trying again", { stream: name, error }, level);
-          failing = true;
-        } finally {
-          reading?.stop();
-          reading = undefined;
-        }
-        if (!closed) await pause(BUS_RETRY_MS);
-      }
+    follow(stream, consumer, handle) {
+      return consume(stream, consumer, handle, false);
+    },
+    watch(stream, consumer, handle) {
+      return consume(stream, consumer, handle, true);
+    },
+    async last(stream, subject) {
+      const jsm = await jetstreamManager(await connection());
+      // The server finds the last message on a subject; the library's type names other ways to ask.
+      const query = { last_by_subj: subject } as unknown as MsgRequest;
+      const m = await jsm.streams.getMessage(stream, query).catch((err: unknown) => {
+        if (err instanceof JetStreamApiError && err.code === JetStreamApiCodes.StreamNotFound)
+          return null;
+        throw err;
+      });
+      if (!m) return undefined;
+      return {
+        subject: m.subject,
+        seq: m.seq,
+        data: m.data,
+        header: (k) => m.header?.get(k) || undefined,
+      };
     },
     async makeStream(stream) {
       let failing = false;
@@ -387,7 +442,7 @@ export function natsBus(url: string, name: string, signIn?: BusSignIn): Bus {
     },
     async close() {
       closed = true;
-      reading?.stop();
+      for (const r of readings) r.stop();
       const nc = await conn?.catch(() => undefined);
       await nc?.close();
     },

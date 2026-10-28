@@ -87,6 +87,8 @@ export class McpServers {
   private readonly signIns: SignIns;
   /** OAuth sign-ins on the servers' own pages. */
   private readonly oauth: OAuthSignIns;
+  /** The servers each rig was handed last, by name, as its audit entry says them. */
+  private readonly handedTo = new Map<string, string>();
 
   constructor(
     store: ControlStore,
@@ -326,5 +328,29 @@ export class McpServers {
       });
     }
     return { servers, unavailable };
+  }
+
+  /**
+   * Notes what a rig was handed (forRig's answer, over HTTP or on the message bus): audited as
+   * `mcp_servers_handed` when the servers it gets change, by name. A restart of control reads the
+   * last entry back, so it writes none of its own.
+   */
+  handed(rig: string, r: { servers: McpConnection[]; unavailable: McpUnavailable[] }): void {
+    const what = JSON.stringify([r.servers.map((s) => s.name), r.unavailable.map((u) => u.name)]);
+    if (!this.handedTo.has(rig)) {
+      const last = this.store.auditLog.last(`rig:${rig}`, "mcp_servers_handed") as
+        | { servers?: unknown; unavailable?: unknown }
+        | undefined;
+      this.handedTo.set(
+        rig,
+        JSON.stringify(last ? [last.servers ?? [], last.unavailable ?? []] : [[], []]),
+      );
+    }
+    if (this.handedTo.get(rig) === what) return;
+    this.handedTo.set(rig, what);
+    this.store.auditLog.add(`rig:${rig}`, "mcp_servers_handed", {
+      servers: r.servers.map((s) => s.name),
+      unavailable: r.unavailable.map((u) => u.name),
+    });
   }
 }

@@ -112,9 +112,10 @@ Inside the harness, the broker reads the rig's secret files when it starts. It h
 With the [message bus](how-the-parts-talk.md#who-may-use-the-message-bus), each part that signs in to it has a key of its own, which it made itself:
 
 - **A rig's key on the bus** is in the supervisor's state folder, readable by the supervisor alone. Only its public part travels, to control, on the supervisor's regular call. It survives a full reset.
+- **A rig's seal key** is beside it, the same way. Control seals the rig's config on the bus to it: the model routes with their providers' keys, and the MCP servers with their sign-ins. Only that rig's supervisor can open them, so neither the bus nor its store, nor another rig, holds them in the clear.
 - **Control's two keys on the bus**, its own user and the one that asks the server to reload its users, are sealed in control's store like the secrets above.
 
-The bus's server holds no secret at all: control gives it a users file with each key's public part and what that user may do.
+The bus's server holds no secret in the clear: control gives it a users file with each key's public part and what that user may do, and every secret it keeps for a rig is sealed to that rig's seal key.
 
 ## The advisors file
 

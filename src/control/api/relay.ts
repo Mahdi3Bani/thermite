@@ -42,8 +42,8 @@ export function relayRoutes(app: Hono, api: ApiContext): void {
     return ok ? c.json({ ok }) : c.json({ error: "no such pending command" }, 404);
   });
 
-  // The supervisor's own figures, with its key on the bus (api/supervisor.ts).
-  supervisorRoutes(app, rigAuth, { store, busUsers: opts.busUsers });
+  // The supervisor's own figures, with its keys on the bus (api/supervisor.ts).
+  supervisorRoutes(app, rigAuth, { store, busUsers: opts.busUsers, busConfig: opts.busConfig });
 
   // The live view: the harness's signed lines, and the supervisor's own (live/take.ts).
   app.post(LIVE.path, rigAuth, bodyLimit({ maxSize: LIVE.maxBytes }), async (c) => {
