@@ -121,20 +121,15 @@ export async function receivePropagation(
     throw new Error(`the propagated attempt has tree ${got}, not ${tree}`);
   }
   svc.ledger.tx(() => {
-    svc.ledger.db
-      .prepare(
-        `insert into propagation (attempt, run, source_rig, source_run, source_seq, tree, created_at)
-         values (?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        r.attempt,
-        p.run,
-        p.source_rig,
-        p.source_run,
-        p.source_seq,
-        tree,
-        new Date().toISOString(),
-      );
+    svc.ledger.propagations.add({
+      attempt: r.attempt,
+      run: p.run,
+      sourceRig: p.source_rig,
+      sourceRun: p.source_run,
+      sourceSeq: p.source_seq,
+      tree,
+      at: new Date().toISOString(),
+    });
     svc.ledger.appendEvent(by, "propagation_received", p.run, {
       ...source,
       attempt: r.attempt,
@@ -151,14 +146,13 @@ export async function receivePropagation(
  */
 export function settlePropagations(ledger: Ledger, by: string): number {
   // Open ones, and rejected ones whose attempt the owner promoted later (an audit override).
-  const open = (
-    ledger.db
-      .prepare("select * from propagation where result is null or result like 'rejected:%'")
-      .all() as Record<string, unknown>[]
-  ).filter(
-    (r) =>
-      r.result === null || String(ledger.attempts.get(String(r.attempt))?.lifecycle) === "promoted",
-  );
+  const open = ledger.propagations
+    .unsettledOrRejected()
+    .filter(
+      (r) =>
+        r.result === null ||
+        String(ledger.attempts.get(String(r.attempt))?.lifecycle) === "promoted",
+    );
   let settled = 0;
   for (const row of open) {
     const attempt = String(row.attempt);
@@ -167,9 +161,11 @@ export function settlePropagations(ledger: Ledger, by: string): number {
     const verdict = ledger.verdicts.current(attempt)?.verdict ?? lifecycle;
     const accepted = lifecycle === "promoted";
     ledger.tx(() => {
-      ledger.db
-        .prepare("update propagation set result = ?, decided_at = ? where attempt = ?")
-        .run(accepted ? "accepted" : `rejected:${verdict}`, new Date().toISOString(), attempt);
+      ledger.propagations.settle(
+        attempt,
+        accepted ? "accepted" : `rejected:${verdict}`,
+        new Date().toISOString(),
+      );
       ledger.appendEvent(
         by,
         accepted ? "propagation_accepted" : "propagation_rejected",

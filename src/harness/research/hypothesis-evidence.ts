@@ -14,8 +14,6 @@ import { GAP_LINE, gapOf, taskDetails } from "./shares.ts";
  * each one done shows the panel the hypothesis again (itemsMarker).
  */
 
-type Row = Record<string, unknown>;
-
 /** A required hypothesis with no evidence for or against it yet. */
 export interface UnevidencedHypothesis {
   id: string;
@@ -43,13 +41,8 @@ export function hypothesisEvidence(ledger: Ledger, run: string): Map<string, num
   for (const h of ledger.hypotheses.withStatus(run, REQUIRED_HYPOTHESES))
     add(h.id, list(h.supporting));
   // A reviewer's verdict that passed the check, with the claims it cites.
-  for (const r of ledger.db
-    .prepare(
-      `select i.key as key, i.claims as claims from review_item i join review r on r.id = i.review
-         where r.run = ? and i.kind = 'hypothesis' and i.verdict != 'none' and i.problems = '[]'`,
-    )
-    .all(run) as Row[])
-    if (claims.has(String(r.key))) add(String(r.key), list(r.claims));
+  for (const r of ledger.reviews.hypothesisCitations(run))
+    if (claims.has(r.key)) add(r.key, list(r.claims));
   return new Map([...claims].map(([id, s]) => [id, s.size]));
 }
 

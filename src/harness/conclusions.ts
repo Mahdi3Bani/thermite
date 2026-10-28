@@ -1,4 +1,3 @@
-import { canonicalJson } from "../core/canonical.ts";
 import type { GoalContract } from "../core/contract.ts";
 import { PROMOTABLE_VERDICTS, SCREENED_VERDICTS } from "../core/verdicts.ts";
 import { type Ledger, LedgerError } from "./ledger.ts";
@@ -74,9 +73,7 @@ export class Conclusions {
   }
 
   open(run: string): Row | undefined {
-    return this.ledger.db
-      .prepare("select * from conclusion where run = ? and decision is null")
-      .get(run) as Row | undefined;
+    return this.ledger.conclusions.open(run);
   }
 
   /**
@@ -89,14 +86,9 @@ export class Conclusions {
     const refuted = this.refuted(run);
     const need = contract.infeasibility.min_refuted_approaches ?? Number.POSITIVE_INFINITY;
     if (refuted.length < need) return undefined;
-    const last = this.ledger.db
-      .prepare(
-        "select evidence from conclusion where run = ? and decision = 'rejected' order by id desc limit 1",
-      )
-      .get(run) as Row | undefined;
-    if (last) {
-      const before = (JSON.parse(String(last.evidence)) as { approaches: RefutedApproach[] })
-        .approaches.length;
+    const last = this.ledger.conclusions.rejectedEvidence(run);
+    if (last !== undefined) {
+      const before = (JSON.parse(last) as { approaches: RefutedApproach[] }).approaches.length;
       if (refuted.length <= before) return undefined;
     }
     const goals = this.ledger.goals.statuses(run);
@@ -106,12 +98,7 @@ export class Conclusions {
       rule: `at least ${need} approach families, each with ${REFUTE_ATTEMPTS} or more judged attempts and no progress`,
     };
     return this.ledger.tx(() => {
-      const r = this.ledger.db
-        .prepare(
-          "insert into conclusion (run, kind, evidence, proposed_at) values (?, 'not_possible', ?, ?)",
-        )
-        .run(run, canonicalJson(evidence), new Date().toISOString());
-      const id = Number(r.lastInsertRowid);
+      const id = this.ledger.conclusions.add(run, evidence, new Date().toISOString());
       for (const a of refuted) {
         if (this.ledger.trials.setFamilyStatus(run, a.family, "exhausted", "live")) {
           this.ledger.appendEvent(by, "family_status", run, {
@@ -143,16 +130,17 @@ export class Conclusions {
     closeReason = "not possible: the owner accepted the evidence",
   ) {
     return this.ledger.tx(() => {
-      const row = this.ledger.db
-        .prepare("select * from conclusion where id = ? and run = ?")
-        .get(proposal, run) as Row | undefined;
+      const row = this.ledger.conclusions.get(run, proposal);
       if (!row) throw new LedgerError("not_found", `no proposal ${proposal} in ${run}`);
       if (row.decision !== null)
         throw new LedgerError("conflict", `proposal ${proposal} is decided`);
       const decision = accept ? "accepted" : "rejected";
-      this.ledger.db
-        .prepare("update conclusion set decision = ?, note = ?, decided_at = ? where id = ?")
-        .run(decision, note?.slice(0, 2000) ?? null, new Date().toISOString(), proposal);
+      this.ledger.conclusions.decide(
+        proposal,
+        decision,
+        note?.slice(0, 2000) ?? null,
+        new Date().toISOString(),
+      );
       this.ledger.appendEvent(by, accept ? "conclusion_accepted" : "conclusion_rejected", run, {
         proposal,
         kind: String(row.kind),

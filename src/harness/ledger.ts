@@ -1,14 +1,17 @@
 import { randomUUID } from "node:crypto";
-import type { DatabaseSync, SQLInputValue } from "node:sqlite";
+import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { openDatabase, transaction } from "../common/sqlite.ts";
 import { canonicalJson } from "../core/canonical.ts";
 import type { AppendEvent } from "../core/events/bodies.ts";
 import { currentEvent, type EventKind } from "../core/names.ts";
 import { LedgerAttempts } from "./ledger/attempts.ts";
+import { LedgerAudits } from "./ledger/audits.ts";
 import { LedgerBuilds } from "./ledger/builds.ts";
+import { LedgerCards } from "./ledger/cards.ts";
 import { LedgerChampions } from "./ledger/champions.ts";
 import { LedgerClaims } from "./ledger/claims.ts";
 import { LedgerCommands } from "./ledger/commands.ts";
+import { LedgerConclusions } from "./ledger/conclusions.ts";
 import { LedgerContracts } from "./ledger/contracts.ts";
 import { LedgerDirectives } from "./ledger/directives.ts";
 import { LedgerEvents } from "./ledger/events.ts";
@@ -19,11 +22,15 @@ import { LedgerHeldOut } from "./ledger/held-out.ts";
 import { LedgerHypotheses } from "./ledger/hypotheses.ts";
 import { LedgerImports } from "./ledger/imports.ts";
 import { LedgerJobs } from "./ledger/jobs.ts";
+import { LedgerJournal } from "./ledger/journal.ts";
 import { LedgerLaneFiles } from "./ledger/lane-files.ts";
 import { LedgerMeasurements } from "./ledger/measurements.ts";
+import { LedgerMessages } from "./ledger/messages.ts";
 import { migrateLedger } from "./ledger/migrate.ts";
 import { LedgerError, type Row } from "./ledger/part.ts";
+import { LedgerPropagations } from "./ledger/propagations.ts";
 import { LedgerReports } from "./ledger/reports.ts";
+import { LedgerReviews } from "./ledger/reviews.ts";
 import type { LedgerEvent } from "./ledger/rows.ts";
 import { eventRun, LedgerRuns } from "./ledger/runs.ts";
 import { LedgerSources } from "./ledger/sources.ts";
@@ -69,6 +76,13 @@ export class Ledger {
   readonly hypotheses: LedgerHypotheses;
   readonly reports: LedgerReports;
   readonly laneFiles: LedgerLaneFiles;
+  readonly messages: LedgerMessages;
+  readonly cards: LedgerCards;
+  readonly reviews: LedgerReviews;
+  readonly audits: LedgerAudits;
+  readonly conclusions: LedgerConclusions;
+  readonly journal: LedgerJournal;
+  readonly propagations: LedgerPropagations;
   private readonly clock: () => Date;
 
   private constructor(db: DatabaseSync, clock: () => Date) {
@@ -96,6 +110,13 @@ export class Ledger {
     this.hypotheses = new LedgerHypotheses(this, db, clock);
     this.reports = new LedgerReports(this, db, clock);
     this.laneFiles = new LedgerLaneFiles(this, db, clock);
+    this.messages = new LedgerMessages(this, db, clock);
+    this.cards = new LedgerCards(this, db, clock);
+    this.reviews = new LedgerReviews(this, db, clock);
+    this.audits = new LedgerAudits(this, db, clock);
+    this.conclusions = new LedgerConclusions(this, db, clock);
+    this.journal = new LedgerJournal(this, db, clock);
+    this.propagations = new LedgerPropagations(this, db, clock);
   }
 
   static open(path: string, clock: () => Date = () => new Date()): Ledger {
@@ -114,6 +135,18 @@ export class Ledger {
 
   close(): void {
     this.db.close();
+  }
+
+  /**
+   * A consistent copy of the whole ledger in a new file at `path`, without the tables named in
+   * `without`.
+   */
+  copyTo(path: string, without: readonly string[] = []): void {
+    this.db.exec(`vacuum into '${path.replace(/'/g, "''")}'`);
+    if (!without.length) return;
+    const copy = new DatabaseSync(path);
+    copy.exec(`${without.map((t) => `drop table if exists ${t};`).join(" ")} vacuum;`);
+    copy.close();
   }
 
   /** Random id created with the ledger. Event ids are only unique within one ledger id. */

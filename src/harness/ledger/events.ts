@@ -23,14 +23,25 @@ export type ReadEvent<K extends EventKind> = K extends EventKind
   : never;
 
 /**
- * Which events: about `subject` (null: none), after an event (`after`, its id), or up to one
- * (`through`), and whose body has these top-level values (`body`).
+ * Which events: about `subject` (null: none), recorded by `actor`, after an event (`after`, its
+ * id), or up to one (`through`), at `since` or later, and whose body has these top-level values
+ * (`body`), values above these numbers (`above`), and a value at each of these keys (`has`).
  */
 export interface EventQuery {
   subject?: string | null | undefined;
+  actor?: string | undefined;
   after?: number | undefined;
   through?: number | undefined;
+  since?: string | undefined;
   body?: Record<string, string | number | boolean | null> | undefined;
+  above?: Record<string, number> | undefined;
+  has?: readonly string[] | undefined;
+}
+
+/** A body key a query may name in SQL. */
+function bodyKey(key: string): string {
+  if (!/^[a-z_]+$/.test(key)) throw new Error(`not a body key to match: ${key}`);
+  return key;
 }
 
 export class LedgerEvents {
@@ -50,17 +61,21 @@ export class LedgerEvents {
     };
     if (q.subject === null) add("subject is null");
     else if (q.subject !== undefined) add("subject = ?", q.subject);
+    if (q.actor !== undefined) add("actor = ?", q.actor);
     if (q.after !== undefined) add("id > ?", q.after);
     if (q.through !== undefined) add("id <= ?", q.through);
+    if (q.since !== undefined) add("at >= ?", q.since);
     for (const [key, value] of Object.entries(q.body ?? {})) {
-      if (!/^[a-z_]+$/.test(key)) throw new Error(`not a body key to match: ${key}`);
-      if (value === null) add(`json_extract(body, '$.${key}') is null`);
+      if (value === null) add(`json_extract(body, '$.${bodyKey(key)}') is null`);
       else
         add(
-          `json_extract(body, '$.${key}') = ?`,
+          `json_extract(body, '$.${bodyKey(key)}') = ?`,
           typeof value === "boolean" ? Number(value) : value,
         );
     }
+    for (const [key, value] of Object.entries(q.above ?? {}))
+      add(`json_extract(body, '$.${bodyKey(key)}') > ?`, value);
+    for (const key of q.has ?? []) add(`json_extract(body, '$.${bodyKey(key)}') is not null`);
     return [parts.join(" and "), args];
   }
 

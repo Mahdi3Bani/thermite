@@ -155,23 +155,16 @@ function refusedAgain(
   ledger: Ledger,
   t: { run: string; lane: string; started_at: string },
 ): OpenTrial["refused_again"] {
-  const again = ledger.db
-    .prepare(
-      `select count(*) as times, max(id) as id from event
-       where kind = 'fetch_refused' and subject = ? and actor = ? and at >= ?
-         and json_extract(body, '$.asked') > 1`,
-    )
-    .get(t.run, t.lane, t.started_at) as { times: number; id: number | null };
-  if (!again.id) return null;
-  // That event, by its id.
-  const e = ledger.events.newest("fetch_refused", { after: again.id - 1, through: again.id });
+  // Refusals to the trial's lane since it started, of a URL asked for more than once.
+  const again = { subject: t.run, actor: t.lane, since: t.started_at, above: { asked: 1 } };
+  const e = ledger.events.newest("fetch_refused", again);
   if (!e) return null;
   return {
     url: e.body.url,
     reason: e.body.reason,
     asked: e.body.asked ?? 0,
     at: e.at,
-    times: Number(again.times),
+    times: ledger.events.count("fetch_refused", again),
   };
 }
 

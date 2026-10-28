@@ -706,18 +706,17 @@ export class HarnessService {
     if (asked?.goal === RESEARCH_REVIEW)
       return this.recordResearchPanel(reviews, asked, results, by);
     const result = reviews.recordPanel(id, results, by);
-    const row = this.ledger.db.prepare("select run from review where id = ?").get(id) as
-      | { run: string }
-      | undefined;
-    if (result !== "review_passed" || !row || this.askFor(row.run).reviews) return { result };
+    const row = this.ledger.reviews.get(id);
+    const run = row ? String(row.run) : undefined;
+    if (result !== "review_passed" || !run || this.askFor(run).reviews) return { result };
     reviews.ownerDecision(
       id,
-      row.run,
+      run,
       true,
       "hands-off: the review panel passed it, and the run does not ask the owner",
       "harness (hands-off)",
     );
-    this.ledger.jobs.enqueue({ kind: "validate", priority: 40, spec: { run: row.run }, actor: by });
+    this.ledger.jobs.enqueue({ kind: "validate", priority: 40, spec: { run }, actor: by });
     return { result, accepted: true };
   }
 
@@ -819,9 +818,7 @@ export class HarnessService {
     const audits = new Audits(this.ledger);
     const out: string[] = [];
     for (const id of audits.pending()) {
-      const au = this.ledger.db.prepare("select * from audit where id = ?").get(id) as
-        | Record<string, unknown>
-        | undefined;
+      const au = this.ledger.audits.get(id);
       if (!au) continue;
       const attempt = String(au.attempt);
       if (String(this.ledger.attempts.get(attempt)?.lifecycle) !== "awaiting_audit") continue;
@@ -1746,15 +1743,13 @@ export class HarnessService {
       owner_messages: { id: number; at: string; text: string }[];
     })[] = [];
     for (const id of audits.pending()) {
-      const row = this.ledger.db.prepare("select attempt, run from audit where id = ?").get(id) as {
-        attempt: string;
-        run: string;
-      };
-      const inst = this.requireRun(row.run);
+      const row = this.ledger.audits.get(id) as Record<string, unknown>;
+      const run = String(row.run);
+      const inst = this.requireRun(run);
       // A closed run's audits are not the auditor's to decide (goal 087): nothing in it changes.
       if (inst.status === "closed") continue;
-      const pkg = audits.package(id, this.contractFor(row.run));
-      const a = this.ledger.attempts.get(row.attempt) as Record<string, unknown>;
+      const pkg = audits.package(id, this.contractFor(run));
+      const a = this.ledger.attempts.get(String(row.attempt)) as Record<string, unknown>;
       const diff = await patchBetween(
         this.mirrorFor(inst.seed_repo),
         String(a.parent_commit),
@@ -1762,14 +1757,14 @@ export class HarnessService {
       );
       // The campaign's brief from its author, whole, before the diff (goal 078): a package too
       // long for the auditor's window is cut at its end.
-      const brief = briefData(this.contractFor(row.run));
+      const brief = briefData(this.contractFor(run));
       out.push({
         ...pkg,
         ...(brief ? { campaign_brief: brief } : {}),
         diff: diff.slice(0, 200_000),
         // The owner's messages the auditor has not read (to it, or to all the advisors).
-        owner_messages: this.ownerMessagesFor(row.run, "auditor"),
-        ...this.backgroundFor(row.run),
+        owner_messages: this.ownerMessagesFor(run, "auditor"),
+        ...this.backgroundFor(run),
       });
     }
     return out;

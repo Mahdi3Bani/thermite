@@ -288,6 +288,11 @@ export class LedgerTrials extends LedgerPart {
     return this.rows<Row>("select * from epoch where run = ? order by n desc limit ?", run, limit);
   }
 
+  /** Whether the run has an epoch numbered `n`. */
+  hasEpoch(run: string, n: number): boolean {
+    return this.row<Row>("select 1 from epoch where n = ? and run = ?", n, run) !== undefined;
+  }
+
   startEpoch(e: {
     run: string;
     n: number;

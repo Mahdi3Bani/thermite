@@ -61,13 +61,13 @@
       "lines": 878
     },
     "src/harness/research/paper.ts": {
-      "lines": 1150
+      "lines": 1144
     },
     "src/harness/research/research.ts": {
       "lines": 1451
     },
     "src/harness/research/review.ts": {
-      "lines": 1159
+      "lines": 1148
     },
     "src/harness/schema.ts": {
       "lines": 875
@@ -76,7 +76,7 @@
       "lines": 1023
     },
     "src/harness/service.ts": {
-      "lines": 2881
+      "lines": 2876
     },
     "src/supervisor/advise.ts": {
       "lines": 1366

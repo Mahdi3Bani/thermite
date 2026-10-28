@@ -291,9 +291,7 @@ const questionsWords = (xs: number[]) =>
 
 /** A run's research reviews, newest first. */
 export function researchReviews(ledger: Ledger, run: string): Row[] {
-  return ledger.db
-    .prepare("select * from review where run = ? and goal = ? order by id desc")
-    .all(run, RESEARCH_REVIEW) as Row[];
+  return ledger.reviews.ofGoal(run, RESEARCH_REVIEW);
 }
 
 /** The review whose pass was accepted (hands-off or by the owner): the run's items have ends. */
@@ -967,11 +965,6 @@ export function checkedPanel(row: Row): CheckedReviewer[] {
   }
 }
 
-/** The review rows of a run, by id. */
-function reviewById(ledger: Ledger, id: number): Row | undefined {
-  return ledger.db.prepare("select * from review where id = ?").get(id) as Row | undefined;
-}
-
 /**
  * The standing open questions' evidence gaps for the research workers' brief (goal 117): for each
  * question whose standing decision is open, what the reviewers who said open named as missing in
@@ -989,7 +982,7 @@ export function briefGaps(ledger: Ledger, run: string): string | undefined {
     .filter((d) => d.kind === "question" && d.decision === "open")
     .sort((a, b) => Number(a.key) - Number(b.key));
   for (const d of open) {
-    const row = reviewById(ledger, d.review);
+    const row = ledger.reviews.get(d.review);
     if (!row) continue;
     const index = Number(d.key);
     const gaps: string[] = [];
@@ -1075,15 +1068,11 @@ export function answerSections(
   const { standing, open } = itemsState(ledger, run, n);
   const one = (s: string) => fence(s).replace(/\n+/g, " ");
   const decisionRow = (d: StandingDecision) =>
-    ledger.db
-      .prepare(
-        "select * from item_decision where run = ? and kind = ? and key = ? and review = ? order by id desc limit 1",
-      )
-      .get(run, d.kind, d.key, d.review) as Row | undefined;
+    ledger.reviews.decision(run, d.kind, d.key, d.review);
   const panels = new Map<number, CheckedReviewer[]>();
   const panelOf = (review: number) => {
     if (!panels.has(review)) {
-      const row = reviewById(ledger, review);
+      const row = ledger.reviews.get(review);
       panels.set(review, row ? checkedPanel(row) : []);
     }
     return panels.get(review) ?? [];

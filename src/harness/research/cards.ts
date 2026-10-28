@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ResearchContract } from "../../core/contract.ts";
 import { MEASURES_NOTHING, questionLabel } from "../../core/research-check.ts";
+import type { CardRow } from "../ledger/cards.ts";
 import type { ClaimRow } from "../ledger/claims.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
 import { checkCited } from "./checks.ts";
@@ -30,8 +31,6 @@ export { questionLabel };
  * new to the next request, never lost; claims cut from a request to keep it short come in the
  * next one.
  */
-
-type Row = Record<string, unknown>;
 
 /** The certainty scale, from the most certain to no answer. */
 export const CERTAINTIES = ["high", "moderate", "low", "insufficient", "none"] as const;
@@ -112,7 +111,7 @@ const clip = (s: string, n: number) => {
   return t.length > n ? `${t.slice(0, n - 1)}…` : t;
 };
 
-const cardOfRow = (r: Row): Card => ({
+const cardOfRow = (r: CardRow): Card => ({
   question: Number(r.question),
   version: Number(r.version),
   answer: String(r.answer),
@@ -130,15 +129,7 @@ export function rubricOf(contract: Pick<ResearchContract, "questions" | "rubrics
 
 /** The newest card of each question of a run that has one, by question. */
 export function cardsOf(ledger: Ledger, run: string): Card[] {
-  return (
-    ledger.db
-      .prepare(
-        `select c.* from question_card c where c.run = ? and c.version = (
-           select max(d.version) from question_card d where d.run = c.run and d.question = c.question)
-         order by c.question`,
-      )
-      .all(run) as Row[]
-  ).map(cardOfRow);
+  return ledger.cards.newestOfEach(run).map(cardOfRow);
 }
 
 /** A question's card: its newest version, if it has one. */
@@ -150,21 +141,13 @@ export function cardsOf(ledger: Ledger, run: string): Card[] {
 export const CARD_PACE = { claims: 5, ms: 30 * 60_000 };
 
 export function cardOf(ledger: Ledger, run: string, question: number): Card | undefined {
-  const r = ledger.db
-    .prepare(
-      "select * from question_card where run = ? and question = ? order by version desc limit 1",
-    )
-    .get(run, question) as Row | undefined;
+  const r = ledger.cards.newest(run, question);
   return r ? cardOfRow(r) : undefined;
 }
 
 /** Every version of a question's card, the first first. */
 export function cardHistory(ledger: Ledger, run: string, question: number): Card[] {
-  return (
-    ledger.db
-      .prepare("select * from question_card where run = ? and question = ? order by version")
-      .all(run, question) as Row[]
-  ).map(cardOfRow);
+  return ledger.cards.history(run, question).map(cardOfRow);
 }
 
 /** A claim as a request for cards shows it: its words, its sources' domains, and when. */
@@ -368,14 +351,15 @@ export class Cards {
    * then id), or nothing when no card was given one: then every verified claim is new.
    */
   private cursor(run: string, question: number): { at: string; id: string } | undefined {
-    const r = this.ledger.db
-      .prepare(
-        "select json_extract(body, '$.through') as through from event where kind = ? and subject = ? and json_extract(body, '$.question') = ? and json_extract(body, '$.through') is not null order by id desc limit 1",
-      )
-      .get(CARD_WRITTEN, run, question) as { through: string } | undefined;
-    if (!r) return undefined;
-    const cl = this.ledger.claims.get(run, r.through);
-    return cl ? { at: cl.created_at, id: r.through } : undefined;
+    const written = this.ledger.events.newest(CARD_WRITTEN, {
+      subject: run,
+      body: { question },
+      has: ["through"],
+    });
+    if (!written) return undefined;
+    const through = String(written.body.through);
+    const cl = this.ledger.claims.get(run, through);
+    return cl ? { at: cl.created_at, id: through } : undefined;
   }
 
   /** A question's verified claims after its cursor, the oldest first. */
@@ -531,31 +515,16 @@ export class Cards {
       const claims = [...new Set(c.claims)];
       const gaps = c.gaps.map((g) => ({ kind: g.kind as GapKind, text: g.text.trim() }));
       const version = this.ledger.tx(() => {
-        const v =
-          Number(
-            (
-              this.ledger.db
-                .prepare(
-                  "select max(version) as v from question_card where run = ? and question = ?",
-                )
-                .get(run, c.question) as { v: number | null }
-            ).v ?? 0,
-          ) + 1;
-        this.ledger.db
-          .prepare(
-            "insert into question_card (run, question, version, answer, certainty, claims, gaps, by, created_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-          )
-          .run(
-            run,
-            c.question,
-            v,
-            c.answer.trim(),
-            c.certainty,
-            JSON.stringify(claims),
-            JSON.stringify(gaps),
-            input.synthesizer,
-            new Date().toISOString(),
-          );
+        const v = this.ledger.cards.add({
+          run,
+          question: c.question,
+          answer: c.answer.trim(),
+          certainty: c.certainty,
+          claims,
+          gaps,
+          by: input.synthesizer,
+          at: new Date().toISOString(),
+        });
         // The card whole (it is bounded), so control and the run's history have it from events.
         this.ledger.appendEvent(by, CARD_WRITTEN, run, {
           question: c.question,

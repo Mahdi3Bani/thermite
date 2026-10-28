@@ -9,7 +9,6 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { canonicalJson } from "../core/canonical.ts";
 import { patchBytes } from "./git.ts";
 import { knowledgePart } from "./kb-part.ts";
@@ -135,17 +134,9 @@ export async function writeExport(input: {
         .filter((e) => e.kind === kind)
         .map((e) => Number((e.body as Record<string, unknown>)[field]))
         .filter((n) => Number.isInteger(n));
-    const rowsOf = (table: string, list: number[]) =>
-      list.length
-        ? (ledger.db
-            .prepare(
-              `select * from ${table} where id in (${list.map(() => "?").join(", ")}) order by id`,
-            )
-            .all(...list) as Record<string, unknown>[])
-        : [];
     const jsonl = (rows: unknown[]) =>
       rows.map((r) => canonicalJson(r)).join("\n") + (rows.length ? "\n" : "");
-    const journal = rowsOf("journal_note", ids("journal_note", "id")).map((r) => ({
+    const journal = ledger.journal.byIds(ids("journal_note", "id")).map((r) => ({
       id: Number(r.id),
       run: String(r.run),
       by: String(r.by),
@@ -239,17 +230,12 @@ export async function writeExport(input: {
       }
     }
 
-    const snapshotPath = join(tmp, "ledger.sqlite");
-    if (!only) ledger.db.exec(`vacuum into '${snapshotPath.replace(/'/g, "''")}'`);
-    // The held_out table, the judge's whole record of each held-out check, never goes into an
-    // export. The owner's record of one does (goal 082): the held_out_checked event, with each
-    // held-out cell's name, kind of failure and value against its threshold (at most 50 cells),
-    // is in the events table and events.jsonl, as it reaches control. No agent reads events.
-    if (!only) {
-      const snapshot = new DatabaseSync(snapshotPath);
-      snapshot.exec("drop table if exists held_out; vacuum;");
-      snapshot.close();
-    }
+    // A copy of the ledger (ledger.sqlite). The held_out table, the judge's whole record of each
+    // held-out check, never goes into an export. The owner's record of one does (goal 082): the
+    // held_out_checked event, with each held-out cell's name, kind of failure and value against
+    // its threshold (at most 50 cells), is in the events table and events.jsonl, as it reaches
+    // control. No agent reads events.
+    if (!only) ledger.copyTo(join(tmp, "ledger.sqlite"), ["held_out"]);
 
     const files = [
       "events.jsonl",

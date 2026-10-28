@@ -713,19 +713,13 @@ export class Papers {
     const panels = new Map<number, CheckedReviewer[]>();
     const panelOf = (review: number) => {
       if (!panels.has(review)) {
-        const row = this.ledger.db.prepare("select * from review where id = ?").get(review) as
-          | Row
-          | undefined;
+        const row = this.ledger.reviews.get(review);
         panels.set(review, row ? checkedPanel(row) : []);
       }
       return panels.get(review) ?? [];
     };
     const dissentOf = (kind: string, key: string, review: number): Dissent[] => {
-      const row = this.ledger.db
-        .prepare(
-          "select dissent from item_decision where run = ? and kind = ? and key = ? and review = ? order by id desc limit 1",
-        )
-        .get(run, kind, key, review) as { dissent: string } | undefined;
+      const row = this.ledger.reviews.decision(run, kind, key, review);
       try {
         return row ? (JSON.parse(row.dissent) as Dissent[]) : [];
       } catch {
