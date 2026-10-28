@@ -134,7 +134,7 @@ const report = { started_at: new Date().toISOString(), minutes, seeds: SEEDS, ch
 const { check } = acceptanceChecks({ max: 400, into: report.checks });
 
 prepare();
-const { parseContract } = await import("../dist/core/contract.js");
+const { parseContract } = await import("../../dist/core/contract.js");
 const parsed = parseContract({
   schema_version: 1,
   campaign: "benchmark-statistics",

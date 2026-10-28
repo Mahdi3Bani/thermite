@@ -449,7 +449,7 @@ try {
   // OpenCode's own tools and runs the research tools as `thermite-trial research` commands,
   // which reach the harness's research service with the trial's token. Assigning it pauses
   // smoke-1 (one running run per rig).
-  const { parseContract } = await import("../dist/core/contract.js");
+  const { parseContract } = await import("../../dist/core/contract.js");
   const researchContract = parseContract({
     schema_version: 1,
     campaign: "opencode-research",
