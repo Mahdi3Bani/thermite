@@ -18,8 +18,7 @@ import {
   type MachineRig,
   type TunnelRig,
 } from "../../store/index.ts";
-import { ago, esc, hardwareCard, icon, num, runHref } from "../../ui/components.ts";
-import { drainView } from "../../ui/drain.ts";
+import { ago, esc, hardwareCard, icon, num, runHref } from "../../ui/components/index.ts";
 import { exportMenu, exportsHref } from "../../ui/exports.ts";
 import {
   cap,
@@ -30,8 +29,8 @@ import {
   timeline,
   waitingOn,
 } from "../../ui/operator/index.ts";
-import { checkRowHtml } from "../../ui/rig-checks.ts";
-import { stateBanners, stateRows, stateSummary, versionFact } from "../../ui/rig-states.ts";
+import { checkRowHtml } from "../../ui/rigs/checks.ts";
+import { drainView } from "../../ui/rigs/drain.ts";
 import {
   HISTORY_FILTERS,
   podBlock,
@@ -39,7 +38,8 @@ import {
   podRows,
   podRuns,
   readySteps,
-} from "../../ui/runpod-rig.ts";
+} from "../../ui/rigs/runpod.ts";
+import { stateBanners, stateRows, stateSummary, versionFact } from "../../ui/rigs/states.ts";
 import { span } from "../../ui/words/index.ts";
 import { runCampaign } from "../../views/facts.ts";
 import type { RigView } from "../../views/index.ts";

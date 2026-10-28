@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { judgeShareOf } from "../../../src/control/clusters/resources.ts";
-import { ADD_RIG_JS, JUDGE_SHARE_JS } from "../../../src/control/ui/add-rig-client.ts";
+import { ADD_RIG_JS, JUDGE_SHARE_JS } from "../../../src/control/ui/rigs/add/client.ts";
 
 describe("Add a rig's preview of the GPU split (goal 161)", () => {
   const share = new Function(`return ${JUDGE_SHARE_JS}`)() as (

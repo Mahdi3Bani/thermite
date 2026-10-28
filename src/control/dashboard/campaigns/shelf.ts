@@ -8,7 +8,7 @@ import {
   type ShelfOutcome,
   unarchiveCampaign,
 } from "../../campaigns/folders.ts";
-import { campaignHref } from "../../ui/components.ts";
+import { campaignHref } from "../../ui/components/index.ts";
 import { campaignModes } from "../../views/index.ts";
 import { backTo, type Ctx, type Dashboard } from "../context.ts";
 

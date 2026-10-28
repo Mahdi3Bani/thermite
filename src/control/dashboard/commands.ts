@@ -12,9 +12,9 @@ import {
   type Progress,
 } from "../command-progress.ts";
 import { issueWaking } from "../issue/index.ts";
-import { formPayload } from "../ui/command-forms.ts";
+import { formPayload } from "../ui/commands/forms.ts";
 import { EXPORT_WHERE, exportForm } from "../ui/exports.ts";
-import { checkFollowUrl } from "../ui/rig-checks.ts";
+import { checkFollowUrl } from "../ui/rigs/checks.ts";
 import { backTo, type Dashboard, wantsJson } from "./context.ts";
 
 /**

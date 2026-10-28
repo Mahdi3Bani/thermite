@@ -5,7 +5,7 @@ import { propagateChampion } from "../issue/index.ts";
 import { advanceResets, cancelReset, confirmReset } from "../lifecycle.ts";
 import { runpodResetRefusal } from "../runpod/lifecycle.ts";
 import { RIG_ID } from "../store/index.ts";
-import { runHref } from "../ui/components.ts";
+import { runHref } from "../ui/components/index.ts";
 import { backTo, type Dashboard } from "./context.ts";
 
 /**

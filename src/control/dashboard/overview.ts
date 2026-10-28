@@ -1,7 +1,7 @@
 import type { Hono } from "hono";
 import { knownTimeZone, type UsagePeriod } from "../../core/usage.ts";
-import { campaignFilter, campaignsListBody, isRigCheck } from "../ui/campaigns.ts";
-import { ago, campaignHref, esc } from "../ui/components.ts";
+import { campaignFilter, campaignsListBody, isRigCheck } from "../ui/campaigns/list.ts";
+import { ago, campaignHref, esc } from "../ui/components/index.ts";
 import { runBrief, timeline } from "../ui/operator/index.ts";
 import { metricsBody } from "../ui/usage.ts";
 import { usageData } from "../usage.ts";

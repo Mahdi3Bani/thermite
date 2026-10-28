@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { drainBanner, drainOf, drainSaid } from "../../../src/control/ui/drain.ts";
+import { drainBanner, drainOf, drainSaid } from "../../../src/control/ui/rigs/drain.ts";
 import { ev, part, researchControl, researchRunEvents } from "../../helpers/research-reviews.ts";
 
 /**

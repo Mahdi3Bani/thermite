@@ -3,7 +3,7 @@ import { errorText } from "../../common/errors.ts";
 import { commandFollowUrl, commandProgress, notSent } from "../command-progress.ts";
 import { issueCommand, nobodyReads, panelReviews } from "../issue/index.ts";
 import { HARNESS_NAMES } from "../rigs/model.ts";
-import { lastActivity } from "../ui/campaigns.ts";
+import { lastActivity } from "../ui/campaigns/list.ts";
 import {
   ago,
   esc,
@@ -16,7 +16,7 @@ import {
   runKey,
   runLiveHref,
   runState,
-} from "../ui/components.ts";
+} from "../ui/components/index.ts";
 import {
   liveEntryHtml,
   liveLinesHtml,

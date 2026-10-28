@@ -7,13 +7,13 @@ import { rigSentence } from "./rig.ts";
 import { runSentence } from "./runs.ts";
 
 export { listText } from "../../../core/words.ts";
-export { jobText } from "../judge-words.ts";
-export { attemptState, signed, verdictText } from "../verdict-words.ts";
 export type { Sentence } from "./context.ts";
+export { jobText } from "./jobs.ts";
 export { auditReason } from "./judge.ts";
 export { decisionTone, decisionWords, itemName } from "./reviews.ts";
 export { checkName, commandText } from "./rig.ts";
 export { clip, findAttempt, runStatusText, span } from "./shared.ts";
+export { attemptState, signed, verdictText } from "./verdicts.ts";
 
 /**
  * Plain words for what the ledger records: verdicts, attempt states, judge jobs and events, so a

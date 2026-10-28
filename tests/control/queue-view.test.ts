@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ControlStore } from "../../src/control/store/index.ts";
-import { experimentsTab, plannerTab } from "../../src/control/ui/queue.ts";
+import { experimentsTab, plannerTab } from "../../src/control/ui/campaigns/queue/index.ts";
 import { rigView } from "../../src/control/views/index.ts";
 
 /** A rig whose run "r-1" reported these events (subject: the run), in order. */

@@ -1,7 +1,7 @@
 import { type ControlStore, fingerprint } from "../../store/index.ts";
 import { podStopped, type RigView, type RunView } from "../../views/index.ts";
-import { esc, icon } from "../components.ts";
-import { card } from "../need-card.ts";
+import { esc, icon } from "../components/index.ts";
+import { card } from "../components/need-card.ts";
 import { span } from "../words/index.ts";
 import type { Need, NeedsContext } from "./index.ts";
 

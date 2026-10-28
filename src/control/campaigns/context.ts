@@ -13,7 +13,7 @@ import {
 import { parseContract } from "../../core/contract.ts";
 import { cappedWindow } from "../providers/models.ts";
 import type { AgentRole, CampaignSources, ControlStore } from "../store/index.ts";
-import { isRigCheck } from "../ui/campaigns.ts";
+import { isRigCheck } from "../ui/campaigns/list.ts";
 import { RUN_FIELDS } from "./copy.ts";
 
 /**

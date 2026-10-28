@@ -7,7 +7,7 @@ import { type McpUse, McpUses, sameUses, usesWords } from "../../core/mcp.ts";
 import { researchMcpRefusal } from "../mcp-servers/index.ts";
 import type { ControlParts } from "../parts.ts";
 import type { CampaignSources, ControlStore, CopiedFrom } from "../store/index.ts";
-import { isRigCheck } from "../ui/campaigns.ts";
+import { isRigCheck } from "../ui/campaigns/list.ts";
 import { campaignModes } from "../views/index.ts";
 
 /**

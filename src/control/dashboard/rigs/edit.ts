@@ -40,16 +40,16 @@ import {
   harnessOf,
   type ModelProvider,
 } from "../../store/index.ts";
-import { esc, hardwareLine } from "../../ui/components.ts";
+import { infoLabel } from "../../ui/campaigns/new/index.ts";
+import { esc, hardwareLine } from "../../ui/components/index.ts";
+import { EDIT_RIG_JS } from "../../ui/rigs/edit/client.ts";
 import {
   type AgentLineId,
   type AgentLineNow,
   type AgentModelGroup,
   type AgentModelOption,
   agentsTable,
-} from "../../ui/edit-rig.ts";
-import { EDIT_RIG_JS } from "../../ui/edit-rig-client.ts";
-import { infoLabel } from "../../ui/new-campaign.ts";
+} from "../../ui/rigs/edit/index.ts";
 import { listText } from "../../ui/words/index.ts";
 import type { Dashboard } from "../context.ts";
 import { modelPrefix } from "../settings/shared.ts";

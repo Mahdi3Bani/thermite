@@ -1,5 +1,5 @@
 import type { RigView, StoredEvent } from "../../views/index.ts";
-import { ago, attemptHref, esc } from "../components.ts";
+import { ago, attemptHref, esc } from "../components/index.ts";
 import { clip, findAttempt, type Sentence, sentence } from "../words/index.ts";
 
 /** What happened: one sentence a row, newest first, each linking the attempt it is about. */

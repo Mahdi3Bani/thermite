@@ -8,9 +8,9 @@ import {
   BRIEF_CORE_JS,
   briefPane,
   campaignBriefBlock,
-} from "../../src/control/ui/campaign-brief.ts";
-import { MD_CORE_JS, mdHtml } from "../../src/control/ui/markdown.ts";
-import { NEW_CAMPAIGN_JS } from "../../src/control/ui/new-campaign-client.ts";
+} from "../../src/control/ui/campaigns/brief.ts";
+import { NEW_CAMPAIGN_JS } from "../../src/control/ui/campaigns/new/client.ts";
+import { MD_CORE_JS, mdHtml } from "../../src/control/ui/components/markdown.ts";
 import { controlOnly, mcpClient, signIn } from "../helpers/control-stack.ts";
 
 /**

@@ -1,6 +1,6 @@
 import type { Hono } from "hono";
 import { PICKABLE } from "../kb.ts";
-import { runHref, runKey } from "../ui/components.ts";
+import { runHref, runKey } from "../ui/components/index.ts";
 import { knowledgePage, pastWords, SEARCH_KINDS } from "../ui/knowledge.ts";
 import { campaignModes, type RigView } from "../views/index.ts";
 import { campaignHelpers, modeWords } from "./campaigns/shared.ts";

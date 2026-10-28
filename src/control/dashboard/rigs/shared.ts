@@ -4,9 +4,9 @@ import { newToken } from "../../credential.ts";
 import { JOIN_HOURS, joinCommand, joinedCommands } from "../../join.ts";
 import { controlImages, STEP_WORDS } from "../../rigs/setup.ts";
 import type { JoinedRig } from "../../store/index.ts";
-import { ago, esc } from "../../ui/components.ts";
-import type { RigPlace } from "../../ui/rig-states.ts";
-import { podRuns } from "../../ui/runpod-rig.ts";
+import { ago, esc } from "../../ui/components/index.ts";
+import { podRuns } from "../../ui/rigs/runpod.ts";
+import type { RigPlace } from "../../ui/rigs/states.ts";
 import type { Ctx, Dashboard } from "../context.ts";
 
 /** How a rig's GPUs are used, in words: "2 for the judge, 2 for the agents", or shared. */

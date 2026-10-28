@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { PICKER_CORE_JS, PLANNER_JS } from "../../../src/control/ui/planner-client.ts";
+import { PICKER_CORE_JS, PLANNER_JS } from "../../../src/control/ui/campaigns/queue/client.ts";
 import { directionName, directionTokens } from "../../../src/core/directions.ts";
 
 /** A direction as the Planner tab gives it to its script (data-dirs). */

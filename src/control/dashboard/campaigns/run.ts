@@ -1,5 +1,14 @@
 import { RESEARCH_REVIEW } from "../../../core/research-check.ts";
 import { sumUsage } from "../../../core/usage.ts";
+import { howCheckedDetails } from "../../ui/campaigns/goal-checks.ts";
+import { experimentsTab, plannerTab } from "../../ui/campaigns/queue/index.ts";
+import {
+  hypothesesTab,
+  type ReviewSources,
+  researchBlock,
+  reviewsTab,
+} from "../../ui/campaigns/research.ts";
+import { championCard, gainChip, startWords } from "../../ui/components/gains.ts";
 import {
   ago,
   attemptHref,
@@ -14,9 +23,7 @@ import {
   runHref,
   runKey,
   stackBar,
-} from "../../ui/components.ts";
-import { championCard, gainChip, startWords } from "../../ui/gains.ts";
-import { howCheckedDetails } from "../../ui/goal-checks.ts";
+} from "../../ui/components/index.ts";
 import { journalTab } from "../../ui/knowledge.ts";
 import {
   attemptRows,
@@ -29,8 +36,6 @@ import {
   runBrief,
   timeline,
 } from "../../ui/operator/index.ts";
-import { experimentsTab, plannerTab } from "../../ui/queue.ts";
-import { hypothesesTab, type ReviewSources, researchBlock, reviewsTab } from "../../ui/research.ts";
 import { type RunUsage, runStatsTab, runUsageTop } from "../../ui/usage.ts";
 import { auditReason, clip, jobText, runStatusText, signed } from "../../ui/words/index.ts";
 import { pricingOf, usageData } from "../../usage.ts";

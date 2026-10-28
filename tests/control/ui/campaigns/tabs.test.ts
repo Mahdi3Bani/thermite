@@ -10,7 +10,7 @@ import { rig, statusRun } from "./fixtures.ts";
 
 test("a judge-only run's queue says no worker takes it, and how to carry it to a run with workers (goal 099)", async () => {
   const { experimentsTab, judgeOnlyQueueLine } = await import(
-    "../../../../src/control/ui/queue.ts"
+    "../../../../src/control/ui/campaigns/queue/index.ts"
   );
   const waiting = (state: string) =>
     [
@@ -53,7 +53,7 @@ test("a judge-only run's queue says no worker takes it, and how to carry it to a
 });
 
 test("the Planner tab counts rounds, and says plainly when the planner is off", async () => {
-  const { plannerTab } = await import("../../../../src/control/ui/queue.ts");
+  const { plannerTab } = await import("../../../../src/control/ui/campaigns/queue/index.ts");
   const tab = (settings: Record<string, unknown> | null, epochs: number) =>
     plannerTab({
       u: { id: "rig-a", settings } as unknown as RigView,

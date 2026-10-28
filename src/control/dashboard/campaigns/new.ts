@@ -17,12 +17,12 @@ import {
   researchNeedsOpencode,
 } from "../../rigs/agent-models.ts";
 import { sendSplit, splitFor } from "../../rigs/gpu-split.ts";
-import { campaignHref, runKey } from "../../ui/components.ts";
-import { COPY_JS } from "../../ui/copy-campaign-client.ts";
-import { newCampaignBody } from "../../ui/new-campaign.ts";
-import { NEW_CAMPAIGN_JS } from "../../ui/new-campaign-client.ts";
-import { PLANNER_JS } from "../../ui/planner-client.ts";
-import { PROVIDERS_JS } from "../../ui/providers-client.ts";
+import { COPY_JS } from "../../ui/campaigns/copy/client.ts";
+import { NEW_CAMPAIGN_JS } from "../../ui/campaigns/new/client.ts";
+import { newCampaignBody } from "../../ui/campaigns/new/index.ts";
+import { PLANNER_JS } from "../../ui/campaigns/queue/client.ts";
+import { campaignHref, runKey } from "../../ui/components/index.ts";
+import { PROVIDERS_JS } from "../../ui/providers/client.ts";
 import type { Ctx, Dashboard } from "../context.ts";
 import { modelPrefix, settingsHelpers } from "../settings/shared.ts";
 

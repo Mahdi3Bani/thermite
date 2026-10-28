@@ -1,7 +1,7 @@
 import { redact } from "../../common/env.ts";
 import { errorText } from "../../common/errors.ts";
 import type { ControlStore, ModelProvider } from "../store/index.ts";
-import { ago, esc } from "../ui/components.ts";
+import { ago, esc } from "../ui/components/index.ts";
 
 /**
  * A subscription's usage windows (goal 151): how much of each is used and when it resets, for

@@ -9,8 +9,8 @@ import {
 } from "../../mcp-servers/index.ts";
 import { redirectUriOf } from "../../mcp-servers/routes.ts";
 import type { ControlStore } from "../../store/index.ts";
-import { ago, esc, icon } from "../../ui/components.ts";
-import { infoLabel } from "../../ui/new-campaign.ts";
+import { infoLabel } from "../../ui/campaigns/new/index.ts";
+import { ago, esc, icon } from "../../ui/components/index.ts";
 
 /**
  * Settings › Providers › MCP servers (goal 068, as the owner approved it on 2026-10-20): a row

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { agentModelsOf } from "../../src/control/rigs/model.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
-import { EDIT_RIG_JS } from "../../src/control/ui/edit-rig-client.ts";
+import { EDIT_RIG_JS } from "../../src/control/ui/rigs/edit/client.ts";
 import { AdvisorsConfig, advisorsFileReport } from "../../src/supervisor/advisors/index.ts";
 import { controlOnly, RIG_TOKEN, signIn } from "../helpers/control-stack.ts";
 

@@ -25,9 +25,9 @@ import {
   type ModelProvider,
   type ProviderType,
 } from "../../store/index.ts";
-import { ago, esc } from "../../ui/components.ts";
-import { infoLabel } from "../../ui/new-campaign.ts";
-import { checkFollowUrl, modelCheckHtml } from "../../ui/rig-checks.ts";
+import { infoLabel } from "../../ui/campaigns/new/index.ts";
+import { ago, esc } from "../../ui/components/index.ts";
+import { checkFollowUrl, modelCheckHtml } from "../../ui/rigs/checks.ts";
 import { modelPricesBlock } from "../../ui/usage.ts";
 import type { Dashboard } from "../context.ts";
 import { mcpSettingsBlocks } from "./mcp-servers.ts";

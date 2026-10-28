@@ -18,9 +18,9 @@ import {
   type MachineRig,
   RIG_ID,
 } from "../../store/index.ts";
-import { ADD_RIG_JS } from "../../ui/add-rig-client.ts";
-import { esc } from "../../ui/components.ts";
-import { infoLabel } from "../../ui/new-campaign.ts";
+import { infoLabel } from "../../ui/campaigns/new/index.ts";
+import { esc } from "../../ui/components/index.ts";
+import { ADD_RIG_JS } from "../../ui/rigs/add/client.ts";
 import type { Ctx, Dashboard } from "../context.ts";
 import { rigHelpers } from "./shared.ts";
 

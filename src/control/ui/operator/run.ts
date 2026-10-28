@@ -1,7 +1,15 @@
 import { currentChampion, runCampaign } from "../../views/facts.ts";
 import type { AttemptView, JudgeJob, RigView, RunView } from "../../views/index.ts";
-import { ago, attemptHref, esc, icon, reportingTag, runHref, sparkline } from "../components.ts";
-import { gainChip } from "../gains.ts";
+import { gainChip } from "../components/gains.ts";
+import {
+  ago,
+  attemptHref,
+  esc,
+  icon,
+  reportingTag,
+  runHref,
+  sparkline,
+} from "../components/index.ts";
 import { attemptState, clip, findAttempt, jobText, signed } from "../words/index.ts";
 import { cap } from "./change.ts";
 import { hasAdvisors, outcome } from "./outcome.ts";

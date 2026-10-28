@@ -19,10 +19,14 @@ import {
 import { askOwnerFrom } from "../../campaigns/new.ts";
 import { type StartRunRequest, startARun } from "../../campaigns/start-run.ts";
 import { commandFollowUrl, commandProgress } from "../../command-progress.ts";
-import { campaignBriefBlock } from "../../ui/campaign-brief.ts";
-import { type ContextRig, contextBlock } from "../../ui/campaign-context.ts";
-import { CAMPAIGN_CONTEXT_JS } from "../../ui/campaign-context-client.ts";
-import { earlierRuns, isRigCheck, lastActivity } from "../../ui/campaigns.ts";
+import { campaignBriefBlock } from "../../ui/campaigns/brief.ts";
+import { CAMPAIGN_CONTEXT_JS } from "../../ui/campaigns/context/client.ts";
+import { type ContextRig, contextBlock } from "../../ui/campaigns/context/index.ts";
+import { postedUses } from "../../ui/campaigns/copy/index.ts";
+import { howChecked, howCheckedDetails } from "../../ui/campaigns/goal-checks.ts";
+import { earlierRuns, isRigCheck, lastActivity } from "../../ui/campaigns/list.ts";
+import { infoLabel, QUEUE_TARGET_TIP } from "../../ui/campaigns/new/index.ts";
+import { campaignReviewsTab } from "../../ui/campaigns/research.ts";
 import {
   campaignHref,
   esc,
@@ -36,14 +40,10 @@ import {
   runKey,
   runLiveHref,
   runState,
-} from "../../ui/components.ts";
-import { postedUses } from "../../ui/copy-campaign.ts";
+} from "../../ui/components/index.ts";
 import { exportMenu } from "../../ui/exports.ts";
-import { howChecked, howCheckedDetails } from "../../ui/goal-checks.ts";
 import { campaignKnowledge } from "../../ui/knowledge.ts";
-import { infoLabel, QUEUE_TARGET_TIP } from "../../ui/new-campaign.ts";
 import { goalState } from "../../ui/operator/index.ts";
-import { campaignReviewsTab } from "../../ui/research.ts";
 import { campaignUsageBlock, runStateWord } from "../../ui/usage.ts";
 import { listText } from "../../ui/words/index.ts";
 import { usageData } from "../../usage.ts";

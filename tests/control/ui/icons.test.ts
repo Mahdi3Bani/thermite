@@ -6,7 +6,7 @@ import {
   FAVICON_ICO,
   FAVICON_SVG,
   ICON_LINKS,
-} from "../../../src/control/ui/icons.ts";
+} from "../../../src/control/ui/components/icons.ts";
 
 const site = (name: string) =>
   readFileSync(new URL(`../../../docs/_site/public/${name}`, import.meta.url));

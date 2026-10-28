@@ -1,5 +1,5 @@
 import type { Decision } from "../../store/index.ts";
-import { ago, esc } from "../components.ts";
+import { ago, esc } from "../components/index.ts";
 
 /**
  * The owner's latest choice on one waiting item, made since it began waiting, and what the rig

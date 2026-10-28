@@ -7,12 +7,12 @@ import {
 } from "../../campaigns/context.ts";
 import { copiedFromWords, copiedMcpWords } from "../../campaigns/copy.ts";
 import { campaignMcpServers } from "../../mcp-servers/index.ts";
-import { startLine, startNote } from "../../ui/campaign-context.ts";
-import { isRigCheck, lastActivity, type StartRig, startDrawer } from "../../ui/campaigns.ts";
-import { ago, campaignHref, esc, hardwareLine, icon, runKey } from "../../ui/components.ts";
-import { copyDrawer, suggestCopyName } from "../../ui/copy-campaign.ts";
+import { startLine, startNote } from "../../ui/campaigns/context/index.ts";
+import { copyDrawer, suggestCopyName } from "../../ui/campaigns/copy/index.ts";
+import { isRigCheck, lastActivity, type StartRig, startDrawer } from "../../ui/campaigns/list.ts";
+import { infoLabel } from "../../ui/campaigns/new/index.ts";
+import { ago, campaignHref, esc, hardwareLine, icon, runKey } from "../../ui/components/index.ts";
 import { pastSection } from "../../ui/knowledge.ts";
-import { infoLabel } from "../../ui/new-campaign.ts";
 import { campaignModes, campaignViews, podStopped, type RigView } from "../../views/index.ts";
 import type { Ctx, Dashboard } from "../context.ts";
 import { modelPrefix } from "../settings/shared.ts";

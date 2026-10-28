@@ -2,10 +2,10 @@ import { HELD_OUT_OWNER_WORDS, type HeldOutKind } from "../../../core/held-out.t
 import { BROKEN_VERDICTS, WON_VERDICTS } from "../../../core/verdicts.ts";
 import { listText } from "../../../core/words.ts";
 import type { StoredEvent } from "../../views/index.ts";
-import { jobText, portWords } from "../judge-words.ts";
-import { verdictText } from "../verdict-words.ts";
 import type { Sentence, SentenceContext } from "./context.ts";
+import { jobText, portWords } from "./jobs.ts";
 import { clip } from "./shared.ts";
+import { verdictText } from "./verdicts.ts";
 
 /**
  * A change on its way through the judge, in words: submitted, judged, audited and promoted; and

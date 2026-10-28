@@ -1,13 +1,13 @@
 import type { Hono } from "hono";
 import type { RunpodRigView } from "../../runpod/rig-view.ts";
-import { ago, esc } from "../../ui/components.ts";
+import { ago, esc } from "../../ui/components/index.ts";
 import {
   type RigsListRow,
   type RigWhere,
   rigFilter,
   rigsListBody,
   rigsSummary,
-} from "../../ui/rigs-list.ts";
+} from "../../ui/rigs/list.ts";
 import type { Dashboard } from "../context.ts";
 
 /** The Rigs page, with Retire and Bring back. */

@@ -1,8 +1,8 @@
 import type { KbFolder, KbItem, KbKind } from "../kb.ts";
 import { JOURNAL_KINDS } from "../kb.ts";
 import type { JournalNoteView, RigView, RunView } from "../views/index.ts";
-import { ago, attemptHref, campaignHref, esc, fmtInt, runHref } from "./components.ts";
-import { infoLabel } from "./new-campaign.ts";
+import { infoLabel } from "./campaigns/new/index.ts";
+import { ago, attemptHref, campaignHref, esc, fmtInt, runHref } from "./components/index.ts";
 import { clip } from "./words/index.ts";
 
 /**

@@ -1,5 +1,5 @@
 import type { RigExport } from "../store/index.ts";
-import { ago, esc, infoLabel } from "./components.ts";
+import { ago, esc, infoLabel } from "./components/index.ts";
 
 /**
  * Export on a rig's or a run's page, and the Exports page (goal 103). Export asks the rig for an

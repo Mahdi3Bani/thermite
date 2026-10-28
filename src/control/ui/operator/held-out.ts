@@ -1,6 +1,6 @@
 import { HELD_OUT_OWNER_WORDS, type HeldOutKind } from "../../../core/held-out.ts";
 import type { AttemptView, HeldOutView, RunView } from "../../views/index.ts";
-import { ago, esc } from "../components.ts";
+import { ago, esc } from "../components/index.ts";
 
 /** A measured value for the owner: four significant figures, or an exponent for a large one. */
 export function figure(x: number): string {

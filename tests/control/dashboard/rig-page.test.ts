@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { deviceModeText } from "../../../src/control/ui/components.ts";
+import { deviceModeText } from "../../../src/control/ui/components/index.ts";
 import { stack } from "./stack.ts";
 
 /**

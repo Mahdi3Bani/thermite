@@ -49,7 +49,7 @@ describe("reading imports", () => {
     assert.equal(resolve("src/control/x.ts", "./ui/y.ts"), "src/control/ui/y.ts");
     assert.equal(partOf("src/harness/judge/judge.ts"), "harness");
     assert.equal(partOf("tests/harness/x.test.ts"), null);
-    assert.equal(isPage("src/control/ui/components.ts"), true);
+    assert.equal(isPage("src/control/ui/components/index.ts"), true);
     assert.equal(isPage("src/control/dashboard/index.ts"), true);
     assert.equal(isPage("src/control/dashboard/rigs/page.ts"), true);
     assert.equal(isPage("src/control/store.ts"), false);

@@ -5,7 +5,7 @@ import {
   campaignKind,
   campaignsListBody,
   isRigCheck,
-} from "../../../../src/control/ui/campaigns.ts";
+} from "../../../../src/control/ui/campaigns/list.ts";
 import type { CampaignView, RunView } from "../../../../src/control/views/index.ts";
 import { rig, statusRun } from "./fixtures.ts";
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { startDrawer } from "../../../../src/control/ui/campaigns.ts";
+import { startDrawer } from "../../../../src/control/ui/campaigns/list.ts";
 
 /** Start a run: the run to copy experiments from, and each rig as free, busy or other hardware. */
 

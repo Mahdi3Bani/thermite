@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { Decision } from "../../../src/control/store/index.ts";
-import { moreText } from "../../../src/control/ui/components.ts";
+import { moreText } from "../../../src/control/ui/components/index.ts";
 import { decidedState, outcome, waitingOn } from "../../../src/control/ui/operator/index.ts";
 import type { AttemptView, RigView, RunView } from "../../../src/control/views/index.ts";
 

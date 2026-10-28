@@ -11,7 +11,7 @@ import {
 } from "../../core/usage.ts";
 import { HARNESS_NAMES } from "../rigs/model.ts";
 import type { Harness, ProviderModel } from "../store/index.ts";
-import { campaignHref, esc, icon, infoLabel, modeAvatar } from "./components.ts";
+import { campaignHref, esc, icon, infoLabel, modeAvatar } from "./components/index.ts";
 
 /**
  * Model use and cost on the dashboard (goal 075, as the owner approved the mockup `v010-usage`):

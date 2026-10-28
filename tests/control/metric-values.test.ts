@@ -6,7 +6,7 @@ import {
   valuesByCase,
   valuesWords,
 } from "../../src/control/metric-values.ts";
-import { gainChip, measuredWords, startWords } from "../../src/control/ui/gains.ts";
+import { gainChip, measuredWords, startWords } from "../../src/control/ui/components/gains.ts";
 import { blockEffects, metricValues } from "../../src/harness/judge/decide.ts";
 
 test("the judge's values are each case's median of each side, as the gain compares them", () => {
@@ -82,7 +82,7 @@ test("a gain shows its values beside it, and the starting point its own, from th
 
 test("the champion's value against the starting point's: on the leaderboard and the campaign headline", async () => {
   const { championValues, championWords } = await import("../../src/control/metric-values.ts");
-  const { bestGainWords } = await import("../../src/control/ui/gains.ts");
+  const { bestGainWords } = await import("../../src/control/ui/components/gains.ts");
   const run = {
     baseline: {
       primary: { metric: "tok_s", direction: "max" },
@@ -122,7 +122,7 @@ test("the champion's value against the starting point's: on the leaderboard and 
 });
 
 test("a hill climb's champion card: its value and its gain over the start, an estimate marked, none for another mode (goal 142)", async () => {
-  const { championCard } = await import("../../src/control/ui/gains.ts");
+  const { championCard } = await import("../../src/control/ui/components/gains.ts");
   const run = {
     mode: "hill_climb",
     baseline: {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { ControlStore } from "../../../src/control/store/index.ts";
-import { commandRow, commandStatus } from "../../../src/control/ui/commands.ts";
+import { commandRow, commandStatus } from "../../../src/control/ui/commands/index.ts";
 import type { SignedCommand } from "../../../src/core/commands.ts";
 
 const NOW = Date.parse("2026-10-27T06:00:00Z");

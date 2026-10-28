@@ -1,10 +1,10 @@
 import type { Hono } from "hono";
 import { archiveResponse } from "../exports.ts";
 import { cursorOf } from "../store/index.ts";
-import { commandRow } from "../ui/commands.ts";
-import { ago, avatar, esc, icon, meter, pct, runHref } from "../ui/components.ts";
+import { commandRow } from "../ui/commands/index.ts";
+import { valuesPairWords } from "../ui/components/gains.ts";
+import { ago, avatar, esc, icon, meter, pct, runHref } from "../ui/components/index.ts";
 import { exportsBody } from "../ui/exports.ts";
-import { valuesPairWords } from "../ui/gains.ts";
 import { leaderboard } from "../views/index.ts";
 import type { Dashboard } from "./context.ts";
 

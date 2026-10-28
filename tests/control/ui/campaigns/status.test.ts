@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { campaignKind } from "../../../../src/control/ui/campaigns.ts";
+import { campaignKind } from "../../../../src/control/ui/campaigns/list.ts";
 import type { CampaignView, RunView } from "../../../../src/control/views/index.ts";
 import { rig, statusRun } from "./fixtures.ts";
 
 /** The words for a run's and a campaign's state, on the Campaigns list and in Earlier runs. */
 
 test("a paused run reads as paused, whatever decision waits in it", async () => {
-  const { runState } = await import("../../../../src/control/ui/components.ts");
+  const { runState } = await import("../../../../src/control/ui/components/index.ts");
   const r = (status: string, more: Partial<RunView> = {}) =>
     ({
       status,
@@ -36,7 +36,7 @@ test("a paused run reads as paused, whatever decision waits in it", async () => 
 });
 
 test("a closed goal run that met its goals reads Completed; any other closed run, Finished (goal 099)", async () => {
-  const { runState } = await import("../../../../src/control/ui/components.ts");
+  const { runState } = await import("../../../../src/control/ui/components/index.ts");
   const met = { goals_complete: true } as Partial<RunView>;
   const st = (r: RunView) => [runState(r).text, runState(r).cls];
   assert.deepEqual(st(statusRun("q-1", "closed", "2026-10-20T00:00:00Z", met)), [
@@ -56,7 +56,7 @@ test("a closed goal run that met its goals reads Completed; any other closed run
 });
 
 test("a campaign reads as its newest run when none is at work; a run at work still wins (goal 099)", async () => {
-  const { campaignState } = await import("../../../../src/control/ui/components.ts");
+  const { campaignState } = await import("../../../../src/control/ui/components/index.ts");
   const met = { goals_complete: true } as Partial<RunView>;
   const k = (...runs: RunView[]): CampaignView => ({
     name: "quality",
@@ -93,7 +93,7 @@ test("a campaign reads as its newest run when none is at work; a run at work sti
 });
 
 test("Earlier runs reads Completed for a run that met its goals, and marks a judge-only run (goal 099)", async () => {
-  const { earlierRuns } = await import("../../../../src/control/ui/campaigns.ts");
+  const { earlierRuns } = await import("../../../../src/control/ui/campaigns/list.ts");
   const html = earlierRuns(
     [
       statusRun("q-2", "closed", "2026-10-21T00:00:00Z", { goals_complete: true }),

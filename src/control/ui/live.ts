@@ -1,4 +1,4 @@
-import { ago, esc } from "./components.ts";
+import { ago, esc } from "./components/index.ts";
 
 /**
  * The live view's lines, formatted once here for the page and for its updates (live.json), so a
