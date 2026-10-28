@@ -7,8 +7,8 @@ import type { ModelConfig } from "./model.ts";
 /**
  * Compaction in OpenCode v2, the Codex CLI and Claude Code (goal 070). Each compacts its own
  * conversation; Thermite sets the window (the route's, so the owner's cap) and the compaction
- * point in each one's own settings, as far as each one takes them (opencode.ts, codex.ts,
- * claude-code.ts).
+ * point in each one's own settings, as far as each one takes them (opencode/program.ts,
+ * codex/program.ts, claude-code/program.ts).
  *
  * Before each compaction, the whole conversation is kept where the agent can read it and the run
  * keeps it, and the summary names it, with what each program offers: Claude Code's PreCompact

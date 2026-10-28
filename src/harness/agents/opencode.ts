@@ -1,10 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { chmodSync, mkdirSync } from "node:fs";
-import { dirname, extname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { modelCheckProgramPrompt } from "../../agents/roles/model-check.ts";
 import { RESEARCH_WORKER_SYSTEM } from "../../agents/roles/research-worker.ts";
-import { WORKER_OPENCODE_SYSTEM } from "../../agents/roles/worker.ts";
 import { NOTE_USAGE } from "../../agents/tools/names.ts";
 import {
   type ResearchFolderPaths,
@@ -14,51 +12,54 @@ import {
 import { type LaneLimitValues, laneLimits } from "../../core/contract.ts";
 import { notesInstruction } from "../../core/journal.ts";
 import type { LiveKind } from "../../core/live.ts";
-import type { CallUsage } from "../../core/usage.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import {
-  AFTER_SUBMIT_MS,
   agentPath,
   breachError,
   CarriedMessages,
   CHECK_ROLE,
   limitsNote,
-  NUDGE,
   ownerLines,
   PLANNER_ROLE,
   takeUsage,
   trialEnd,
   turnsUp,
 } from "./cli/common.ts";
-import {
-  CliCompactions,
-  compactionTokens,
-  type FoundCompaction,
-  type KeptAt,
-  keptLine,
-  type OnCompacted,
-  type OnceKeeping,
-  reclaim,
-} from "./cli-compaction.ts";
-import { opencodeEnded, opencodeOwn } from "./cli-conversation.ts";
-import type { MessageInbox, TrialProgress } from "./live-session.ts";
-import { type McpAccess, mcpLine, opencodeMcp } from "./mcp-tools.ts";
+import { runCliTrial, setUp, startRun } from "./cli/loop.ts";
+import type { CliRun, CliTrialDeps } from "./cli/program.ts";
+import { CliCompactions, type OnceKeeping, reclaim } from "./cli-compaction.ts";
+import { opencodeOwn } from "./cli-conversation.ts";
+import { type McpAccess, mcpLine } from "./mcp-tools.ts";
 import type { ModelConfig } from "./model.ts";
 import type { RigCheckReport } from "./model-check.ts";
 import { newTally, type OpencodeTally, readNew, readOpencodeEvents } from "./opencode/events.ts";
-import { opencodeBin, opencodeExe, opencodeExitWords, startInArea } from "./opencode/run.ts";
-
-export { NO_OPENCODE, opencodeBin, opencodeExe, opencodeExitWords } from "./opencode/run.ts";
-
 import {
-  afterProgramFailure,
-  type FailureCount,
-  failingOf,
-  type ProviderLink,
-} from "./provider-errors.ts";
+  OPENCODE_DROPS,
+  OPENCODE_MEMORY,
+  OPENCODE_PLUGIN,
+  OPENCODE_PLUGIN_LINK,
+  opencodeConfig,
+  opencodeFound,
+  opencodeKeepEnv,
+  opencodeModelId,
+  opencodeProgram,
+  runEnv,
+} from "./opencode/program.ts";
+import { opencodeBin, opencodeExe, opencodeExitWords } from "./opencode/run.ts";
+import { afterProgramFailure, type FailureCount, failingOf } from "./provider-errors.ts";
 import type { ResearchTrialSpec } from "./research-worker.ts";
-import { trialBudget } from "./trial-clock.ts";
-import { type SubmitOutcome, stopNudging, type TrialResult, type TrialSpec } from "./worker.ts";
+import type { TrialResult, TrialSpec } from "./worker.ts";
+
+export {
+  OPENCODE_MEMORY,
+  OPENCODE_PLUGIN,
+  OPENCODE_PLUGIN_LINK,
+  opencodeConfig,
+  opencodeKeepEnv,
+  opencodeModelId,
+  runEnv,
+} from "./opencode/program.ts";
+export { NO_OPENCODE, opencodeBin, opencodeExe, opencodeExitWords } from "./opencode/run.ts";
 
 /**
  * Trials (hill-climb, goal and research), model checks and planner calls in OpenCode v2 instead
@@ -75,28 +76,9 @@ import { type SubmitOutcome, stopNudging, type TrialResult, type TrialSpec } fro
 
 export const TRIAL_CLI = "thermite-trial";
 
-/** This module's own extension: `.js` when built, `.ts` when run from the source. */
-const OWN_EXT = extname(fileURLToPath(import.meta.url));
-/** Thermite's OpenCode plugin (opencode-plugin.ts, beside this module), which OpenCode loads. */
-export const OPENCODE_PLUGIN = fileURLToPath(
-  new URL(`./opencode-plugin${OWN_EXT}`, import.meta.url),
-);
-/** Where OpenCode finds the plugin, under its home: a link in its own settings' plugins folder. */
-export const OPENCODE_PLUGIN_LINK = `.config/opencode/plugins/thermite-compaction${OWN_EXT}`;
-/** The folder in an OpenCode run's own area where the plugin keeps each compaction's session. */
-export const OPENCODE_DROPS = "opencode-compactions";
-
-/**
- * What Thermite's plugin reads from OpenCode's environment (goal 070): its folder, and the line
- * that tells the summary where the harness keeps the conversation.
- */
-export function opencodeKeepEnv(drops: string, at: KeptAt): Record<string, string> {
-  return { THERMITE_COMPACTION_DROPS: drops, THERMITE_COMPACTION_LINE: keptLine(at) };
-}
-
 /**
  * The compactions Thermite's plugin saw end since the last read, given to `c` with the read's live
- * entries (goal 070). OpenCode's own output does not report them; the plugin's records do.
+ * entries (goal 070).
  */
 function takeEnded(
   c: CliCompactions,
@@ -104,389 +86,26 @@ function takeEnded(
   drops: string[],
   live: { kind: LiveKind; text: string }[],
 ): void {
-  const found: FoundCompaction[] = opencodeEnded(root, drops)
-    .filter((n) => n > c.count)
-    .map(() => ({ at: live.length, tokensBefore: null, tokensAfter: null }));
-  c.take(live, found);
-}
-
-/** The model as OpenCode names it: its own models, or the rig's provider as "thermite". */
-export function opencodeModelId(m: ModelConfig): string {
-  return m.api === "opencode" ? `opencode/${m.model}` : `thermite/${m.model}`;
-}
-
-/**
- * OpenCode's configuration for a run. Nobody answers a question in a headless run, so OpenCode's
- * question tool is denied. A provider other than OpenCode's own is reached through the harness's
- * key-adding proxy (`proxyRoot`), with the run's proxy credential from THERMITE_PROXY_AUTH.
- *
- * Compaction (goal 070): OpenCode compacts its conversation on its own (`compaction.auto`), but
- * only for a model whose window it knows. For the rig's provider, the model's `limit.context` is
- * the route's window (so the owner's cap), and `compaction.buffer`, the tokens it keeps free
- * below that window, puts its compaction point at the route's share. OpenCode's own models keep
- * the windows and the compaction point OpenCode knows for them.
- */
-export function opencodeConfig(
-  m: ModelConfig,
-  proxyRoot: string,
-  mcp?: McpAccess | undefined,
-): Record<string, unknown> {
-  const config: Record<string, unknown> = {
-    $schema: "https://opencode.ai/config.json",
-    permissions: [{ action: "question", resource: "*", effect: "deny" }],
-  };
-  // The MCP servers the run's kit gives this agent (goal 068), each at the harness's gateway.
-  const servers = opencodeMcp(mcp);
-  if (servers) config.mcp = servers;
-  const point = m.api !== "opencode" ? compactionTokens(m) : undefined;
-  config.compaction = {
-    auto: true,
-    ...(point !== undefined ? { buffer: m.contextWindow - point } : {}),
-  };
-  if (m.api !== "opencode") {
-    const anthropic = m.api === "anthropic";
-    config.providers = {
-      thermite: {
-        name: "Thermite route",
-        env: ["THERMITE_PROXY_AUTH"],
-        // A ChatGPT sign-in: OpenAI's Responses API (OpenCode's own OpenAI provider posts to
-        // {base}/responses with store off and the whole history; the proxy drops what the
-        // route refuses, such as max_output_tokens).
-        package: anthropic
-          ? "@opencode/ai/providers/anthropic"
-          : m.api === "chatgpt"
-            ? "@opencode/ai/providers/openai"
-            : "@opencode/ai/providers/openai-compatible",
-        // Anthropic's client posts to {base}/messages; its API is at /v1/messages.
-        settings: { baseURL: anthropic ? `${proxyRoot}/v1` : proxyRoot },
-        models: {
-          [m.model]: {
-            name: m.model,
-            ...(point !== undefined ? { limit: { context: m.contextWindow } } : {}),
-          },
-        },
-      },
-    };
-  }
-  return config;
+  c.take(live, opencodeFound(root, drops, c.count, live.length));
 }
 
 export type { OpencodeTally };
 export {
-  AFTER_SUBMIT_MS,
   agentPath,
   breachError,
-  CarriedMessages,
   CHECK_ROLE,
   limitsNote,
-  NUDGE,
   newTally,
-  ownerLines,
   PLANNER_ROLE,
-  readNew,
   readOpencodeEvents,
   takeUsage,
 };
 
-/** What OpenCode itself uses, as its limits note says (Claude Code's says the same, unmeasured). */
-export const OPENCODE_MEMORY = "about 500 MiB";
+export type OpencodeTrialDeps = CliTrialDeps;
 
-export interface OpencodeTrialDeps extends ProviderLink {
-  runner: Runner;
-  model: ModelConfig;
-  /** The harness API as the lane reaches it, for example http://127.0.0.1:8700. */
-  apiUrl: string;
-  /** Lines for the live view, and the session's counters. */
-  live(entries: { kind: LiveKind; text: string }[]): void;
-  progress(p: TrialProgress): void;
-  /** The trial's submission, once it has one (from the ledger). */
-  submitted(): SubmitOutcome | undefined;
-  /**
-   * The owner's messages for this trial. OpenCode takes no message into a running session: one
-   * waiting when a run ends is given by continuing the session with it, and is read once the
-   * agent starts on that prompt.
-   */
-  messages?: MessageInbox | undefined;
-  /** The lane's build caches (ccache and the like). */
-  env?: Record<string, string> | undefined;
-  signal?: AbortSignal | undefined;
-  /** How often the output is read (tests make it short). */
-  pollMs?: number | undefined;
-  /** How long the run goes on after a submission (AFTER_SUBMIT_MS; tests make it short). */
-  afterSubmitMs?: number | undefined;
-  /** Each step's model usage, as OpenCode's output reports it (goal 075). */
-  modelUsage?: ((u: CallUsage) => void) | undefined;
-  /**
-   * Where the harness keeps the conversation before each compaction (goal 070): with it,
-   * Thermite's plugin keeps OpenCode's session before each compaction and tells the summary to
-   * name the file, and each compaction it sees end is kept and recorded (`compacted`).
-   */
-  keptAt?: KeptAt | undefined;
-  compacted?: OnCompacted | undefined;
-}
-
-/** The environment of an OpenCode run: its home, Thermite's command and how to reach the API. */
-export function runEnv(home: string, apiUrl: string, auth: string, extra: Record<string, string>) {
-  return {
-    ...extra,
-    HOME: home,
-    PATH: agentPath(),
-    THERMITE_HARNESS_URL: apiUrl,
-    THERMITE_TRIAL_AUTH: auth,
-    THERMITE_PROXY_AUTH: auth,
-  };
-}
-
-/**
- * OpenCode's home, configuration and events file in a lane's area, made as the lane's user; with
- * `keep`, Thermite's compaction plugin linked into its settings and the plugin's folder (goal 070).
- */
-async function setUpInArea(
-  runner: Runner,
-  role: Role,
-  area: string,
-  model: ModelConfig,
-  proxyRoot: string,
-  mcp?: McpAccess | undefined,
-  keep = false,
-): Promise<string | undefined> {
-  const setup = await runner.run({
-    role,
-    // Relative to its own area: the lane may not walk the harness's directories by name. The
-    // configuration may hold the trial's own token (its MCP servers): only the lane reads it.
-    argv: [
-      "sh",
-      "-c",
-      `mkdir -p opencode-home/.config/opencode opencode-tmp && umask 077 && cat > opencode-home/.config/opencode/opencode.jsonc && : > opencode-events.jsonl && chmod 0644 opencode-events.jsonl${keep ? ` && mkdir -p opencode-home/.config/opencode/plugins ${OPENCODE_DROPS} && chmod 0755 ${OPENCODE_DROPS} && ln -sf "$1" opencode-home/${OPENCODE_PLUGIN_LINK}` : ""}`,
-      ...(keep ? ["sh", OPENCODE_PLUGIN] : []),
-    ],
-    cwd: area,
-    timeoutMs: 30_000,
-    stdin: JSON.stringify(opencodeConfig(model, proxyRoot, mcp)),
-    captureBytes: 4096,
-  });
-  return setup.exitCode === 0
-    ? undefined
-    : `could not set OpenCode up: ${setup.stderr.slice(-300)}`;
-}
-
-/**
- * One worker trial in OpenCode: its home and configuration in the lane's own area, then
- * `opencode run` in the workspace until the agent submits or the trial's time ends. A run that
- * ends without a submission is continued in the same session, twice at most, as Pi's are, and
- * after that for as long as the owner's messages wait and the agent keeps working. OpenCode
- * takes no message into a running session: a message waits until the run ends without a
- * submission, and goes into the continuation's prompt.
- */
-export async function runOpencodeTrial(
-  spec: TrialSpec,
-  deps: OpencodeTrialDeps,
-): Promise<TrialResult> {
-  const area = spec.workspaceRoot ?? dirname(spec.workspace);
-  const home = join(area, "opencode-home");
-  const events = join(area, "opencode-events.jsonl");
-  const tmp = join(area, "opencode-tmp");
-  const tally = newTally();
-  const result: TrialResult = {
-    stopped: "no_submission",
-    turns: 0,
-    toolCalls: 0,
-    tokensIn: 0,
-    tokensOut: 0,
-  };
-  const limits = spec.limits ?? laneLimits({ lanes: { count: 1, trials_per_epoch: 1 } });
-  const auth = `trial.${spec.token ?? ""}`;
-  const proxyRoot = `${deps.apiUrl}/v1/model-proxy`;
-  const env = {
-    ...runEnv(home, deps.apiUrl, auth, deps.env ?? {}),
-    THERMITE_EDITABLE_PATHS: JSON.stringify(spec.editablePaths),
-    THERMITE_WORKSPACE: spec.workspace,
-    // Its own temp directory: the shared /tmp is not the lane's.
-    TMPDIR: tmp,
-    THERMITE_OPENCODE_EVENTS: events,
-    ...(deps.keptAt ? opencodeKeepEnv(join(area, OPENCODE_DROPS), deps.keptAt) : {}),
-  };
-  const mcp = spec.mcpServers?.length
-    ? { apiUrl: deps.apiUrl, auth, servers: spec.mcpServers }
-    : undefined;
-  const setupError = await setUpInArea(
-    deps.runner,
-    spec.lane,
-    area,
-    deps.model,
-    proxyRoot,
-    mcp,
-    deps.keptAt !== undefined,
-  );
-  if (setupError) return { ...result, stopped: "error", error: setupError };
-  const title = `Trial ${spec.trialId} (${spec.lane})`;
-  // Each compaction Thermite's plugin saw end, with the session it kept before it (goal 070).
-  const compactions = new CliCompactions({
-    title,
-    harness: "OpenCode",
-    on: deps.compacted,
-    own: opencodeOwn({ root: area, drops: [OPENCODE_DROPS], title }),
-  });
-  const started = Date.now(); // the trial's length only when one is set (goal 079)
-  const deadline = spec.wallMs !== undefined ? started + spec.wallMs : Number.POSITIVE_INFINITY;
-  const minutes = spec.wallMs !== undefined ? Math.round(spec.wallMs / 60_000) : undefined;
-  let message = `${WORKER_OPENCODE_SYSTEM}${mcp ? `\n\n${mcpLine(mcp.servers)}` : ""}\n\n${limitsNote(limits, "OpenCode", OPENCODE_MEMORY)}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. ${trialBudget(minutes, spec.maxTurns, "each model reply is one", deadline)}`;
-  // Failed model calls in a row, rate limits in a row, and since when the calls fail (goal 079).
-  const count: FailureCount = { failures: 0, rateWaits: 0 };
-  let offset = 0;
-  const carried = new CarriedMessages(deps.messages);
-  const pump = () => {
-    const r = readNew(events, offset);
-    offset = r.next;
-    const live = readOpencodeEvents(r.lines, tally);
-    if (live.length) deps.live(live);
-    takeEnded(compactions, area, [OPENCODE_DROPS], live);
-    takeUsage(tally, deps.modelUsage);
-    carried.check(tally);
-    if (r.lines.length)
-      deps.progress({
-        turns: tally.turns,
-        tool_calls: tally.toolCalls,
-        tokens_in: tally.tokensIn,
-        tokens_out: tally.tokensOut,
-      });
-  };
-  for (let nudges = 0; ; nudges++) {
-    const remaining = deadline - Date.now();
-    if (remaining <= 0) {
-      result.stopped = "wall";
-      break;
-    }
-    const errorsBefore = tally.errors.length;
-    const progressBefore = tally.turns + tally.toolCalls;
-    const callsBefore = tally.toolCalls;
-    const runStarted = Date.now();
-    const args = [
-      "run",
-      "--standalone",
-      "--auto",
-      "--format",
-      "json",
-      "--model",
-      opencodeModelId(deps.model),
-      ...(tally.session ? ["--session", tally.session] : ["--title", `trial ${spec.trialId}`]),
-    ];
-    const running = startInArea(deps.runner, spec.lane, area, spec.workspace, env, args, {
-      prompt: message,
-      remaining,
-      limits,
-    });
-    let done = false;
-    void running.finally(() => {
-      done = true;
-    });
-    let submittedAt: number | undefined;
-    while (!done) {
-      await new Promise((r) => setTimeout(r, deps.pollMs ?? 1000));
-      pump();
-      if (deps.signal?.aborted) {
-        await deps.runner.killRole(spec.lane).catch(() => 0);
-        break;
-      }
-      // A submission ends the trial: its command finishes, and the agent's next reply is not waited for.
-      // Without one, the trial's turns used up end it (goal 163: code trials keep the cap too).
-      if (deps.submitted()) {
-        submittedAt ??= Date.now();
-        if (Date.now() - submittedAt >= (deps.afterSubmitMs ?? AFTER_SUBMIT_MS))
-          await deps.runner.killRole(spec.lane).catch(() => 0);
-      } else if (turnsUp(spec, tally)) {
-        await deps.runner.killRole(spec.lane).catch(() => 0);
-        break;
-      }
-    }
-    const outcome = await running;
-    pump();
-    carried.drop();
-    // A run that made progress had calls that worked: the calls no longer fail (goal 079).
-    if (tally.turns + tally.toolCalls > progressBefore) count.failing = undefined;
-    if (deps.signal?.aborted) {
-      result.stopped = "interrupted";
-      break;
-    }
-    // After a submission the trial is over: messages still waiting go to the lane's next trial,
-    // which can act on them.
-    if (deps.submitted()) break;
-    if (turnsUp(spec, tally)) {
-      result.stopped = "turns";
-      result.error = `the trial reached its limit of ${spec.maxTurns} turns before a submission`;
-      break;
-    }
-    // A memory or disk limit ends OpenCode with everything it ran: say which, with the figures.
-    const breach = breachError(outcome, limits, "OpenCode");
-    if (breach) {
-      result.stopped = "error";
-      result.error = breach;
-      break;
-    }
-    if (outcome.killedFor === "timeout" || Date.now() >= deadline) {
-      result.stopped = "wall";
-      break;
-    }
-    const progressed = tally.turns + tally.toolCalls > progressBefore;
-    // A run that ended with the provider's error (goal 079): by its kind, the trial ends (no
-    // credits, a refused key, an unserved model, or the campaign's limit), or waits and goes on
-    // in the same session. The failure is not one of the nudges.
-    if (tally.errors.length > errorsBefore) {
-      if (progressed) count.failures = 0;
-      const step = await afterProgramFailure({
-        error: tally.errors.at(-1) as string,
-        answer: deps.providerAnswer?.(runStarted),
-        count,
-        failuresInARow: limits.failuresInARow,
-        deadline,
-        signal: deps.signal,
-        waiting: deps.waiting,
-        pauseMs: deps.pauseMs,
-      });
-      if (!("goOn" in step)) {
-        Object.assign(result, trialEnd(step));
-        break;
-      }
-      nudges--;
-      message = [step.goOn, ...ownerLines(carried.take(tally))].join("\n\n");
-      continue;
-    }
-    if (outcome.exitCode !== 0 && !tally.session) {
-      result.stopped = "error";
-      result.error = opencodeExitWords(
-        outcome.exitCode ?? outcome.signal,
-        tally.notes.at(-1) ?? "no output",
-      );
-      break;
-    }
-    // Continued to get a submission (goal 079) for as long as the agent keeps working (a tool
-    // call in this run), with no number unless the campaign sets lanes.limits.nudges; a nudge it
-    // answers without any work ends the trial, its own choice. The owner's messages continue it
-    // while they wait and it keeps working. A message is read only once the agent starts on the
-    // prompt.
-    if (
-      stopNudging(nudges, tally.toolCalls > callsBefore, progressed, limits.nudges, deps.messages)
-    )
-      break;
-    message = [NUDGE, ...ownerLines(carried.take(tally))].join("\n\n");
-  }
-  const sub = deps.submitted();
-  if (sub) {
-    result.submitted = sub;
-    result.stopped = "submitted";
-  } else if (result.stopped === "wall") {
-    result.error = `the trial reached its ${minutes}-minute limit before a submission`;
-  } else if (result.stopped === "no_submission" && tally.errors.length) {
-    result.error = tally.errors.at(-1);
-  }
-  const failing = failingOf(count);
-  if (failing && !sub) result.failing = failing;
-  result.turns = tally.turns;
-  result.toolCalls = tally.toolCalls;
-  result.tokensIn = tally.tokensIn;
-  result.tokensOut = tally.tokensOut;
-  if (compactions.count) result.compactions = compactions.count;
-  return result;
+/** One worker trial in OpenCode: the CLI trial loop (cli/loop.ts) with OpenCode's entry. */
+export function runOpencodeTrial(spec: TrialSpec, deps: OpencodeTrialDeps): Promise<TrialResult> {
+  return runCliTrial(opencodeProgram, spec, deps);
 }
 
 /** What a research worker in OpenCode is told about its tools, on top of the research brief. */
@@ -553,27 +172,34 @@ export async function runOpencodeResearchTrial(
   };
   const limits = spec.limits ?? laneLimits({ lanes: { count: 1, trials_per_epoch: 1 } });
   const auth = `trial.${spec.token ?? ""}`;
-  const proxyRoot = `${deps.apiUrl}/v1/model-proxy`;
-  const env = {
-    ...runEnv(join(area, "opencode-home"), deps.apiUrl, auth, deps.env ?? {}),
-    TMPDIR: join(area, "opencode-tmp"),
-    THERMITE_OPENCODE_EVENTS: events,
-    ...(deps.keptAt ? opencodeKeepEnv(join(area, OPENCODE_DROPS), deps.keptAt) : {}),
-  };
+  const title = `Trial ${spec.trialId} (${spec.lane})`;
   const mcp = spec.mcpServers?.length
     ? { apiUrl: deps.apiUrl, auth, servers: spec.mcpServers }
     : undefined;
-  const setupError = await setUpInArea(
-    deps.runner,
+  // OpenCode's run as its entry sees it (opencode/program.ts), in the trial's own area.
+  const run: CliRun = {
+    trialId: spec.trialId,
     role,
+    title,
+    model: deps.model,
+    apiUrl: deps.apiUrl,
     area,
-    deps.model,
-    proxyRoot,
+    home: join(area, "opencode-home"),
+    tmp: join(area, "opencode-tmp"),
+    auth,
     mcp,
-    deps.keptAt !== undefined,
-  );
+    keptAt: deps.keptAt,
+    wallMs: spec.wallMs,
+    env: deps.env,
+  };
+  const env = {
+    ...runEnv(run.home, deps.apiUrl, auth, deps.env ?? {}),
+    TMPDIR: run.tmp,
+    THERMITE_OPENCODE_EVENTS: events,
+    ...(deps.keptAt ? opencodeKeepEnv(join(area, OPENCODE_DROPS), deps.keptAt) : {}),
+  };
+  const setupError = await setUp(opencodeProgram, deps.runner, run);
   if (setupError) return { ...result, stopped: "error", error: setupError };
-  const title = `Trial ${spec.trialId} (${spec.lane})`;
   // Each compaction Thermite's plugin saw end, with the session it kept before it (goal 070).
   const compactions = new CliCompactions({
     title,
@@ -616,24 +242,14 @@ export async function runOpencodeResearchTrial(
     const callsBefore = tally.toolCalls;
     const turnsBefore = tally.turns;
     const runStarted = Date.now();
-    const running = startInArea(
-      deps.runner,
-      role,
-      area,
-      deps.folder.work,
+    const running = startRun(opencodeProgram, deps.runner, run, {
+      cwd: deps.folder.work,
       env,
-      [
-        "run",
-        "--standalone",
-        "--auto",
-        "--format",
-        "json",
-        "--model",
-        opencodeModelId(deps.model),
-        ...(tally.session ? ["--session", tally.session] : ["--title", `trial ${spec.trialId}`]),
-      ],
-      { remaining, limits, prompt: message },
-    );
+      prompt: message,
+      session: tally.session,
+      remaining,
+      limits,
+    });
     let done = false;
     void running.finally(() => {
       done = true;

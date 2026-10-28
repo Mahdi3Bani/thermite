@@ -36,15 +36,6 @@
     "src/control/views.ts": {
       "lines": 2191
     },
-    "src/harness/agents/claude-code.ts": {
-      "lines": 978
-    },
-    "src/harness/agents/codex.ts": {
-      "lines": 884
-    },
-    "src/harness/agents/opencode.ts": {
-      "lines": 918
-    },
     "src/harness/agents/planner.ts": {
       "lines": 1277
     },
