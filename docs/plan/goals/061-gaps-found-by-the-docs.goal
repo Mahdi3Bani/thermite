@@ -84,7 +84,7 @@ The writers and verifiers of the documentation site (goal [060](_completed/060-d
 - [ ] Small rough edges: a cluster's **Nodes** fact shows raw memory (`8095856Ki`); a joined rig's steps list `✓ First report reached control` twice; the Providers header reads `1 models are read…`; the harness list shows **Pi** for a rig that runs OpenCode v2 from its own settings; a keyless provider's edit form shows `empty keeps the key ending ` with nothing after it; a short key shows as `key …`; Edit rig's message when roles go back to the advisors file repeats itself.
 - [ ] A run started with agents shows **Agents: None** until the planner has planned its first epoch, so it looks as if no agent will work (`src/control/ui/operator.ts`). Found by running tutorial 4. Since `4e132a6` the cards say `waiting for the first round`; the run's Overview tab still says None until the first round.
 - [ ] After **Start a run** on an existing campaign, the page shows the campaign page until the rig reports the new run, with no sign that it is starting (`src/control/dashboard.ts`). Found by running tutorial 4.
-- [ ] A change refused by the static checks shows **Judging** for ever, and its page says the judge has not decided: `outcome()` looks for a `rejected_v0` verdict, but such attempts have only a `rejected_v0` lifecycle (`src/control/ui/operator.ts`, `src/harness/service.ts`). When fixed, update the tables in tutorials 1 and 2.
+- [ ] A change refused by the static checks shows **Judging** for ever, and its page says the judge has not decided: `outcome()` looks for a `rejected_v0` verdict, but such attempts have only a `rejected_v0` lifecycle (`src/control/ui/operator.ts`, `src/harness/service/attempts.ts`). When fixed, update the tables in tutorials 1 and 2.
 - [ ] Any run whose name ends in `-try-<n>` is shown as a try of the kit, even when it was started from the command line; the name is the only check. Its card now links to **Start a run**, which also works for campaigns started from the command line (`src/control/dashboard.ts`).
 - [x] Gone with the run page's Steering tab (goal 063): no dashboard text describes Pause now. The Steering card said "The judge still finishes the jobs already queued", but a paused run's queued jobs wait until it resumes.
 - [ ] An attempt that the static checks refuse shows "Judging" for ever, because it never gets a verdict (`src/control/ui/operator.ts`).
@@ -155,7 +155,7 @@ The writers and verifiers of the documentation site (goal [060](_completed/060-d
 - [ ] **Effort** on Edit rig does nothing under OpenCode v2: its config and command line carry no reasoning effort (`src/harness/agents/opencode.ts`).
 - [ ] Edit rig offers the `xhigh` and `max` efforts for every provider, but only a Claude subscription takes them; the others get `high` (`src/control/api.ts`, `src/control/dashboard.ts`).
 - [ ] Research mode cannot use a Claude subscription or OpenCode's own free models, and nothing warns before the run starts (`src/harness/main.ts`). Partly fixed: research trials run in OpenCode when the agents' harness is OpenCode, so its free models serve research there (`e8a557b`), and the dashboard refuses to start a research run where such a model would run in Pi (`301853e`, `d1d34e8`). Still open: a Claude subscription fails only at each trial, with nothing before the start.
-- [ ] The model check tests only the workers' model, not a planner or advisor model given on Edit rig (`src/harness/service.ts`).
+- [ ] The model check tests only the workers' model, not a planner or advisor model given on Edit rig (`src/harness/service/checks.ts`).
 - [ ] A Claude model on an image without Claude Code fails the model check with the spawn's error, not a message that the image has no Claude Code (`src/harness/agents/claude-code.ts`).
 - [ ] An OpenAI-compatible provider needs an API key even when its model server needs none (`src/control/store.ts`, `src/harness/agents/model.ts`).
 - [ ] A ChatGPT sign-in's access token lasts an hour and only control renews it, so a rig whose control is away for longer, or that has a `chatgpt` route from its own settings, loses its model with no warning (`src/control/chatgpt.ts`, `src/harness/agents/model.ts`).
@@ -199,8 +199,8 @@ The writers and verifiers of the documentation site (goal [060](_completed/060-d
 - [ ] An expired command for a rig that never asks again stays `pending` for ever (`src/control/store.ts`).
 - [ ] A command's time to live can run out while the supervisor fetches what it names: the dashboard always gives 60 minutes, and a `propagate` sent through `POST /v1/commands` gets 60 minutes, not the 24 hours of control's own propagate paths (`src/control/new-campaign.ts`, `src/control/api.ts`, `src/control/issue.ts`).
 - [ ] A command's outcome changes shape after the rig's next report: the harness's record replaces the supervisor's `{"status": …}` (`src/control/store.ts`, `src/supervisor/relay.ts`).
-- [ ] The harness records an owner-only refusal as a failed command, not as a `command_rejected` event like every other refusal (`src/harness/service.ts`).
-- [ ] `reset_workers.reseed_commit` is accepted by the schema and always refused (`src/core/commands.ts`, `src/harness/service.ts`).
+- [ ] The harness records an owner-only refusal as a failed command, not as a `command_rejected` event like every other refusal (`src/harness/service/commands.ts`).
+- [ ] `reset_workers.reseed_commit` is accepted by the schema and always refused (`src/core/commands.ts`, `src/harness/service/commands.ts`).
 - [ ] The same token role reads different things over REST and MCP: the reader token reads rigs, runs and events over MCP, but only `/metrics` and the live log over REST (`src/control/api.ts`, `src/control/mcp.ts`).
 - [ ] MCP `retire_rig` finds only rigs that have reported, while REST also retires enrolled or tokens-file rigs that never reported (`src/control/mcp.ts`, `src/control/api.ts`).
 - [ ] MCP `recent_events` takes a `limit` up to 500 but returns at most 50 events (`src/control/mcp.ts`, `src/control/views.ts`).
@@ -213,7 +213,7 @@ The writers and verifiers of the documentation site (goal [060](_completed/060-d
 - [ ] `thermite submit` cannot send `claim`, `lane` or `parent`, which the harness's proposer route takes (`src/cli/thermite.ts`).
 - [ ] `thermite assign` ignores `--seed`, `--seed-commit` and `--kit` for a research contract, with no warning (`src/cli/thermite.ts`).
 - [ ] `thermite assign` has no option to name a Git access for a private repository (`src/cli/thermite.ts`).
-- [ ] `--note` (`--direction` before 2026-10-21) is stored with the run and never read (`src/harness/service.ts`).
+- [ ] `--note` (`--direction` before 2026-10-21) is stored with the run and never read (`src/harness/service/assignment.ts`).
 - [ ] `thermite assign-payload` has no `--promotion`, which `thermite assign` has (`src/cli/thermite.ts`).
 - [ ] `thermite rig add` writes a rig's files, but Thermite ships no deployment that reads them; only Add a rig on the dashboard sets rigs up (`src/cli/rig.ts`).
 - [ ] `thermite keys generate` has no use: control makes its own key pair at first start, and nothing says how a generated pair would reach control (`src/cli/thermite.ts`).

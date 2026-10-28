@@ -1,0 +1,70 @@
+import type { Hono } from "hono";
+import {
+  COMMANDS,
+  EXPORTS_DONE,
+  LIVE,
+  LIVE_PAGE_DEFAULT,
+  SNAPSHOT,
+  SNAPSHOT_PAGE_DEFAULT,
+  SNAPSHOT_PAGE_MAX,
+} from "../../core/api/harness/supervisor.ts";
+import { LIVE_BATCH_MAX } from "../../core/live.ts";
+import { type ApiContext, limitOf } from "./context.ts";
+
+/**
+ * What the supervisor relays between the harness and control: the harness's signed report and
+ * control's signed commands, the live log, and the exports. The three groups of routes are added
+ * at their places in the API's order (api.ts).
+ */
+
+/** The report (a page of events with the summary) and control's commands. */
+export function reportRoutes(app: Hono, { service, supervisor }: ApiContext): void {
+  app.get(SNAPSHOT.path, supervisor, (c) => {
+    const cursor = Number(c.req.query("cursor") ?? "0");
+    const limit = Math.min(
+      Number(c.req.query("limit") ?? SNAPSHOT_PAGE_DEFAULT),
+      SNAPSHOT_PAGE_MAX,
+    );
+    if (!Number.isInteger(cursor) || cursor < 0 || !Number.isInteger(limit) || limit < 1) {
+      return c.json({ error: "bad cursor or limit" }, 400);
+    }
+    return c.json(service.snapshot(cursor, limit) as object);
+  });
+
+  app.post(COMMANDS.path, supervisor, limitOf(COMMANDS), async (c) => {
+    const outcome = await service.applyCommand(await c.req.json());
+    if (outcome.status === "rejected") return c.json(outcome, 403);
+    return c.json(outcome);
+  });
+}
+
+/** The live log. */
+export function liveRoutes(app: Hono, { service, supervisor }: ApiContext): void {
+  // The live log, signed, for the supervisor to relay to control.
+  app.get(LIVE.path, supervisor, (c) => {
+    const after = Number(c.req.query("after") ?? "0");
+    const limit = Math.min(Number(c.req.query("limit") ?? LIVE_PAGE_DEFAULT), LIVE_BATCH_MAX);
+    if (!Number.isInteger(after) || after < 0 || !Number.isInteger(limit) || limit < 1) {
+      return c.json({ error: "bad after or limit" }, 400);
+    }
+    return c.json(service.liveBatch(after, limit) as object);
+  });
+}
+
+/** The exports: those the supervisor pushed leave the outbox, and one made now. */
+export function exportRoutes(app: Hono, { service, supervisor }: ApiContext): void {
+  app.post(EXPORTS_DONE.path, supervisor, limitOf(EXPORTS_DONE), async (c) => {
+    const body = EXPORTS_DONE.body.parse(await c.req.json());
+    return c.json({ removed: service.removeExports(body.names) });
+  });
+
+  app.post("/v1/export", supervisor, async (c) => {
+    const r = await service.export("supervisor");
+    return c.json({
+      export: r.id,
+      dir: r.dir.split("/").pop(),
+      attempts: r.attempts,
+      events: r.events,
+    });
+  });
+}

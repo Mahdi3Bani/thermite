@@ -33,9 +33,6 @@
     "src/control/views.ts": {
       "lines": 2191
     },
-    "src/harness/api.ts": {
-      "lines": 914
-    },
     "src/harness/broker.ts": {
       "lines": 1203
     },
@@ -59,9 +56,6 @@
     },
     "src/harness/selftest.ts": {
       "lines": 1023
-    },
-    "src/harness/service.ts": {
-      "lines": 2830
     }
   }
 }
