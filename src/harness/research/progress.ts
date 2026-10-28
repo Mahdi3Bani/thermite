@@ -8,16 +8,6 @@ import type { TaskYield } from "../queue.ts";
  * here writes.
  */
 
-/** A question's decision: answered at a certainty, the best that sources allow, or still open. */
-export const QUESTION_DECISIONS = ["answered", "insufficient", "open"] as const;
-export type QuestionDecision = (typeof QUESTION_DECISIONS)[number];
-/** The certainty of an answered question. */
-export const ANSWER_CERTAINTIES = ["high", "moderate", "low"] as const;
-export type AnswerCertainty = (typeof ANSWER_CERTAINTIES)[number];
-/** A required hypothesis's verdict. */
-export const HYPOTHESIS_DECISIONS = ["supported", "refuted", "undecided"] as const;
-export type HypothesisDecision = (typeof HYPOTHESIS_DECISIONS)[number];
-
 /** A question's last tasks that show it saturated: this many in a row that added nothing new. */
 export const SATURATION_TASKS = 4;
 

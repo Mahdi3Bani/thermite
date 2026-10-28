@@ -1,15 +1,51 @@
 import { createPublicKey } from "node:crypto";
 import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { log, redact } from "../common/env.ts";
 import { answerOf, errorText, jsonBody } from "../common/errors.ts";
 import { sameSecret } from "../common/secrets.ts";
+import {
+  CAMPAIGN_CONTEXT,
+  CAMPAIGN_COPY,
+  CLOUD_LAUNCH,
+  CLOUD_RIGS,
+  ENROLL,
+  ISSUE,
+  KIT_ADD,
+  KITS,
+  RESET,
+  RESET_CANCEL,
+  RESET_CONFIRM,
+  RESETS,
+  RESTART,
+  RETIRE,
+  RIG_TOKEN,
+  RIGS,
+  RUNPOD_LIMITS,
+  RUNPOD_RIG,
+  RUNPOD_START,
+  RUNPOD_STOP,
+  RUNPOD_TERMINATE,
+  START_RUN,
+} from "../core/api/control/owner.ts";
+import {
+  ACK,
+  ADVISOR_ROUTES,
+  CHAMPION_PATCH,
+  GIT_ACCESS,
+  INGEST,
+  KB,
+  KB_NOT_ASSIGNED,
+  LIVE,
+  MODEL_ROUTE,
+  PENDING_COMMANDS,
+  REPORTS,
+} from "../core/api/control/rigs.ts";
+import type { ControlRoute } from "../core/api/model-route.ts";
 import { sha256Hex } from "../core/canonical.ts";
-import { COMMAND_KINDS, type CommandKind } from "../core/commands.ts";
-import { RIG_ID_WORDS } from "../core/ids.ts";
 import { readReport } from "../core/link/report.ts";
-import { POD_CONFIG_ENV } from "../core/tunnel.ts";
 import { type BuildInfo, buildFromHeaders, buildInfo } from "../core/version.ts";
 import { rigModels, setRigModel } from "./agent-models.ts";
 import { runRoutes } from "./api/runs.ts";
@@ -97,7 +133,6 @@ import {
   fingerprint,
   type Harness,
   type ModelProvider,
-  RIG_ID,
 } from "./store.ts";
 import type { ControlTunnels } from "./tunnel.ts";
 import { modelPrices, modelUsage, setModelPrice, usageQueryRefusal } from "./usage.ts";
@@ -143,23 +178,6 @@ function clampLimit(raw: string | undefined, fallback: number): number {
 function bearer(header: string | undefined): string {
   return header?.startsWith("Bearer ") ? header.slice(7) : "";
 }
-
-const IssueBody = z.object({
-  rig: z.string().min(1),
-  kind: z.enum(COMMAND_KINDS as [CommandKind, ...CommandKind[]]),
-  payload: z.unknown(),
-  ttl_minutes: z
-    .number()
-    .int()
-    .positive()
-    .max(7 * 24 * 60)
-    .default(60),
-});
-
-const AckBody = z.object({
-  status: z.enum(["delivered", "rejected", "failed"]),
-  outcome: z.unknown(),
-});
 
 export interface ControlOptions {
   /** A rig is stale after this long without a report (3 missed 60 s polls). */
@@ -321,8 +339,13 @@ export function createControlApi(
     await next();
   };
 
-  // Every refusal and bad input is answered in its own words and status, the same as MCP's.
-  app.onError((err, c) => c.json({ error: answerOf(err).error }, answerOf(err).status));
+  // Every refusal and bad input is answered in its own words and status, the same as MCP's. A
+  // body past its route's limit keeps its own answer, 413: the rig's supervisor halves its page.
+  app.onError((err, c) =>
+    err instanceof HTTPException
+      ? err.getResponse()
+      : c.json({ error: answerOf(err).error }, answerOf(err).status),
+  );
 
   // What fails goes to control's output and its audit log: the dashboard says why only once, in
   // the page it sends back, and whoever debugs control reads it again over MCP (control_log).
@@ -352,13 +375,13 @@ export function createControlApi(
 
   // A report the rig's supervisor posts; with the message bus, control also folds them from there.
   const intake = { store, control, requireKeyAcceptance: Boolean(opts.requireKeyAcceptance) };
-  app.post("/v1/rigs/:rig/ingest", rigAuth, bodyLimit({ maxSize: 32 * 1024 * 1024 }), async (c) => {
+  app.post(INGEST.path, rigAuth, bodyLimit({ maxSize: INGEST.maxBytes }), async (c) => {
     const read = readReport(await jsonBody(c.req));
     const [status, answer] = takeReport(intake, c.req.param("rig"), read);
     return c.json(answer, status);
   });
 
-  app.get("/v1/rigs/:rig/commands/pending", rigAuth, (c) =>
+  app.get(PENDING_COMMANDS.path, rigAuth, (c) =>
     c.json(pendingFor(store, privateKeyPem, c.req.param("rig"), c.req.query())),
   );
 
@@ -368,22 +391,17 @@ export function createControlApi(
       : c.json({ error: "no such pending command" }, 404),
   );
 
-  app.post(
-    "/v1/rigs/:rig/commands/:id/ack",
-    rigAuth,
-    bodyLimit({ maxSize: 256 * 1024 }),
-    async (c) => {
-      const body = AckBody.parse(await jsonBody(c.req));
-      const ok = store.ackCommand(c.req.param("rig"), c.req.param("id"), body.status, body.outcome);
-      return ok ? c.json({ ok }) : c.json({ error: "no such pending command" }, 404);
-    },
-  );
+  app.post(ACK.path, rigAuth, bodyLimit({ maxSize: ACK.maxBytes }), async (c) => {
+    const body = ACK.body.parse(await jsonBody(c.req));
+    const ok = store.ackCommand(c.req.param("rig"), c.req.param("id"), body.status, body.outcome);
+    return ok ? c.json({ ok }) : c.json({ error: "no such pending command" }, 404);
+  });
 
   // The supervisor's own figures, with its key on the bus (api/supervisor.ts).
   supervisorRoutes(app, rigAuth, { store, busUsers: opts.busUsers });
 
   // The live view: the harness's signed lines, and the supervisor's own (live-in.ts).
-  app.post("/v1/rigs/:rig/live", rigAuth, bodyLimit({ maxSize: 4 * 1024 * 1024 }), async (c) => {
+  app.post(LIVE.path, rigAuth, bodyLimit({ maxSize: LIVE.maxBytes }), async (c) => {
     const [status, answer] = takeLive(store, c.req.param("rig"), await jsonBody(c.req));
     return c.json(answer, status);
   });
@@ -406,7 +424,7 @@ export function createControlApi(
 
   // Git access for a private repository, to a rig whose assigned campaign names it; otherwise
   // refused. The secret leaves control only here, never in a signed command.
-  app.get("/v1/rigs/:rig/git-access/:name", rigAuth, (c) => {
+  app.get(GIT_ACCESS.path, rigAuth, (c) => {
     const rig = c.req.param("rig");
     const name = c.req.param("name");
     const g = store.gitAccess(name);
@@ -443,7 +461,7 @@ export function createControlApi(
     effort: Effort | null | undefined,
     cap?: number | undefined,
     compactAt?: number | undefined,
-  ): Promise<Record<string, unknown> | undefined> => {
+  ): Promise<ControlRoute | undefined> => {
     // The compaction point (goal 070), only when the owner set one: a route without it keeps its
     // revision, and the harness applies its default.
     const compact = compactAt ? { compact_at: compactAt } : {};
@@ -581,7 +599,7 @@ export function createControlApi(
     return (await routeOf(p, a.model, harness, a.effort, a.contextCap, a.compactAt)) ?? null;
   };
 
-  app.get("/v1/rigs/:rig/model-route", rigAuth, async (c) => {
+  app.get(MODEL_ROUTE.path, rigAuth, async (c) => {
     c.header("cache-control", "no-store");
     const rig = c.req.param("rig");
     const r = store.rigModelFor(rig);
@@ -612,7 +630,7 @@ export function createControlApi(
   // subscription's token). A role with none keeps the rig's advisors file: the supervisor's own
   // configuration. Goal 074: the teachers' one or two models (a second only with a first), their
   // merged by model, the auditor and the review panel.
-  app.get("/v1/rigs/:rig/advisor-routes", rigAuth, async (c) => {
+  app.get(ADVISOR_ROUTES.path, rigAuth, async (c) => {
     c.header("cache-control", "no-store");
     const rig = c.req.param("rig");
     const first = await roleRouteOf(rig, "teachers");
@@ -638,7 +656,7 @@ export function createControlApi(
 
   // Past research for a run's agents (goal 065): the items of the folders the run's campaign may
   // read, after the supervisor's cursor. Only the rig's own runs; never a folder not granted.
-  app.get("/v1/rigs/:rig/kb", rigAuth, (c) => {
+  app.get(KB.path, rigAuth, (c) => {
     c.header("cache-control", "no-store");
     const run = c.req.query("run") ?? "";
     const after = Number(c.req.query("after") ?? "0");
@@ -648,7 +666,10 @@ export function createControlApi(
     // Only a run control assigned to this rig, of the campaign control assigned: a rig cannot
     // read another campaign's folders by naming it in its own events.
     const assigned = store.assignedCampaigns(c.req.param("rig")).get(run);
-    if (!assigned) return c.json({ error: `control did not assign run ${run} to this rig` }, 404);
+    if (!assigned) {
+      const error = `control did not assign run ${run} to this rig`;
+      return c.json({ error, code: KB_NOT_ASSIGNED }, 404);
+    }
     const sync = store.kb().sync(c.req.param("rig"), run, after);
     if (!sync) return c.json({ error: `this rig has no run ${run}` }, 404);
     if (sync.campaign !== assigned)
@@ -659,9 +680,9 @@ export function createControlApi(
   // A champion's patch, uploaded by the rig's supervisor once its export is published. It is
   // kept only if its sha256 is the one the rig's signed champion_published event names.
   app.post(
-    "/v1/rigs/:rig/champions/:run/:seq/patch",
+    CHAMPION_PATCH.path,
     rigAuth,
-    bodyLimit({ maxSize: 64 * 1024 * 1024 }),
+    bodyLimit({ maxSize: CHAMPION_PATCH.maxBytes }),
     async (c) => {
       const seq = Number(c.req.param("seq"));
       if (!Number.isInteger(seq) || seq < 1) return c.json({ error: "bad seq" }, 400);
@@ -701,10 +722,8 @@ export function createControlApi(
     c.json(resultsLeft(store, c.req.param("rig"), { export: c.req.query("export") || undefined })),
   );
 
-  app.post("/v1/rigs/:rig/reports", rigAuth, bodyLimit({ maxSize: 1024 * 1024 }), async (c) => {
-    const body = z
-      .object({ kind: z.enum(["daily"]), body: z.string().min(1).max(200_000) })
-      .parse(await jsonBody(c.req));
+  app.post(REPORTS.path, rigAuth, bodyLimit({ maxSize: REPORTS.maxBytes }), async (c) => {
+    const body = REPORTS.body.parse(await jsonBody(c.req));
     return c.json({ id: store.addReport(c.req.param("rig"), body.kind, body.body) }, 201);
   });
 
@@ -740,19 +759,12 @@ export function createControlApi(
 
   // Lifecycle (owner): restart through the deployment driver (RunPod's for a rig on RunPod); the
   // full reset with state wipe.
-  app.post("/v1/rigs/:rig/restart", admin, async (c) => {
+  app.post(RESTART.path, admin, async (c) => {
     const rig = c.req.param("rig");
     const onRunpod = runpodDriver.serves(rig);
     const driver = onRunpod ? runpodDriver : opts.driver;
     if (!driver) return c.json({ error: "no deployment driver is configured" }, 409);
-    const body = z
-      .object({
-        components: z
-          .array(z.enum(["harness", "supervisor"]))
-          .min(1)
-          .default(["harness", "supervisor"]),
-      })
-      .parse(await c.req.json().catch(() => ({})));
+    const body = RESTART.body.parse(await c.req.json().catch(() => ({})));
     store.audit("owner:api", "restart", { rig, components: body.components });
     if (!onRunpod) return c.json({ restarted: await driver.restart(rig, body.components) });
     try {
@@ -762,9 +774,9 @@ export function createControlApi(
     }
   });
 
-  app.post("/v1/rigs/:rig/reset", admin, async (c) => {
+  app.post(RESET.path, admin, async (c) => {
     const rig = c.req.param("rig");
-    const body = z.object({ confirm: z.string() }).parse(await jsonBody(c.req));
+    const body = RESET.body.parse(await jsonBody(c.req));
     if (body.confirm !== `reset ${rig}`)
       return c.json({ error: `confirm with "reset ${rig}"` }, 400);
     // A rig on RunPod: its pod must run, with no stop, start or terminate under way.
@@ -780,9 +792,9 @@ export function createControlApi(
     return c.json({ reset: id }, 201);
   });
 
-  app.get("/v1/resets", admin, (c) => c.json({ resets: store.resets() }));
+  app.get(RESETS.path, admin, (c) => c.json({ resets: store.resets() }));
 
-  app.post("/v1/resets/:id/confirm", admin, async (c) => {
+  app.post(RESET_CONFIRM.path, admin, async (c) => {
     confirmReset(store, Number(c.req.param("id")), "owner:api");
     await advanceResets({
       store,
@@ -793,12 +805,12 @@ export function createControlApi(
     return c.json({ ok: true });
   });
 
-  app.post("/v1/resets/:id/cancel", admin, (c) => {
+  app.post(RESET_CANCEL.path, admin, (c) => {
     cancelReset(store, Number(c.req.param("id")), "owner:api");
     return c.json({ ok: true });
   });
 
-  app.get("/v1/rigs", admin, (c) =>
+  app.get(RIGS.path, admin, (c) =>
     c.json({
       control,
       rigs: store.rigs().map((u) => ({
@@ -817,13 +829,12 @@ export function createControlApi(
   const publicKeyPem = createPublicKey(privateKeyPem)
     .export({ type: "spki", format: "pem" })
     .toString();
-  const RigName = z.strictObject({ rig: z.string().regex(RIG_ID, RIG_ID_WORDS) });
   const inFile = (rig: string) =>
     tokens.rigs[rig] !== undefined
       ? `rig ${rig} has its token in control's rig tokens file; change it there`
       : undefined;
-  app.post("/v1/rigs", admin, async (c) => {
-    const { rig } = RigName.parse(await jsonBody(c.req));
+  app.post(ENROLL.path, admin, async (c) => {
+    const { rig } = ENROLL.body.parse(await jsonBody(c.req));
     const taken =
       inFile(rig) ?? (store.enrolledRig(rig) ? `rig ${rig} is already enrolled` : undefined);
     if (taken) return c.json({ error: taken }, 409);
@@ -839,7 +850,7 @@ export function createControlApi(
       201,
     );
   });
-  app.post("/v1/rigs/:rig/token", admin, (c) => {
+  app.post(RIG_TOKEN.path, admin, (c) => {
     const rig = c.req.param("rig");
     const fixed = inFile(rig);
     if (fixed) return c.json({ error: fixed }, 409);
@@ -850,7 +861,7 @@ export function createControlApi(
   });
   // Any rig: one control enrolled (its token ends), one in the rig tokens file (its token is
   // refused while retired; take it out of the file too), or one that only ever reported.
-  app.post("/v1/rigs/:rig/retire", admin, (c) => {
+  app.post(RETIRE.path, admin, (c) => {
     const rig = c.req.param("rig");
     if (!store.rigs({ withRetired: true }).some((u) => u.id === rig) && !store.knownRig(rig))
       return c.json({ error: `no rig ${rig}` }, 404);
@@ -902,7 +913,7 @@ export function createControlApi(
   // kept with its commits, served to rigs as the kits the New campaign page writes are. The body
   // is the bundle's bytes; ?ref= names the head, ?force=true replaces a head it does not descend
   // from. The owner's token adds; the reader's reads too (MCP's kit_add takes an operator's).
-  app.get("/v1/kits", reader, (c) =>
+  app.get(KITS.path, reader, (c) =>
     opts.kits
       ? c.json(kitsAnswer(opts.kits))
       : c.json({ error: "this control keeps no kits" }, 404),
@@ -913,10 +924,10 @@ export function createControlApi(
     return out.ok ? c.json(out.answer) : c.json({ error: out.error }, out.status);
   });
   app.post(
-    "/v1/kits/:name",
+    KIT_ADD.path,
     admin,
     bodyLimit({
-      maxSize: KIT_BUNDLE_MAX,
+      maxSize: KIT_ADD.maxBytes,
       onError: (c) => {
         const error = `the bundle is above the ${KIT_BUNDLE_MAX} bytes (64 MiB) control takes`;
         store.audit("owner:api", "refused", { path: c.req.path, why: error });
@@ -974,8 +985,8 @@ export function createControlApi(
     return c.json({ events: store.events(c.req.param("rig"), after, limit) });
   });
 
-  app.post("/v1/commands", admin, async (c) => {
-    const body = IssueBody.parse(await jsonBody(c.req));
+  app.post(ISSUE.path, admin, async (c) => {
+    const body = ISSUE.body.parse(await jsonBody(c.req));
     // A wipe goes only through the full reset (export, verified push, the owner's confirmation).
     if (body.kind === "wipe_state")
       return c.json({ error: "wipe_state is issued only by a full reset" }, 400);
@@ -1019,7 +1030,7 @@ export function createControlApi(
   // Start a run of a campaign control keeps (goal 029): the twin of a campaign page's Start a
   // run (start-run.ts), with its refusals in words. The owner's token, as on the dashboard; MCP's
   // start_run takes an operator's too.
-  app.post("/v1/campaigns/:campaign/runs", admin, bodyLimit({ maxSize: 256 * 1024 }), async (c) => {
+  app.post(START_RUN.path, admin, bodyLimit({ maxSize: 256 * 1024 }), async (c) => {
     const campaign = c.req.param("campaign");
     const raw: unknown = await c.req.json().catch(() => undefined);
     const body = StartRunBody.safeParse(raw);
@@ -1040,60 +1051,50 @@ export function createControlApi(
   // Copy a campaign control keeps (goal 069): a new campaign with the same contract and kit
   // under another name, with its own empty folder in the knowledge base and no runs. Its own
   // brief may come with it (goal 078): room for as much as one command carries to a rig.
-  app.post(
-    "/v1/campaigns/:campaign/copy",
-    admin,
-    bodyLimit({ maxSize: 4 * 1024 * 1024 }),
-    async (c) => {
-      const from = c.req.param("campaign");
-      const raw: unknown = await c.req.json().catch(() => undefined);
-      const body = CopyCampaignBody.safeParse(raw);
-      const out = body.success
-        ? copyACampaign(parts, { from, ...body.data }, "owner:api")
-        : ({ state: "refused", error: bodyRefusal(body.error), status: 400 } as const);
-      if (out.state === "refused") {
-        store.audit("owner:api", "refused", {
-          path: `/v1/campaigns/${from}/copy`,
-          why: redact(out.error),
-        });
-        return c.json({ error: out.error }, out.status);
-      }
-      return c.json(copyCampaignAnswer(out), 201);
-    },
-  );
+  app.post(CAMPAIGN_COPY.path, admin, bodyLimit({ maxSize: 4 * 1024 * 1024 }), async (c) => {
+    const from = c.req.param("campaign");
+    const raw: unknown = await c.req.json().catch(() => undefined);
+    const body = CopyCampaignBody.safeParse(raw);
+    const out = body.success
+      ? copyACampaign(parts, { from, ...body.data }, "owner:api")
+      : ({ state: "refused", error: bodyRefusal(body.error), status: 400 } as const);
+    if (out.state === "refused") {
+      store.audit("owner:api", "refused", {
+        path: `/v1/campaigns/${from}/copy`,
+        why: redact(out.error),
+      });
+      return c.json({ error: out.error }, out.status);
+    }
+    return c.json(copyCampaignAnswer(out), 201);
+  });
 
   // A campaign's own context window and compaction point for all its runs' agents (goal 070):
   // the twin of MCP's set_campaign_context. A new version of its contract; an empty body removes
   // them. 201 with a new version, 200 when the newest version has them already.
-  app.post(
-    "/v1/campaigns/:campaign/context",
-    admin,
-    bodyLimit({ maxSize: 16 * 1024 }),
-    async (c) => {
-      const campaign = c.req.param("campaign");
-      const raw: unknown = await c.req.json().catch(() => undefined);
-      const body = CampaignContextBody.safeParse(raw);
-      const out = body.success
-        ? setCampaignContext(
-            store,
-            {
-              campaign,
-              contextWindow: body.data.context_window,
-              compactAt: body.data.compact_at,
-            },
-            "owner:api",
-          )
-        : ({ state: "refused", error: bodyRefusal(body.error), status: 400 } as const);
-      if (out.state === "refused") {
-        store.audit("owner:api", "refused", {
-          path: `/v1/campaigns/${campaign}/context`,
-          why: redact(out.error),
-        });
-        return c.json({ error: out.error }, out.status);
-      }
-      return c.json(campaignContextAnswer(out), out.state === "saved" ? 201 : 200);
-    },
-  );
+  app.post(CAMPAIGN_CONTEXT.path, admin, bodyLimit({ maxSize: 16 * 1024 }), async (c) => {
+    const campaign = c.req.param("campaign");
+    const raw: unknown = await c.req.json().catch(() => undefined);
+    const body = CampaignContextBody.safeParse(raw);
+    const out = body.success
+      ? setCampaignContext(
+          store,
+          {
+            campaign,
+            contextWindow: body.data.context_window,
+            compactAt: body.data.compact_at,
+          },
+          "owner:api",
+        )
+      : ({ state: "refused", error: bodyRefusal(body.error), status: 400 } as const);
+    if (out.state === "refused") {
+      store.audit("owner:api", "refused", {
+        path: `/v1/campaigns/${campaign}/context`,
+        why: redact(out.error),
+      });
+      return c.json({ error: out.error }, out.status);
+    }
+    return c.json(campaignContextAnswer(out), out.state === "saved" ? 201 : 200);
+  });
 
   // Archive a campaign, and the left navigation's folders (goal 077): the same functions as the
   // dashboard and MCP, with their refusals in words. The owner's token.
@@ -1303,34 +1304,16 @@ export function createControlApi(
   });
   // Rigs on a GPU cloud: launched by the owner alone (this token; MCP's owner tools; never an
   // operator's or an agent's), billed by the hour. Limits apply only when the owner sets them.
-  const LaunchBody = z.strictObject({
-    gpu: z.string().min(1),
-    gpu_count: z.number().int().optional(),
-    cloud_type: z.enum(["SECURE", "COMMUNITY"]).optional(),
-    datacenter: z.string().min(1).optional(),
-    image: z.string().min(1).optional(),
-    container_disk_gb: z.number().int().optional(),
-    volume_gb: z.number().int().optional(),
-    rig: z.string().min(1).optional(),
-    enroll_within_minutes: z.number().positive().optional(),
-    settings: z.partialRecord(z.enum(POD_CONFIG_ENV), z.string()).optional(),
-    spend_limit_usd: z.number().positive().optional(),
-    idle_stop_minutes: z.number().nullable().optional(),
-  });
-  const LimitsBody = z.strictObject({
-    spend_limit_usd: z.number().positive().nullable().optional(),
-    idle_stop_minutes: z.number().nullable().optional(),
-  });
-  app.get("/v1/gpu-clouds/:name/rigs", admin, (c) => c.json(runpodRigs.list(c.req.param("name"))));
-  app.post("/v1/gpu-clouds/:name/rigs", admin, async (c) => {
-    const body: LaunchRequest = LaunchBody.parse(await jsonBody(c.req));
+  app.get(CLOUD_RIGS.path, admin, (c) => c.json(runpodRigs.list(c.req.param("name"))));
+  app.post(CLOUD_LAUNCH.path, admin, async (c) => {
+    const body: LaunchRequest = CLOUD_LAUNCH.body.parse(await jsonBody(c.req));
     try {
       return c.json(await runpodRigs.launch(c.req.param("name"), body, "owner:api"), 201);
     } catch (err) {
       return c.json({ error: errorText(err) }, 409);
     }
   });
-  app.get("/v1/rigs/:rig/runpod", admin, (c) => {
+  app.get(RUNPOD_RIG.path, admin, (c) => {
     const rig = c.req.param("rig");
     const v = runpodRigs.view(rig);
     return v
@@ -1356,7 +1339,7 @@ export function createControlApi(
     const error = errorText(err);
     return { error, status: /^no rig /.test(error) ? (404 as const) : (409 as const) };
   };
-  app.post("/v1/rigs/:rig/runpod/stop", admin, async (c) => {
+  app.post(RUNPOD_STOP.path, admin, async (c) => {
     try {
       return c.json(await runpodDriver.stop(c.req.param("rig"), "owner:api"));
     } catch (err) {
@@ -1364,7 +1347,7 @@ export function createControlApi(
       return c.json({ error: r.error }, r.status);
     }
   });
-  app.post("/v1/rigs/:rig/runpod/start", admin, async (c) => {
+  app.post(RUNPOD_START.path, admin, async (c) => {
     try {
       return c.json(await runpodDriver.start(c.req.param("rig"), "owner:api"));
     } catch (err) {
@@ -1372,8 +1355,8 @@ export function createControlApi(
       return c.json({ error: r.error }, r.status);
     }
   });
-  app.post("/v1/rigs/:rig/runpod/terminate", admin, async (c) => {
-    const body = z.strictObject({ confirm: z.string() }).parse(await jsonBody(c.req));
+  app.post(RUNPOD_TERMINATE.path, admin, async (c) => {
+    const body = RUNPOD_TERMINATE.body.parse(await jsonBody(c.req));
     const rig = c.req.param("rig");
     if (body.confirm !== `terminate ${rig}`)
       return c.json({ error: `confirm with "terminate ${rig}"` }, 400);
@@ -1384,8 +1367,8 @@ export function createControlApi(
       return c.json({ error: r.error }, r.status);
     }
   });
-  app.post("/v1/rigs/:rig/runpod/limits", admin, async (c) => {
-    const body: LimitsChange = LimitsBody.parse(await jsonBody(c.req));
+  app.post(RUNPOD_LIMITS.path, admin, async (c) => {
+    const body: LimitsChange = RUNPOD_LIMITS.body.parse(await jsonBody(c.req));
     try {
       return c.json(runpodRigs.limits(c.req.param("rig"), body, "owner:api"));
     } catch (err) {

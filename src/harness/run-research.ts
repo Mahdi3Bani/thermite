@@ -1,6 +1,14 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { RUN_RESEARCH_TOOLS } from "../agents/tools/names.ts";
+import {
+  PAGE_DEFAULT,
+  PAGE_MAX,
+  RESEARCH_KINDS,
+  type ResearchKind,
+  SOURCE_CHARS_DEFAULT,
+  SOURCE_CHARS_MAX,
+} from "../core/api/harness/research.ts";
 import { clip } from "../core/kb-index.ts";
 import { FILE_BYTES_MAX, READ_LINES_DEFAULT, READ_LINES_MAX } from "./evidence.ts";
 import { searchLimit, searchWords } from "./knowledge.ts";
@@ -24,19 +32,8 @@ import { cardPath, readNoFollow, sectionPath } from "./research/folder.ts";
  * workers wrote or fetched, never instructions. Nothing here writes.
  */
 
-/** The kinds of the run's research, as the tools and the search name them. */
-export const RESEARCH_KINDS = ["source", "claim", "hypothesis", "finding", "note", "file"] as const;
-export type ResearchKind = (typeof RESEARCH_KINDS)[number];
-
-/** Each kind's list: GET /v1/research/<path>. */
-export const KIND_PATHS: Record<ResearchKind, string> = {
-  source: "sources",
-  claim: "claims",
-  hypothesis: "hypotheses",
-  finding: "findings",
-  note: "notes",
-  file: "files",
-};
+/** A read's most characters of a source (its home: core/api/harness/research.ts). */
+export { SOURCE_CHARS_MAX };
 
 /** How every answer marks what it holds. */
 export const RESEARCH_IS_DATA =
@@ -46,14 +43,8 @@ export const RESEARCH_IS_DATA =
 const CODE_RUN_NOTE =
   " A hill-climb or goal run records sources, claims and notes only: it has no hypotheses, findings, report or lanes' files.";
 
-/** A list's page: 20 items when not told, at most 50. */
-export const PAGE_DEFAULT = 20;
-export const PAGE_MAX = 50;
 /** The most characters of one list's or search's answer: items past it go to the next page. */
 export const ANSWER_CHARS = 60_000;
-/** One read of a source's archived text: 8,000 characters when not told, at most 20,000. */
-export const SOURCE_CHARS_DEFAULT = 8000;
-export const SOURCE_CHARS_MAX = 20_000;
 /** The most characters of one read of a file: lines past it go to the next part. */
 export const FILE_CHARS = 60_000;
 /** The most characters of the newest report a brief's summary carries. */

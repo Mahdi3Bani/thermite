@@ -46,6 +46,7 @@ Each channel keeps its own place, so a call that fails is simply made again at t
 - **Events** carry a cursor. Control takes a page only if it follows on from the last one it has, and tells the supervisor where to start if it does not. A page that control refuses as too large is sent again in halves.
 - **Commands** stay pending on control until the harness's outcome comes back. The harness takes each one once, whatever the number of times it is delivered.
 - **Live lines** are a view of what is happening now, and control keeps only the latest of them; the record is the events.
+- **A call that hangs** ends after 5 minutes with no answer, and is made again at the next tick, as a call that failed.
 
 ### Reports over the message bus
 

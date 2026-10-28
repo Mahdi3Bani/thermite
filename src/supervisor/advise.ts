@@ -2,16 +2,61 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { z } from "zod";
+import { ApiError } from "../common/api/call.ts";
+import { harnessClient } from "../common/api/harness.ts";
 import { log } from "../common/env.ts";
 import { errorText } from "../common/errors.ts";
 import type { AdvisorRole } from "../core/agents.ts";
-import type { AgentsContext } from "../core/compaction.ts";
+import {
+  ADVISOR_MESSAGES,
+  AUDITS,
+  AUDITS_PENDING,
+  BRIEF,
+  CARDS,
+  CARDS_PENDING,
+  CODE_DIFF,
+  CODE_FILE,
+  CODE_FILES,
+  DIRECTIVES,
+  EVIDENCE,
+  JOURNAL,
+  KNOWLEDGE,
+  MODEL_CALLS,
+  MODEL_CALLS_MAX,
+  PAPER,
+  PAPER_CHECK,
+  PAPERS_PENDING,
+  QUEUE,
+  QUEUE_PART_MAX,
+  type QueueAdd,
+  type QueueMove,
+  RESEARCH_FILE,
+  RESEARCH_SEARCH,
+  RESEARCH_SOURCE,
+  REVIEW,
+  REVIEW_KINDS,
+  REVIEW_TRIES,
+  REVIEWS_PENDING,
+  type Read,
+  RUNS,
+  type RunRow,
+  researchList,
+  TRY_ERROR_MAX,
+} from "../core/api/harness/advisors.ts";
+import {
+  type PaperExperiment,
+  RESEARCH_KINDS,
+  type ResearchKind,
+  SEARCH_MAX,
+  SEARCH_QUERY_MAX,
+} from "../core/api/harness/research.ts";
+import type { AnswerOf } from "../core/api/route.ts";
 import type { NoteInput } from "../core/journal.ts";
 import type { LiveKind } from "../core/live.ts";
 import type { McpUse } from "../core/mcp.ts";
 import { type AdvisorAgent, AGENT_WORDS } from "../core/usage.ts";
 import type { McpCaller, McpGateway } from "../harness/mcp-gateway.ts";
-import { KIND_PATHS, RESEARCH_KINDS, type ResearchKind } from "../harness/run-research.ts";
 import {
   type AdvisorCompaction,
   type AdvisorKeeper,
@@ -181,25 +226,6 @@ export function kbSearchFor(cfg: Pick<AdvisorsConfig, "kb">): AdvisorTools["kbSe
     : undefined;
 }
 
-/** A run as the harness lists it, with the owner's messages each advisor role has not read. */
-interface RunRow {
-  id: string;
-  campaign?: string;
-  /** The campaign's mode: a research run has no code for the teachers to read. */
-  mode?: string;
-  status: string;
-  owner_messages_waiting?: { teachers?: number[]; auditor?: number[]; panel?: number[] };
-  /** The MCP servers its kit names, with the agents that get each (goal 068). */
-  mcp_servers?: McpUse[];
-  /** The campaign's own context settings, which its advisors' calls take too (goal 070). */
-  agents_context?: AgentsContext | null;
-  /**
-   * The planner's round left its queue below the target (goal 081): the teachers' round starts
-   * at once. Null: the queue is at its target, or none applies.
-   */
-  queue_low?: { event: number; at: string; round: number; ready: number; target: number } | null;
-}
-
 /** A name safe for a file: other characters become dashes. */
 const fileSafe = (s: string) => s.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 80) || "advisor";
 
@@ -249,31 +275,23 @@ export function advisorKeeper(
   };
 }
 
-/** An owner's message in a brief or package. */
-interface OwnerMessage {
-  id: number;
-  text: string;
-  /** In the teachers' brief: read in an earlier round (a standing wish, not to answer again). */
-  read?: boolean;
-}
-
 const clip = (s: string, n: number) => {
   const t = s.replace(/\s+/g, " ").trim();
   return t.length > n ? `${t.slice(0, n - 1)}…` : t;
 };
 
-function harnessApi(cfg: Pick<AdviseConfig, "harnessUrl" | "harnessToken" | "fetchImpl">) {
-  const f = cfg.fetchImpl ?? fetch;
-  return async (method: string, path: string, body?: unknown) => {
-    const res = await f(`${cfg.harnessUrl}${path}`, {
-      method,
-      headers: { authorization: `Bearer ${cfg.harnessToken}`, "content-type": "application/json" },
-      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-    });
-    const text = await res.text();
-    if (!res.ok) throw new Error(`${method} ${path} -> ${res.status}: ${text.slice(0, 300)}`);
-    return JSON.parse(text) as unknown;
-  };
+/** The harness's API, with the supervisor's token. */
+const harnessOf = (cfg: Pick<AdviseConfig, "harnessUrl" | "harnessToken" | "fetchImpl">) =>
+  harnessClient({ url: cfg.harnessUrl, token: cfg.harnessToken, fetchImpl: cfg.fetchImpl });
+
+/** A route's answer, or undefined when a harness from before it answers 404. */
+async function ifKnown<T>(call: Promise<T>): Promise<T | undefined> {
+  try {
+    return await call;
+  } catch (err) {
+    if (err instanceof ApiError && err.code === "not_found") return undefined;
+    throw err;
+  }
 }
 
 /** The newest owner's message to the teachers a run has waiting (0: none). */
@@ -295,7 +313,7 @@ export async function teachersCalled(
 ): Promise<boolean> {
   // At the day's spending limit the teachers do not run, so a message cannot start a round.
   if (overSpendLimit(cfg.advisors, state)) return false;
-  const { runs } = (await harnessApi(cfg)("GET", "/v1/runs")) as { runs: RunRow[] };
+  const { runs } = await harnessOf(cfg).call(RUNS);
   return runs.some(
     (r) =>
       r.status === "running" &&
@@ -315,7 +333,7 @@ export function overSpendLimit(
 }
 
 export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise<AdviseState> {
-  const api = harnessApi(cfg);
+  const harness = harnessOf(cfg);
   const next: AdviseState = structuredClone(state);
   next.tries ??= {};
   next.ownerSeen ??= {};
@@ -347,58 +365,45 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
   const pastSearchFor =
     (run: string): PastSearch =>
     (query, o = {}) =>
-      api(
-        "GET",
-        `/v1/knowledge?${new URLSearchParams({
+      harness.call(KNOWLEDGE, {
+        query: {
           run,
-          q: query.slice(0, 300),
-          ...(o.kinds?.length ? { kinds: o.kinds.join(",") } : {}),
-          ...(o.limit ? { limit: String(Math.max(1, Math.min(50, Math.floor(o.limit)))) } : {}),
-        }).toString()}`,
-      );
+          q: query.slice(0, SEARCH_QUERY_MAX),
+          kinds: o.kinds?.length ? o.kinds.join(",") : undefined,
+          limit: o.limit ? Math.max(1, Math.min(SEARCH_MAX, Math.floor(o.limit))) : undefined,
+        },
+      });
   // The run's code and evidence for its teachers, read only, through the harness (goal 081): the
   // champion's tree, a file of it, an attempt's diff, and the judge's public findings.
+  /** A read of the run's, by its route: the teacher gets the answer as it came. */
+  const readOf =
+    (run: string) => (route: Read, params: Record<string, string | number | undefined>) =>
+      harness.call(route, { query: { run, ...params } });
   const codeFor = (run: string): AdvisorCode => {
-    const get = (path: string, params: Record<string, string | number | undefined>) =>
-      api(
-        "GET",
-        `${path}?${new URLSearchParams(
-          Object.entries({ run, ...params }).flatMap(([k, v]) =>
-            v === undefined ? [] : [[k, String(v)] as [string, string]],
-          ),
-        ).toString()}`,
-      );
+    const get = readOf(run);
     return {
-      listFiles: (path) => get("/v1/code/files", { path }),
-      readFile: (path, offset, limit) => get("/v1/code/file", { path, offset, limit }),
-      readDiff: (attempt, offset) => get("/v1/code/diff", { attempt, offset }),
-      evidence: (attempt) => get("/v1/evidence", { attempt }),
+      listFiles: (path) => get(CODE_FILES, { path }),
+      readFile: (path, offset, limit) => get(CODE_FILE, { path, offset, limit }),
+      readDiff: (attempt, offset) => get(CODE_DIFF, { attempt, offset }),
+      evidence: (attempt) => get(EVIDENCE, { attempt }),
     };
   };
   // The run's own research for its teachers, read only, through the harness (goal 098): each kind
   // a page at a time, a source's archived text, a file of its research folder, and a search.
   const researchFor = (run: string): AdvisorResearch => {
-    const get = (path: string, params: Record<string, string | number | undefined>) =>
-      api(
-        "GET",
-        `${path}?${new URLSearchParams(
-          Object.entries({ run, ...params }).flatMap(([k, v]) =>
-            v === undefined ? [] : [[k, String(v)] as [string, string]],
-          ),
-        ).toString()}`,
-      );
+    const get = readOf(run);
     return {
       list: (kind, o) =>
         (RESEARCH_KINDS as readonly string[]).includes(kind)
-          ? get(`/v1/research/${KIND_PATHS[kind as ResearchKind]}`, o)
+          ? get(researchList(kind as ResearchKind), o)
           : Promise.reject(
               new Error(`no kind ${kind.slice(0, 40)}: the kinds are ${RESEARCH_KINDS.join(", ")}`),
             ),
-      readSource: (source, offset, limit) => get("/v1/research/source", { source, offset, limit }),
-      readFile: (path, offset, limit) => get("/v1/research/file", { path, offset, limit }),
+      readSource: (source, offset, limit) => get(RESEARCH_SOURCE, { source, offset, limit }),
+      readFile: (path, offset, limit) => get(RESEARCH_FILE, { path, offset, limit }),
       search: (query, o) =>
-        get("/v1/research/search", {
-          q: query.slice(0, 300),
+        get(RESEARCH_SEARCH, {
+          q: query.slice(0, SEARCH_QUERY_MAX),
           kinds: o.kinds?.length ? o.kinds.join(",") : undefined,
           limit: o.limit,
         }),
@@ -409,7 +414,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
   // which the run's live view says once.
   let runRows: RunRow[] | undefined;
   const runsNow = async () => {
-    runRows ??= ((await api("GET", "/v1/runs")) as { runs: RunRow[] }).runs;
+    runRows ??= (await harness.call(RUNS)).runs;
     return runRows;
   };
   // A run's advisors with the campaign's own context settings (goal 070): each runtime's window
@@ -484,9 +489,10 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
    */
   const tryFailed = async (review: number, attempt: number, err: unknown) => {
     try {
-      await api("POST", `/v1/reviews/${review}/tries`, {
-        try: Math.max(1, attempt),
-        error: errorText(err).slice(0, 4000) || "no answer",
+      const error = errorText(err).slice(0, TRY_ERROR_MAX) || "no answer";
+      await harness.call(REVIEW_TRIES, {
+        params: { id: review },
+        body: { try: Math.max(1, attempt), error },
       });
     } catch {
       // An older harness: nothing more to keep than the Live line.
@@ -511,15 +517,10 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
   ) => {
     if (!run || !u?.calls.length) return;
     const { calls, ...route } = u;
-    for (let i = 0; i < calls.length; i += 500) {
+    for (let i = 0; i < calls.length; i += MODEL_CALLS_MAX) {
       try {
-        await api("POST", "/v1/model-calls", {
-          run,
-          round,
-          agent,
-          ...route,
-          calls: calls.slice(i, i + 500),
-        });
+        const part = calls.slice(i, i + MODEL_CALLS_MAX);
+        await harness.call(MODEL_CALLS, { body: { run, round, agent, ...route, calls: part } });
       } catch (err) {
         fail(`the model usage of the ${AGENT_WORDS[agent].toLowerCase()} for ${run}`, err, run);
         return;
@@ -539,11 +540,13 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
   ) => {
     if (!given.length) return;
     try {
-      await api("POST", "/v1/advisor-messages", {
-        run,
-        role,
-        read: given,
-        answers: answers.filter((a) => given.includes(a.message) && a.text.length > 0),
+      await harness.call(ADVISOR_MESSAGES, {
+        body: {
+          run,
+          role,
+          read: given,
+          answers: answers.filter((a) => given.includes(a.message) && a.text.length > 0),
+        },
       });
     } catch (err) {
       fail(`the owner's messages to the ${role} for ${run}`, err, run);
@@ -557,28 +560,22 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
   const toQueue = async (
     run: string,
     role: "teacher" | "auditor",
-    add: {
-      title: string;
-      details?: string | undefined;
-      family?: string | undefined;
-      why: string;
-      position?: string | undefined;
-      /** A research run's task: its question, an index from 0 (goal 117). */
-      question?: number | undefined;
-    }[],
-    move: { id: string; position: string | number; why: string }[],
+    add: QueueAdd[],
+    move: QueueMove[],
   ): Promise<unknown> => {
     if (!add.length && !move.length) return undefined;
     try {
-      // In parts of 20, as the harness takes them: the teachers' portfolio has no count.
+      // In parts, as the harness takes them: the teachers' portfolio has no count.
       const r = { added: [] as string[], moved: [] as string[], refused: [] as string[] };
-      for (let i = 0; i === 0 || i < add.length; i += 20) {
-        const part = (await api("POST", "/v1/queue", {
-          run,
-          role,
-          add: add.slice(i, i + 20),
-          move: i === 0 ? move : [],
-        })) as { added: string[]; moved: string[]; refused: string[] };
+      for (let i = 0; i === 0 || i < add.length; i += QUEUE_PART_MAX) {
+        const part = await harness.call(QUEUE, {
+          body: {
+            run,
+            role,
+            add: add.slice(i, i + QUEUE_PART_MAX),
+            move: i === 0 ? move : [],
+          },
+        });
         r.added.push(...part.added);
         r.moved.push(...part.moved);
         r.refused.push(...part.refused);
@@ -622,10 +619,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
   ): Promise<unknown> => {
     if (!notes.length) return undefined;
     try {
-      const r = (await api("POST", "/v1/journal", { run, role, by, notes })) as {
-        recorded: number[];
-        problems: string[];
-      };
+      const r = await harness.call(JOURNAL, { body: { run, role, by, notes } });
       if (r.problems.length)
         say(run, "status", `the field notes of ${by}: ${clip(r.problems.join("; "), 400)}`);
       return r;
@@ -639,7 +633,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
   // At the limit, an owner's message to the teachers waits for the next day: said once.
   if (cfg.advisors.teachers.length && overBudget()) {
     next.limitSaid ??= {};
-    const { runs } = (await api("GET", "/v1/runs")) as { runs: RunRow[] };
+    const { runs } = await harness.call(RUNS);
     for (const inst of runs.filter((i) => i.status === "running")) {
       const newest = newestForTeachers(inst);
       if (newest <= Math.max(next.ownerSeen[inst.id] ?? 0, next.limitSaid[inst.id] ?? 0)) continue;
@@ -652,7 +646,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
     }
   }
   if (cfg.advisors.teachers.length && !overBudget()) {
-    const { runs } = (await api("GET", "/v1/runs")) as { runs: RunRow[] };
+    const { runs } = await harness.call(RUNS);
     for (const inst of runs.filter((i) => i.status === "running")) {
       const newest = newestForTeachers(inst);
       const called = newest > (next.ownerSeen[inst.id] ?? 0);
@@ -687,13 +681,8 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
             : `the teachers review ${inst.id}`,
       );
       try {
-        const brief = (await api("GET", `/v1/brief?run=${encodeURIComponent(inst.id)}`)) as {
-          owner_messages?: OwnerMessage[];
-          background?: unknown;
-          past_research?: unknown;
-          /** What the run's own research holds (goal 098): its tools read the rest. */
-          research?: unknown;
-        };
+        const briefOf = () => harness.call(BRIEF, { query: { run: inst.id } });
+        const brief = await briefOf();
         // Teachers with an open web fetch get no records of other campaigns: past research and
         // the briefing stay out of their brief (and its tool), as the knowledge-base search does.
         const openFetch = domains.includes("*");
@@ -757,13 +746,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
             // Teachers with an open fetch search no past research either.
             // Only when the run has some: the brief says so in past_research.
             ...(openFetch || !brief.past_research ? {} : { pastSearch: pastSearchFor(inst.id) }),
-            brief: async () =>
-              closed(
-                (await api("GET", `/v1/brief?run=${encodeURIComponent(inst.id)}`)) as {
-                  background?: unknown;
-                  past_research?: unknown;
-                },
-              ),
+            brief: async () => closed(await briefOf()),
           },
         });
         s.teacher_runs++;
@@ -790,12 +773,10 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         const queued = await toQueue(inst.id, "teacher", run.experiments, run.moves);
         let posted: unknown;
         if (run.directives?.length) {
-          posted = await api("POST", "/v1/directives", {
-            run: inst.id,
-            directives: run.directives,
-          });
-          const left = ((posted as { left_out?: { rule: string; why: string }[] } | undefined)
-            ?.left_out ?? []) as { rule: string; why: string }[];
+          const rules = { run: inst.id, directives: run.directives };
+          const answer = await harness.call(DIRECTIVES, { body: rules });
+          posted = answer;
+          const left = answer.left_out ?? [];
           s.directive_sets++;
           s.directives += run.directives.length - left.length;
           say(
@@ -833,16 +814,8 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
   // The auditor: open audits. An audit can block, never pass; the harness enforces that too.
   if (cfg.advisors.auditor && !overBudget()) {
     const auditor = cfg.advisors.auditor;
-    const { audits } = (await api("GET", "/v1/audits/pending")) as {
-      audits: {
-        /** The audit's own id: each confirmation of an attempt has an audit of its own. */
-        id?: number;
-        attempt: string;
-        run?: string;
-        owner_messages?: OwnerMessage[];
-        past_research?: string;
-      }[];
-    };
+    // Each audit has its own id: each confirmation of an attempt has an audit of its own.
+    const { audits } = await harness.call(AUDITS_PENDING);
     // The owner's messages go to the auditor once, with the first audit that gets them.
     const told = new Set<number>();
     // Each audit's tries are its own, by its id (goal 079): a new audit of the same attempt starts
@@ -865,12 +838,15 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
     const toOwner = async (pkg: { attempt: string; run?: string }, key: string) => {
       next.tried[key] = new Date().toISOString();
       try {
-        await api("POST", "/v1/audits", {
-          attempt: pkg.attempt,
-          decision: "needs_owner",
-          reasons: `the auditor could not answer after ${MAX_TRIES} tries: ${errors[key] ?? "no detail"}`,
-          citations: [],
-          auditor: auditor.name,
+        const why = errors[key] ?? "no detail";
+        await harness.call(AUDITS, {
+          body: {
+            attempt: pkg.attempt,
+            decision: "needs_owner",
+            reasons: `the auditor could not answer after ${MAX_TRIES} tries: ${why}`,
+            citations: [],
+            auditor: auditor.name,
+          },
         });
         say(
           pkg.run,
@@ -926,13 +902,15 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           await failed(pkg, key, r.error);
           continue;
         }
-        const posted = (await api("POST", "/v1/audits", {
-          attempt: pkg.attempt,
-          decision: r.output.decision,
-          reasons: r.output.reasons,
-          citations: r.output.citations,
-          auditor: auditor.name,
-        })) as { effect?: string };
+        const posted = await harness.call(AUDITS, {
+          body: {
+            attempt: pkg.attempt,
+            decision: r.output.decision,
+            reasons: r.output.reasons,
+            citations: r.output.citations,
+            auditor: auditor.name,
+          },
+        });
         s.audits++;
         // Read only with the posted audit: an audit that fails to post gives them again.
         if (pkg.run) {
@@ -985,13 +963,12 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
   // the next round. No cap on tries.
   const synthesizer = cfg.advisors.teachers[0];
   if (synthesizer && !overBudget()) {
-    let requests: { run: string; questions?: { index: number; through?: string | null }[] }[] = [];
+    let requests: AnswerOf<typeof CARDS_PENDING>["runs"] = [];
     try {
-      requests = ((await api("GET", "/v1/research/cards/pending")) as { runs: typeof requests })
-        .runs;
-    } catch (err) {
       // A harness from before goal 117 has no cards to write: nothing to say.
-      if (!String(err).includes("-> 404")) fail("the answer cards to write", err);
+      requests = (await ifKnown(harness.call(CARDS_PENDING)))?.runs ?? [];
+    } catch (err) {
+      fail("the answer cards to write", err);
     }
     for (const pkg of requests) {
       if (overBudget()) break;
@@ -1043,15 +1020,10 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           );
           continue;
         }
-        const posted = (await api("POST", `/v1/research/cards/${encodeURIComponent(run)}`, {
-          synthesizer: runtime.name,
-          cards,
-        })) as {
-          results: (
-            | { question: number; accepted: true; version: number }
-            | { question: number; accepted: false; problems: string[] }
-          )[];
-        };
+        const posted = await harness.call(CARDS, {
+          params: { run },
+          body: { synthesizer: runtime.name, cards },
+        });
         const kept = posted.results.filter((x) => x.accepted);
         s.cards = (s.cards ?? 0) + kept.length;
         const refused = posted.results.flatMap((x) => (x.accepted ? [] : [x]));
@@ -1087,16 +1059,8 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
   // The review panel: every reviewer reviews blind; the harness needs at least two. It reviews
   // goals and, asked for by kind, research runs' questions (goal 112).
   if (cfg.advisors.review_panel.length && !overBudget()) {
-    const { reviews } = (await api("GET", "/v1/reviews/pending?kinds=goal,research")) as {
-      reviews: {
-        id: number;
-        run?: string;
-        goal?: string;
-        kind?: string;
-        owner_messages?: OwnerMessage[];
-        past_research?: string;
-      }[];
-    };
+    const kinds = REVIEW_KINDS.join(",");
+    const { reviews } = await harness.call(REVIEWS_PENDING, { query: { kinds } });
     const told = new Set<number>();
     for (const pkg of reviews) {
       const key = `review:${pkg.id}`;
@@ -1200,10 +1164,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
             `review ${pkg.id}: ${why} in try ${next.tries[key]}: posted as not passed`,
           );
         }
-        const posted = (await api("POST", `/v1/reviews/${pkg.id}`, { results })) as {
-          result?: string;
-          accepted?: boolean;
-        };
+        const posted = await harness.call(REVIEW, { params: { id: pkg.id }, body: { results } });
         s.reviews++;
         if (pkg.run) {
           const ids = owner.map((m) => m.id);
@@ -1240,13 +1201,12 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
   const writer = cfg.advisors.teachers[0];
   if (writer && !overBudget()) {
     const ste = steCheckerAt(cfg.steChecker);
-    let papers: { run: string; review: number }[] = [];
+    let papers: AnswerOf<typeof PAPERS_PENDING>["papers"] = [];
     try {
-      papers = ((await api("GET", "/v1/research/papers/pending")) as { papers: typeof papers })
-        .papers;
-    } catch (err) {
       // A harness from before goal 112 has no papers to write: nothing to say.
-      if (!String(err).includes("-> 404")) fail("the research papers to write", err);
+      papers = (await ifKnown(harness.call(PAPERS_PENDING)))?.papers ?? [];
+    } catch (err) {
+      fail("the research papers to write", err);
     }
     for (const pkg of papers) {
       const run = pkg.run;
@@ -1261,17 +1221,13 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
       };
       // With the campaign's own context settings, when it sets any (goal 070).
       const runtime = (await configFor(run)).teachers[0] ?? writer;
-      const path = `/v1/research/papers/${encodeURIComponent(run)}`;
       // The harness's checks of a draft; with its next experiments when the writer gives them, so
       // a missing kind or measure (goal 119) comes back within the call.
-      const checkDraft = async (markdown: string, experiments?: unknown[]) =>
-        (await api("POST", `${path}/check`, {
-          paper: markdown,
-          ...(experiments ? { experiments } : {}),
-        })) as {
-          ok: boolean;
-          problems: { line: number | null; problem: string }[];
-        };
+      const checkDraft = (markdown: string, experiments?: z.input<typeof PaperExperiment>[]) =>
+        harness.call(PAPER_CHECK, {
+          params: { run },
+          body: { paper: markdown, ...(experiments ? { experiments } : {}) },
+        });
       say(
         run,
         "status",
@@ -1314,19 +1270,17 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           continue;
         }
         const paper = r.output.paper;
-        const posted = (await api("POST", path, {
-          writer: runtime.name,
-          paper,
-          experiments: r.output.experiments,
-          ste: ste
-            ? steResultOf(await ste.check(paper), paper)
-            : { checked: false, why: NO_STE_CHECKER },
-        })) as {
-          accepted: boolean;
-          cited?: number;
-          experiments?: string[];
-          problems?: { line: number | null; problem: string }[];
-        };
+        const posted = await harness.call(PAPER, {
+          params: { run },
+          body: {
+            writer: runtime.name,
+            paper,
+            experiments: r.output.experiments,
+            ste: ste
+              ? steResultOf(await ste.check(paper), paper)
+              : { checked: false, why: NO_STE_CHECKER },
+          },
+        });
         if (posted.accepted) {
           s.papers = (s.papers ?? 0) + 1;
           say(

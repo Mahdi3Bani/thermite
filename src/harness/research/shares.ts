@@ -1,9 +1,10 @@
+import type { Certainty } from "../../core/api/harness/research.ts";
 import { EXPERIMENT_DETAILS } from "../../core/commands.ts";
 import type { ResearchContract } from "../../core/contract.ts";
 import { questionLabel } from "../../core/research-check.ts";
 import type { Ledger } from "../ledger.ts";
 import type { TaskYield } from "../queue.ts";
-import { type Certainty, cardsOf, rubricOf } from "./cards.ts";
+import { cardsOf, rubricOf } from "./cards.ts";
 import {
   questionEnded,
   questionSaturated,

@@ -4,8 +4,12 @@ import { join } from "node:path";
 import { PAST_SEARCH_TOOL } from "../agents/tools/names.ts";
 import { log } from "../common/env.ts";
 import { writeAtomic } from "../common/fs.ts";
+import { SEARCH_DEFAULT, SEARCH_MAX } from "../core/api/harness/research.ts";
 import { type KbItemWire, kbPlural, readKbItems, untoldKinds } from "../core/kb.ts";
 import type { BriefingItem } from "./ledger.ts";
+
+/** A search's most hits (its home: core/api/harness/research.ts), for the planner's tool. */
+export { SEARCH_MAX };
 
 /**
  * Past research in a run's research folder (goal 065). The supervisor syncs, from control's
@@ -127,9 +131,6 @@ export const PAST_IS_DATA =
 
 /** The most text one search hit carries; the item's file has all of it. */
 export const HIT_TEXT = 4000;
-/** Hits a search gives when it is not told how many, and the most it gives. */
-export const SEARCH_DEFAULT = 10;
-export const SEARCH_MAX = 50;
 
 /**
  * A search's words: each word of 2 or more characters, the first 8, in lower case. An item

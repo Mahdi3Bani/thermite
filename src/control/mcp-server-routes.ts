@@ -2,6 +2,7 @@ import type { Hono, MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { errorText } from "../common/errors.ts";
+import { MCP_SERVERS } from "../core/api/control/rigs.ts";
 import { MCP_AUTHS, type McpServer, type McpServers, namedBy } from "./mcp-servers.ts";
 import type { ControlStore } from "./store.ts";
 
@@ -179,7 +180,7 @@ export function mountMcpServerRoutes(
   // headers. Audited when the servers a rig gets change; a restart of control reads the last
   // entry back, so it writes none of its own.
   const handed = new Map<string, string>();
-  app.get("/v1/rigs/:rig/mcp-servers", o.rigAuth, async (c) => {
+  app.get(MCP_SERVERS.path, o.rigAuth, async (c) => {
     c.header("cache-control", "no-store");
     const rig = c.req.param("rig");
     const r = await servers.forRig(rig);

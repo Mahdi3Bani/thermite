@@ -1,14 +1,7 @@
-import { z } from "zod";
+import { LIVE } from "../core/api/control/rigs.ts";
 import { verifyJson } from "../core/commands.ts";
-import { LiveBatchWire, liveBody, readLiveEntries } from "../core/live.ts";
+import { liveBody, readLiveEntries } from "../core/live.ts";
 import type { ControlStore } from "./store.ts";
-
-const LiveIn = z.object({
-  batch: LiveBatchWire,
-  supervisor: z
-    .object({ log_id: z.string().min(1).max(64), entries: z.array(z.unknown()).max(500) })
-    .optional(),
-});
 
 /**
  * A rig's live lines, as its supervisor posts them: the harness's, signed with the rig's pinned
@@ -21,7 +14,7 @@ export function takeLive(
   rig: string,
   raw: unknown,
 ): [200 | 403 | 409, Record<string, unknown>] {
-  const body = LiveIn.parse(raw);
+  const body = LIVE.body.parse(raw);
   const b = body.batch;
   if (b.rig !== rig) return [403, { error: "rig mismatch" }];
   const pinned = store.rigKey(rig).pubkey;

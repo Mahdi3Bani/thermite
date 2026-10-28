@@ -1,5 +1,11 @@
+import type { z } from "zod";
+import { ApiError } from "../common/api/call.ts";
+import { controlClient } from "../common/api/control.ts";
+import { harnessClient } from "../common/api/harness.ts";
 import type { Bus } from "../common/bus.ts";
 import { log } from "../common/env.ts";
+import { ACK, CursorElsewhere, INGEST, PENDING_COMMANDS } from "../core/api/control/rigs.ts";
+import { COMMANDS, SNAPSHOT } from "../core/api/harness/supervisor.ts";
 import type { SignedCommand } from "../core/commands.ts";
 import {
   REPORT_MAX_BYTES,
@@ -7,6 +13,7 @@ import {
   reportFits,
   reportMessageId,
   reportSubject,
+  type SignedReport,
 } from "../core/link/report.ts";
 import { buildHeaders } from "../core/version.ts";
 
@@ -90,45 +97,36 @@ export function oneAtATime(): Turn {
 /** How many delivered commands' ids the supervisor remembers (RelayConfig.delivered). */
 const DELIVERED_KEPT = 1000;
 
-interface Reply {
-  status: number;
-  body: Record<string, unknown>;
+/** The events a report page holds when control has not asked for fewer. */
+const REPORT_PAGE = 1000;
+/** The fewest events a page is halved to when control refuses it as too large. */
+const REPORT_PAGE_MIN = 10;
+
+/** A call that failed, in the relay's words for its log: the route, the status and the answer. */
+function inWords(what: string, err: unknown): unknown {
+  return err instanceof ApiError && err.status !== undefined
+    ? new Error(`${what} -> ${err.status}: ${err.text.slice(0, 300)}`)
+    : err;
 }
 
-async function call(
-  f: typeof fetch,
-  url: string,
-  token: string,
-  init: RequestInit = {},
-): Promise<Reply> {
-  const res = await f(url, {
-    ...init,
-    headers: {
-      authorization: `Bearer ${token}`,
-      "content-type": "application/json",
-      ...(init.headers ?? {}),
-    },
+/** The relay's clients: its harness's API, and control's with the rig's token. */
+function clientsOf(cfg: RelayConfig) {
+  const harness = harnessClient({
+    url: cfg.harnessUrl,
+    token: cfg.harnessToken,
+    fetchImpl: cfg.fetchImpl,
   });
-  const text = await res.text();
-  let body: Record<string, unknown> = {};
-  try {
-    body = text ? (JSON.parse(text) as Record<string, unknown>) : {};
-  } catch {
-    body = { error: text.slice(0, 300) };
-  }
-  return { status: res.status, body };
+  const control =
+    cfg.controlUrl && cfg.controlToken
+      ? controlClient({
+          url: cfg.controlUrl,
+          token: cfg.controlToken,
+          rig: cfg.rig,
+          fetchImpl: cfg.fetchImpl,
+        })
+      : undefined;
+  return { harness, control };
 }
-
-/** A call to control carries the supervisor's build, so control can compare it with its own. */
-function toControl(init: RequestInit = {}): RequestInit {
-  return { ...init, headers: { ...buildHeaders(), ...(init.headers ?? {}) } };
-}
-
-const must = (r: Reply, what: string): Record<string, unknown> => {
-  if (r.status < 200 || r.status >= 300)
-    throw new Error(`${what} -> ${r.status}: ${JSON.stringify(r.body).slice(0, 300)}`);
-  return r.body;
-};
 
 /** A relay round whose reporting failed; its state still carries any progress made. */
 export class RelayError extends Error {
@@ -146,27 +144,18 @@ export class RelayError extends Error {
  * command's failure never holds up the others.
  */
 export async function relayOnce(cfg: RelayConfig, state: RelayState): Promise<RelayState> {
-  const f = cfg.fetchImpl ?? fetch;
+  const { harness, control } = clientsOf(cfg);
   let cursor = state.cursor;
   let ledgerId = state.ledgerId;
-  let pageLimit = state.pageLimit ?? 1000;
+  let pageLimit = state.pageLimit ?? REPORT_PAGE;
   let reportError: unknown;
+  const page = (from: number) =>
+    harness
+      .call(SNAPSHOT, { query: { cursor: from, limit: pageLimit } })
+      .catch((err: unknown) => Promise.reject(inWords("snapshot", err)));
   try {
     for (let pages = 0; pages < 10_000; pages++) {
-      let snap = must(
-        await call(
-          f,
-          `${cfg.harnessUrl}/v1/snapshot?cursor=${cursor}&limit=${pageLimit}`,
-          cfg.harnessToken,
-        ),
-        "snapshot",
-      ) as {
-        ledger_id: string;
-        cursor: number;
-        next: number;
-        events: unknown[];
-        generated_at: string;
-      } & Record<string, unknown>;
+      let snap = await page(cursor);
       if (ledgerId !== undefined && snap.ledger_id !== ledgerId && cursor !== 0) {
         // The harness ledger was reset or replaced: its events are numbered from 1 again.
         log("supervisor", "harness ledger changed; restarting the cursor", {
@@ -174,14 +163,7 @@ export async function relayOnce(cfg: RelayConfig, state: RelayState): Promise<Re
           to: snap.ledger_id,
         });
         cursor = 0;
-        snap = must(
-          await call(
-            f,
-            `${cfg.harnessUrl}/v1/snapshot?cursor=0&limit=${pageLimit}`,
-            cfg.harnessToken,
-          ),
-          "snapshot",
-        ) as typeof snap;
+        snap = await page(0);
       }
       ledgerId = snap.ledger_id;
       // A harness signing as another rig is a deployment mistake: say so, never report it on.
@@ -206,30 +188,29 @@ export async function relayOnce(cfg: RelayConfig, state: RelayState): Promise<Re
           headers: buildHeaders(),
         });
         if (ack.duplicate) log("supervisor", "the bus had this report already", { id });
-      } else if (cfg.controlUrl && cfg.controlToken) {
-        // Passed through untouched: the supervisor cannot sign for the harness.
-        const r = await call(
-          f,
-          `${cfg.controlUrl}/v1/rigs/${encodeURIComponent(cfg.rig)}/ingest`,
-          cfg.controlToken,
-          toControl({ method: "POST", body: JSON.stringify(snap) }),
-        );
-        if (r.status === 409 && typeof r.body.expected_cursor === "number") {
+      } else if (control) {
+        try {
+          // Passed through untouched: the supervisor cannot sign for the harness.
+          await control.call(INGEST, { body: snap as unknown as SignedReport });
+        } catch (err) {
+          if (!(err instanceof ApiError)) throw err;
           // Control has a different place in the stream (a gap, or a new ledger): go there.
-          if (r.body.expected_cursor === cursor) must(r, "ingest");
-          cursor = r.body.expected_cursor;
-          log("supervisor", "control asked for events from another cursor", {
-            cursor,
-            reason: r.body.error,
-          });
-          continue;
-        }
-        if (r.status === 413 && pageLimit > 10) {
-          pageLimit = Math.max(10, Math.floor(pageLimit / 2));
+          const elsewhere = CursorElsewhere.safeParse(err.answer);
+          if (err.code === "refused" && elsewhere.success) {
+            if (elsewhere.data.expected_cursor === cursor) throw inWords("ingest", err);
+            cursor = elsewhere.data.expected_cursor;
+            log("supervisor", "control asked for events from another cursor", {
+              cursor,
+              reason: err.words,
+            });
+            continue;
+          }
+          if (err.code !== "too_large" || pageLimit <= REPORT_PAGE_MIN)
+            throw inWords("ingest", err);
+          pageLimit = Math.max(REPORT_PAGE_MIN, Math.floor(pageLimit / 2));
           log("supervisor", "report page too large; halving it", { page: pageLimit });
           continue;
         }
-        must(r, "ingest");
       }
       cursor = snap.next;
       // Sent again from control's place on the bus: one page a round, until control has it.
@@ -284,25 +265,21 @@ export function healCursor(state: RelayState, answer: unknown): RelayState {
  * it; relayOnce runs it too unless told to skip it.
  */
 export async function relayCommandsOnce(cfg: RelayConfig): Promise<void> {
-  const f = cfg.fetchImpl ?? fetch;
-  if (!cfg.controlUrl || !cfg.controlToken) return;
+  const { control } = clientsOf(cfg);
+  if (!control) return;
   const held = cfg.held ?? new Map<string, SignedCommand>();
   const staging = cfg.staging ?? new Set<string>();
-  const list = (ids: Iterable<string>) => encodeURIComponent([...ids].join(","));
-  const have = held.size ? `?have=${list(held.keys())}&staging=${list(staging)}` : "";
-  const pending = must(
-    await call(
-      f,
-      `${cfg.controlUrl}/v1/rigs/${encodeURIComponent(cfg.rig)}/commands/pending${have}`,
-      cfg.controlToken,
-      toControl(),
-    ),
-    "pending commands",
-  ) as { commands: SignedCommand[]; held?: string[] };
+  const list = (ids: Iterable<string>) => [...ids].join(",");
+  const pending = await control
+    .call(PENDING_COMMANDS, {
+      query: held.size ? { have: list(held.keys()), staging: list(staging) } : {},
+    })
+    .catch((err: unknown) => Promise.reject(inWords("pending commands", err)));
   // What control still holds pending, oldest first; a control that names none sent all whole.
   const still = new Set(pending.held ?? []);
   for (const id of [...held.keys()]) if (!still.has(id)) held.delete(id);
-  for (const cmd of pending.commands) held.set(cmd.envelope.id, cmd);
+  // Each goes on to the harness as it came: the harness checks control's signature over all of it.
+  for (const cmd of pending.commands as SignedCommand[]) held.set(cmd.envelope.id, cmd);
   for (const id of [...staging]) if (!held.has(id)) staging.delete(id);
   for (const cmd of [...held.values()]) await deliverCommand({ ...cfg, held, staging }, cmd);
 }
@@ -321,11 +298,24 @@ export async function deliverCommand(cfg: RelayConfig, cmd: SignedCommand): Prom
 }
 
 async function deliverInTurn(cfg: RelayConfig, cmd: SignedCommand): Promise<boolean> {
-  const f = cfg.fetchImpl ?? fetch;
   const id = cmd.envelope.id;
   if (cfg.delivered?.has(id)) return true;
-  if (!cfg.controlUrl || !cfg.controlToken) return false;
-  const ackUrl = `${cfg.controlUrl}/v1/rigs/${encodeURIComponent(cfg.rig)}/commands/${id}/ack`;
+  const { harness, control } = clientsOf(cfg);
+  if (!control) return false;
+  /** Whether control took the outcome: or holds the command pending no more (a 404). */
+  const acked = async (body: z.input<typeof ACK.body>): Promise<boolean> => {
+    try {
+      await control.call(ACK, { params: { id }, body });
+      return true;
+    } catch (err) {
+      if (!(err instanceof ApiError) || err.status === undefined) throw err;
+      // The harness's report came first, or the command expired.
+      if (err.code === "not_found") return true;
+      const why = { id, status: err.status, error: err.words || null };
+      log("supervisor", "control did not take a command's outcome", why, "warn");
+      return false;
+    }
+  };
   try {
     const staged = cfg.stage ? await cfg.stage(cmd) : "ready";
     if (staged === "wait") {
@@ -333,54 +323,38 @@ async function deliverInTurn(cfg: RelayConfig, cmd: SignedCommand): Promise<bool
       return false;
     }
     cfg.staging?.delete(id);
-    let ack: Reply;
+    let took: boolean;
     if (staged !== "ready") {
       // The content never arrived: the harness would only refuse it, without the reason.
-      ack = await call(
-        f,
-        ackUrl,
-        cfg.controlToken,
-        toControl({
-          method: "POST",
-          body: JSON.stringify({ status: "failed", outcome: { error: staged.failed } }),
-        }),
-      );
+      took = await acked({ status: "failed", outcome: { error: staged.failed } });
       log("supervisor", "command not relayed", { id, error: staged.failed });
     } else {
-      const outcome = await call(f, `${cfg.harnessUrl}/v1/commands`, cfg.harnessToken, {
-        method: "POST",
-        body: JSON.stringify(cmd),
-      });
-      // Another request is applying it right now: acknowledge on a later round, from the replay.
-      if (outcome.body.status === "in_progress") return false;
-      const status =
-        outcome.status === 403
-          ? "rejected"
-          : outcome.status >= 300 || outcome.body.accepted === false
-            ? "failed"
-            : "delivered";
-      const reported =
-        outcome.status >= 300 && outcome.status !== 403
-          ? { http: outcome.status, error: outcome.body.error ?? null }
-          : outcome.body;
-      ack = await call(
-        f,
-        ackUrl,
-        cfg.controlToken,
-        toControl({ method: "POST", body: JSON.stringify({ status, outcome: reported }) }),
-      );
+      let status: "delivered" | "rejected" | "failed";
+      let reported: unknown;
+      try {
+        const outcome = await harness.call(COMMANDS, { body: cmd });
+        // Another request is applying it right now: acknowledge on a later round, from the replay.
+        if (outcome.status === "in_progress") return false;
+        status = outcome.accepted === false ? "failed" : "delivered";
+        reported = outcome;
+      } catch (err) {
+        if (!(err instanceof ApiError) || err.status === undefined) throw err;
+        // 403: the harness refused control's signature, and its outcome says why.
+        status = err.code === "forbidden" ? "rejected" : "failed";
+        reported =
+          status === "rejected"
+            ? (err.answer ?? { error: err.words })
+            : { http: err.status, error: err.words || null };
+      }
+      took = await acked({ status, outcome: reported });
       log("supervisor", "relayed command", { id, kind: cmd.envelope.kind, status });
       cfg.onDelivered?.(cmd.envelope.kind, status === "delivered");
     }
-    // A 404: control holds it pending no more (the harness's report came first, or it expired).
-    if (ack.status === 404 || (ack.status >= 200 && ack.status < 300)) {
+    if (took) {
       remember(cfg.delivered, id);
       cfg.held?.delete(id);
-      return true;
     }
-    const why = { id, status: ack.status, error: ack.body.error ?? null };
-    log("supervisor", "control did not take a command's outcome", why, "warn");
-    return false;
+    return took;
   } catch (err) {
     log("supervisor", "command relay error", { id, error: String(err) }, "error");
     return false;

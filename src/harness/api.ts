@@ -2,31 +2,83 @@ import { resolve } from "node:path";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { log } from "../common/env.ts";
 import { answerOf } from "../common/errors.ts";
 import { sameSecret } from "../common/secrets.ts";
 import { throughProxy } from "../core/agents.ts";
+import {
+  ADVISOR_MESSAGES,
+  AUDITS,
+  AUDITS_PENDING,
+  BRIEF,
+  CARDS,
+  CARDS_PENDING,
+  CODE_DIFF,
+  CODE_FILE,
+  CODE_FILES,
+  DIRECTIVES,
+  DiffQuery,
+  EVIDENCE,
+  EvidenceQuery,
+  JOURNAL,
+  KNOWLEDGE,
+  KnowledgeQuery,
+  LinesQuery,
+  MODEL_CALLS,
+  PAPER,
+  PAPER_CHECK,
+  PAPERS_PENDING,
+  PageQuery,
+  QUEUE,
+  RESEARCH_FILE,
+  RESEARCH_SEARCH,
+  RESEARCH_SOURCE,
+  REVIEW,
+  REVIEW_KINDS,
+  REVIEW_TRIES,
+  REVIEWS_PENDING,
+  RUNS,
+  researchList,
+  SearchQuery,
+  SourceQuery,
+} from "../core/api/harness/advisors.ts";
+import { ATTEMPT, ATTEMPTS } from "../core/api/harness/proposer.ts";
+import { RESEARCH_KINDS } from "../core/api/harness/research.ts";
+import {
+  ADVISORS,
+  COMMANDS,
+  EXPORTS_DONE,
+  HEALTH,
+  KB,
+  LIVE,
+  LIVE_PAGE_DEFAULT,
+  MCP_EVENTS,
+  MCP_SERVERS_GET,
+  MCP_SERVERS_PUT,
+  MODEL_ROUTE_GET,
+  MODEL_ROUTE_PUT,
+  SETTINGS,
+  SNAPSHOT,
+  SNAPSHOT_PAGE_DEFAULT,
+  SNAPSHOT_PAGE_MAX,
+} from "../core/api/harness/supervisor.ts";
+import type { Route } from "../core/api/route.ts";
 import { laneLimits } from "../core/contract.ts";
-import { McpConnection, McpUnavailable } from "../core/mcp.ts";
-import { AdvisorAgent, CallUsage, UsageHarness } from "../core/usage.ts";
-import { ControlRoute } from "./agents/model-source.ts";
+import { LIVE_BATCH_MAX } from "../core/live.ts";
+import { CallUsage } from "../core/usage.ts";
 import { Registry } from "./agents/registry.ts";
 import { USAGE_BATCH } from "./agents/usage-meter.ts";
 import { laneCacheEnv } from "./agents/workspace.ts";
 import { refusalWords } from "./api/refusal.ts";
 import { type Role, type Runner, RunRequest } from "./broker/runner.ts";
 import { compactionOf, KEPT_MAX } from "./compactions.ts";
-import { SEARCH_MAX } from "./knowledge.ts";
 import { LedgerError } from "./ledger.ts";
 import type { McpCaller } from "./mcp-gateway.ts";
 import { forwardToProvider } from "./model-forward.ts";
-import { CardSubmission } from "./research/cards.ts";
-import { PAPER_MAX, PaperExperiment, PaperSubmission } from "./research/paper.ts";
 import type { Research } from "./research/research.ts";
-import { ResearchVerdicts } from "./research/review.ts";
-import { KIND_PATHS, PAGE_MAX, RESEARCH_KINDS, SOURCE_CHARS_MAX } from "./run-research.ts";
-import { AdvisorQueueRequest, type HarnessService, SubmitRequest } from "./service.ts";
+import type { HarnessService } from "./service.ts";
 
 /**
  * Harness HTTP API. Only the rig's own supervisor reaches it over the network; proposers
@@ -98,6 +150,9 @@ function trialToken(header: string | undefined): string | undefined {
 
 const Strings = z.array(z.string().max(500)).max(50).default([]);
 
+/** A route's body limit (core/api/): the most bytes it takes. */
+const limitOf = (route: Route & { maxBytes: number }) => bodyLimit({ maxSize: route.maxBytes });
+
 export function createHarnessApi(
   service: HarnessService,
   tokens: ApiTokens,
@@ -119,8 +174,10 @@ export function createHarnessApi(
     }
   };
 
-  // A request the schema refused says which field and why (goal 143), from the body it sent.
+  // A request the schema refused says which field and why (goal 143), from the body it sent. A
+  // body past its route's limit keeps its own answer, 413.
   app.onError(async (err, c) => {
+    if (err instanceof HTTPException) return err.getResponse();
     const status = statusFor(err);
     if (!(err instanceof z.ZodError)) return c.json({ error: err.message }, status);
     const body = await c.req.json().catch(() => undefined);
@@ -129,7 +186,7 @@ export function createHarnessApi(
     return c.json({ error: `invalid request: ${why}` }, status);
   });
 
-  app.get("/v1/health", (c) => c.json({ ok: true, rig: service.rig }));
+  app.get(HEALTH.path, (c) => c.json({ ok: true, rig: service.rig }));
 
   // The model proxy: OpenCode and the Codex CLI reach the rig's provider through here, so the
   // provider's key (or a ChatGPT sign-in's access token) never reaches the lane. It takes a
@@ -176,47 +233,33 @@ export function createHarnessApi(
   });
 
   // The rig's settings (Edit rig), for the supervisor's own parts: its advisors.
-  app.get("/v1/settings", supervisor, (c) => c.json(service.settings.get()));
+  app.get(SETTINGS.path, supervisor, (c) => c.json(service.settings.get()));
 
   // The agents' model route, as control set it: the supervisor hands it over (key included) and
   // reads back which route is in use (never the key).
-  app.get("/v1/model-route", supervisor, (c) =>
+  app.get(MODEL_ROUTE_GET.path, supervisor, (c) =>
     service.models
       ? c.json({ ...service.models.info(), planner_revision: service.models.plannerRevision() })
       : c.json({ error: "no agents on this rig" }, 404),
   );
-  app.put("/v1/model-route", supervisor, bodyLimit({ maxSize: 16 * 1024 }), async (c) => {
+  app.put(MODEL_ROUTE_PUT.path, supervisor, limitOf(MODEL_ROUTE_PUT), async (c) => {
     if (!service.models) return c.json({ error: "no agents on this rig" }, 404);
-    const body = z
-      .object({ route: ControlRoute.nullable(), planner: ControlRoute.nullable().optional() })
-      .parse(await c.req.json());
+    const body = MODEL_ROUTE_PUT.body.parse(await c.req.json());
     return c.json(service.setModelRoute(body.route, "supervisor", body.planner));
   });
 
   // The MCP servers control gave the rig (goal 068), as the supervisor hands them over: their
   // sign-in stays in this process's memory, and only their revisions are read back.
-  app.get("/v1/mcp-servers", supervisor, (c) => c.json(service.mcp.info()));
-  app.put("/v1/mcp-servers", supervisor, bodyLimit({ maxSize: 512 * 1024 }), async (c) => {
-    const body = z
-      .object({
-        servers: z.array(McpConnection).max(50),
-        unavailable: z.array(McpUnavailable).max(50).default([]),
-      })
-      .parse(await c.req.json());
+  app.get(MCP_SERVERS_GET.path, supervisor, (c) => c.json(service.mcp.info()));
+  app.put(MCP_SERVERS_PUT.path, supervisor, limitOf(MCP_SERVERS_PUT), async (c) => {
+    const body = MCP_SERVERS_PUT.body.parse(await c.req.json());
     service.mcp.set(body.servers, body.unavailable);
     return c.json(service.mcp.info());
   });
   // The advisors' calls go through the supervisor: it says here when a server failed for them,
   // or works again, and the run's history records it as the gateway records its own.
-  app.post("/v1/mcp-events", supervisor, async (c) => {
-    const b = z
-      .strictObject({
-        run: z.string().min(1).max(200),
-        server: z.string().min(1).max(64),
-        ok: z.boolean(),
-        error: z.string().max(500).optional(),
-      })
-      .parse(await c.req.json());
+  app.post(MCP_EVENTS.path, supervisor, async (c) => {
+    const b = MCP_EVENTS.body.parse(await c.req.json());
     if (!service.ledger.runs.get(b.run)) return c.json({ error: `no run ${b.run}` }, 404);
     service.mcp.report(
       { run: b.run, kind: "advisors", source: "supervisor" },
@@ -265,32 +308,33 @@ export function createHarnessApi(
     return transport.handleRequest(c.req.raw);
   });
 
-  app.get("/v1/snapshot", supervisor, (c) => {
+  app.get(SNAPSHOT.path, supervisor, (c) => {
     const cursor = Number(c.req.query("cursor") ?? "0");
-    const limit = Math.min(Number(c.req.query("limit") ?? "500"), 5000);
+    const limit = Math.min(
+      Number(c.req.query("limit") ?? SNAPSHOT_PAGE_DEFAULT),
+      SNAPSHOT_PAGE_MAX,
+    );
     if (!Number.isInteger(cursor) || cursor < 0 || !Number.isInteger(limit) || limit < 1) {
       return c.json({ error: "bad cursor or limit" }, 400);
     }
     return c.json(service.snapshot(cursor, limit) as object);
   });
 
-  app.post("/v1/commands", supervisor, bodyLimit({ maxSize: 4 * 1024 * 1024 }), async (c) => {
+  app.post(COMMANDS.path, supervisor, limitOf(COMMANDS), async (c) => {
     const outcome = await service.applyCommand(await c.req.json());
     if (outcome.status === "rejected") return c.json(outcome, 403);
     return c.json(outcome);
   });
 
-  app.post("/v1/directives", supervisor, async (c) => {
-    const body = z
-      .object({ run: z.string().min(1), directives: z.unknown() })
-      .parse(await c.req.json());
+  app.post(DIRECTIVES.path, supervisor, async (c) => {
+    const body = DIRECTIVES.body.parse(await c.req.json());
     // Rules naming a direction the run doesn't have are left out, each with why (goal 066).
     return c.json(service.setAdvisorRules(body.run, body.directives, "supervisor"));
   });
 
   // The supervisor's deterministic inputs for its teachers, auditor and review panel, and
   // where their outputs go. None of these can set a verdict, a contract or a champion.
-  app.get("/v1/runs", supervisor, (c) =>
+  app.get(RUNS.path, supervisor, (c) =>
     c.json({
       runs: service.ledger.runs.list().map((i) => ({
         id: i.id,
@@ -313,7 +357,7 @@ export function createHarnessApi(
     }),
   );
 
-  app.get("/v1/brief", supervisor, (c) => {
+  app.get(BRIEF.path, supervisor, (c) => {
     const run = z.string().min(1).parse(c.req.query("run"));
     return c.json(service.brief(run) as object);
   });
@@ -325,34 +369,26 @@ export function createHarnessApi(
   const runOf = (c: { req: { query(k: string): string | undefined } }) =>
     z.string().min(1).max(100).parse(c.req.query("run"));
   const numberOf = (v: string | undefined) => (v === undefined || v === "" ? undefined : Number(v));
-  app.get("/v1/code/files", supervisor, async (c) =>
+  app.get(CODE_FILES.path, supervisor, async (c) =>
     c.json(await service.codeFiles(runOf(c), c.req.query("path") ?? "")),
   );
-  app.get("/v1/code/file", supervisor, async (c) => {
-    const q = z
-      .object({
-        path: z.string().min(1).max(500),
-        offset: z.number().int().min(1).optional(),
-        limit: z.number().int().min(1).max(100_000).optional(),
-      })
-      .parse({
-        path: c.req.query("path"),
-        offset: numberOf(c.req.query("offset")),
-        limit: numberOf(c.req.query("limit")),
-      });
+  app.get(CODE_FILE.path, supervisor, async (c) => {
+    const q = LinesQuery.parse({
+      path: c.req.query("path"),
+      offset: numberOf(c.req.query("offset")),
+      limit: numberOf(c.req.query("limit")),
+    });
     return c.json(await service.codeFile(runOf(c), q.path, q.offset, q.limit));
   });
-  app.get("/v1/code/diff", supervisor, async (c) => {
-    const q = z
-      .object({
-        attempt: z.string().min(1).max(64),
-        offset: z.number().int().min(0).optional(),
-      })
-      .parse({ attempt: c.req.query("attempt"), offset: numberOf(c.req.query("offset")) });
+  app.get(CODE_DIFF.path, supervisor, async (c) => {
+    const q = DiffQuery.parse({
+      attempt: c.req.query("attempt"),
+      offset: numberOf(c.req.query("offset")),
+    });
     return c.json(await service.attemptDiff(runOf(c), q.attempt, q.offset));
   });
-  app.get("/v1/evidence", supervisor, (c) => {
-    const attempt = z.string().min(1).max(64).optional().parse(c.req.query("attempt"));
+  app.get(EVIDENCE.path, supervisor, (c) => {
+    const attempt = EvidenceQuery.parse(c.req.query("attempt"));
     return c.json(service.evidence(runOf(c), attempt) as object);
   });
 
@@ -360,15 +396,9 @@ export function createHarnessApi(
   // time, one source's archived text in parts, one file of its research folder by lines, and a
   // search of all of it by words. Every answer is cut to a size and marked as data. A worker's
   // token reads none of it: workers read the research folder itself.
-  const pageQuery = z.object({
-    offset: z.number().int().min(0).optional(),
-    limit: z.number().int().min(1).max(PAGE_MAX).optional(),
-    question: z.number().int().min(0).max(1000).optional(),
-    state: z.string().min(1).max(20).optional(),
-  });
   for (const kind of RESEARCH_KINDS)
-    app.get(`/v1/research/${KIND_PATHS[kind]}`, supervisor, (c) => {
-      const q = pageQuery.parse({
+    app.get(researchList(kind).path, supervisor, (c) => {
+      const q = PageQuery.parse({
         offset: numberOf(c.req.query("offset")),
         limit: numberOf(c.req.query("limit")),
         question: numberOf(c.req.query("question")),
@@ -376,46 +406,28 @@ export function createHarnessApi(
       });
       return c.json(service.runResearch.list(runOf(c), kind, q));
     });
-  app.get("/v1/research/source", supervisor, (c) => {
-    const q = z
-      .object({
-        source: z.string().min(1).max(100),
-        offset: z.number().int().min(0).optional(),
-        limit: z.number().int().min(1).max(SOURCE_CHARS_MAX).optional(),
-      })
-      .parse({
-        source: c.req.query("source"),
-        offset: numberOf(c.req.query("offset")),
-        limit: numberOf(c.req.query("limit")),
-      });
+  app.get(RESEARCH_SOURCE.path, supervisor, (c) => {
+    const q = SourceQuery.parse({
+      source: c.req.query("source"),
+      offset: numberOf(c.req.query("offset")),
+      limit: numberOf(c.req.query("limit")),
+    });
     return c.json(service.runResearch.source(runOf(c), q.source, q.offset, q.limit));
   });
-  app.get("/v1/research/file", supervisor, (c) => {
-    const q = z
-      .object({
-        path: z.string().min(1).max(500),
-        offset: z.number().int().min(1).optional(),
-        limit: z.number().int().min(1).max(100_000).optional(),
-      })
-      .parse({
-        path: c.req.query("path"),
-        offset: numberOf(c.req.query("offset")),
-        limit: numberOf(c.req.query("limit")),
-      });
+  app.get(RESEARCH_FILE.path, supervisor, (c) => {
+    const q = LinesQuery.parse({
+      path: c.req.query("path"),
+      offset: numberOf(c.req.query("offset")),
+      limit: numberOf(c.req.query("limit")),
+    });
     return c.json(service.runResearch.file(runOf(c), q.path, q.offset, q.limit));
   });
-  app.get("/v1/research/search", supervisor, (c) => {
-    const q = z
-      .object({
-        q: z.string().max(300).default(""),
-        kinds: z.string().max(200).optional(),
-        limit: z.number().int().min(1).max(SEARCH_MAX).optional(),
-      })
-      .parse({
-        q: c.req.query("q") ?? undefined,
-        kinds: c.req.query("kinds") || undefined,
-        limit: numberOf(c.req.query("limit")),
-      });
+  app.get(RESEARCH_SEARCH.path, supervisor, (c) => {
+    const q = SearchQuery.parse({
+      q: c.req.query("q") ?? undefined,
+      kinds: c.req.query("kinds") || undefined,
+      limit: numberOf(c.req.query("limit")),
+    });
     return c.json(
       service.runResearch.search(runOf(c), q.q, {
         kinds: q.kinds?.split(",").map((k) => k.trim()),
@@ -424,20 +436,12 @@ export function createHarnessApi(
     );
   });
 
-  app.get("/v1/audits/pending", supervisor, async (c) =>
+  app.get(AUDITS_PENDING.path, supervisor, async (c) =>
     c.json({ audits: await service.auditPackages() }),
   );
 
-  app.post("/v1/audits", supervisor, bodyLimit({ maxSize: 256 * 1024 }), async (c) => {
-    const body = z
-      .strictObject({
-        attempt: z.string().min(1).max(64),
-        decision: z.enum(["clear", "block", "needs_owner"]),
-        reasons: z.string().min(1).max(8000),
-        citations: z.array(z.string().min(1).max(500)).max(20).default([]),
-        auditor: z.string().min(1).max(100),
-      })
-      .parse(await c.req.json());
+  app.post(AUDITS.path, supervisor, limitOf(AUDITS), async (c) => {
+    const body = AUDITS.body.parse(await c.req.json());
     return c.json(
       (await service.decideAudit({ ...body, auditor: `supervisor:${body.auditor}` })) as object,
     );
@@ -445,11 +449,13 @@ export function createHarnessApi(
 
   // Goal reviews; research reviews (goal 112) only when the caller asks for them with
   // ?kinds=goal,research, so a supervisor from before them never gets a package it cannot answer.
-  app.get("/v1/reviews/pending", supervisor, (c) => {
+  app.get(REVIEWS_PENDING.path, supervisor, (c) => {
     const asked = (c.req.query("kinds") ?? "goal")
       .split(",")
       .map((k) => k.trim())
-      .filter((k): k is "goal" | "research" => k === "goal" || k === "research");
+      .filter((k): k is (typeof REVIEW_KINDS)[number] =>
+        (REVIEW_KINDS as readonly string[]).includes(k),
+      );
     return c.json({ reviews: service.reviewPackages(asked) });
   });
 
@@ -457,184 +463,97 @@ export function createHarnessApi(
   // and hypothesis, from each reviewer.
   // A try of a review that the supervisor could not post (goal 116): kept with the review, so the
   // run's Reviews tab and get_run say each failed try and why. Nothing else changes.
-  app.post("/v1/reviews/:id/tries", supervisor, bodyLimit({ maxSize: 16 * 1024 }), async (c) => {
+  app.post(REVIEW_TRIES.path, supervisor, limitOf(REVIEW_TRIES), async (c) => {
     const id = z.coerce.number().int().positive().parse(c.req.param("id"));
-    const body = z
-      .strictObject({ try: z.number().int().min(1).max(1000), error: z.string().min(1).max(4000) })
-      .parse(await c.req.json());
+    const body = REVIEW_TRIES.body.parse(await c.req.json());
     return c.json(service.recordReviewTry(id, body.try, body.error, "supervisor"));
   });
-  app.post("/v1/reviews/:id", supervisor, bodyLimit({ maxSize: 4 * 1024 * 1024 }), async (c) => {
+  app.post(REVIEW.path, supervisor, limitOf(REVIEW), async (c) => {
     const id = z.coerce.number().int().positive().parse(c.req.param("id"));
-    const body = z
-      .strictObject({
-        results: z
-          .array(
-            z.strictObject({
-              reviewer: z.string().min(1).max(100),
-              pass: z.boolean(),
-              reasons: z.string().min(1).max(8000),
-              research: ResearchVerdicts.optional(),
-            }),
-          )
-          .min(1)
-          .max(8),
-      })
-      .parse(await c.req.json());
+    const body = REVIEW.body.parse(await c.req.json());
     return c.json({ review: id, ...service.recordReviewPanel(id, body.results, "supervisor") });
   });
 
   // Answer cards (goal 117): for each running research run, the questions whose evidence changed
   // since their card, each with its card, its new verified claims, its rubric and the problems of
   // its last refused card, as the synthesizer's request. Only a supervisor from goal 117 asks.
-  app.get("/v1/research/cards/pending", supervisor, (c) =>
-    c.json({ runs: service.cardPackages() }),
-  );
+  app.get(CARDS_PENDING.path, supervisor, (c) => c.json({ runs: service.cardPackages() }));
   // The synthesizer's cards for a run: each checked by code, then kept as its question's next
   // version or refused with its problems.
-  app.post(
-    "/v1/research/cards/:run",
-    supervisor,
-    bodyLimit({ maxSize: 2 * 1024 * 1024 }),
-    async (c) =>
-      c.json(
-        service.submitCards(
-          c.req.param("run"),
-          CardSubmission.parse(await c.req.json()),
-          "supervisor",
-        ),
-      ),
+  app.post(CARDS.path, supervisor, limitOf(CARDS), async (c) =>
+    c.json(
+      service.submitCards(c.req.param("run"), CARDS.body.parse(await c.req.json()), "supervisor"),
+    ),
   );
 
   // The research runs that wait for their paper (goal 112), each as the final writer's package:
   // the review panel's checked answers and verdicts, the brief, the corpus figures and the rules
   // the paper is checked against. Only a supervisor from goal 112 asks for it.
-  app.get("/v1/research/papers/pending", supervisor, (c) =>
-    c.json({ papers: service.paperPackages() }),
-  );
+  app.get(PAPERS_PENDING.path, supervisor, (c) => c.json({ papers: service.paperPackages() }));
   // A draft checked by the harness's code, for the final writer's check_paper tool: each problem
   // with its line. Nothing is recorded.
-  app.post(
-    "/v1/research/papers/:run/check",
-    supervisor,
-    bodyLimit({ maxSize: 1024 * 1024 }),
-    async (c) => {
-      const body = z
-        .strictObject({
-          paper: z.string().min(1).max(PAPER_MAX),
-          // The next experiments beside it, when the writer has them (goal 119): checked too.
-          experiments: z.array(PaperExperiment).max(50).optional(),
-        })
-        .parse(await c.req.json());
-      return c.json(service.papers.check(c.req.param("run"), body.paper, body.experiments));
-    },
-  );
+  app.post(PAPER_CHECK.path, supervisor, limitOf(PAPER_CHECK), async (c) => {
+    const body = PAPER_CHECK.body.parse(await c.req.json());
+    return c.json(service.papers.check(c.req.param("run"), body.paper, body.experiments));
+  });
   // The final writer's paper, with the STE checker's result the supervisor ran on its text:
   // accepted, or refused with its problems (goal 112).
-  app.post(
-    "/v1/research/papers/:run",
-    supervisor,
-    bodyLimit({ maxSize: 2 * 1024 * 1024 }),
-    async (c) =>
-      c.json(
-        service.submitPaper(
-          c.req.param("run"),
-          PaperSubmission.parse(await c.req.json()),
-          "supervisor",
-        ) as object,
-      ),
+  app.post(PAPER.path, supervisor, limitOf(PAPER), async (c) =>
+    c.json(
+      service.submitPaper(
+        c.req.param("run"),
+        PAPER.body.parse(await c.req.json()),
+        "supervisor",
+      ) as object,
+    ),
   );
 
   // The supervisor says which advisors it has (goal 079): whether an auditor decides this rig's
   // audits, its review panel's size, and whether a final writer writes research runs' papers
   // (goal 112; left out by a supervisor from before it: none). Without an auditor, the audits
   // held go on by the run's rules.
-  app.put("/v1/advisors", supervisor, bodyLimit({ maxSize: 16 * 1024 }), async (c) => {
-    const body = z
-      .strictObject({
-        auditor: z.boolean(),
-        review_panel: z.number().int().min(0).max(100),
-        writer: z.boolean().optional(),
-      })
-      .parse(await c.req.json());
+  app.put(ADVISORS.path, supervisor, limitOf(ADVISORS), async (c) => {
+    const body = ADVISORS.body.parse(await c.req.json());
     return c.json({ released: await service.setAdvisors(body, "supervisor") });
   });
 
   // The advisors' receipts and answers for the owner's messages: which messages an advisor role
   // was given (in its brief or package) and what it answered. Each message must be in the run and
   // addressed to that role.
-  app.post("/v1/advisor-messages", supervisor, bodyLimit({ maxSize: 256 * 1024 }), async (c) => {
-    const body = z
-      .strictObject({
-        run: z.string().min(1).max(100),
-        role: z.enum(["teachers", "auditor", "review_panel"]),
-        read: z.array(z.number().int().positive()).max(100).default([]),
-        answers: z
-          .array(
-            z.strictObject({
-              message: z.number().int().positive(),
-              text: z.string().min(1).max(2000),
-              advisor: z.string().min(1).max(100).optional(),
-            }),
-          )
-          .max(100)
-          .default([]),
-      })
-      .parse(await c.req.json());
-    return c.json(service.advisorMessages(body));
-  });
+  app.post(ADVISOR_MESSAGES.path, supervisor, limitOf(ADVISOR_MESSAGES), async (c) =>
+    c.json(service.advisorMessages(ADVISOR_MESSAGES.body.parse(await c.req.json()))),
+  );
 
   // The advisors' additions and moves for a run's experiment queue, each recorded with the
   // advisor role as who made it. Advisors add and reorder; they don't drop or give out work.
-  app.post("/v1/queue", supervisor, bodyLimit({ maxSize: 256 * 1024 }), async (c) =>
-    c.json(service.advisorQueue(AdvisorQueueRequest.parse(await c.req.json()))),
+  app.post(QUEUE.path, supervisor, limitOf(QUEUE), async (c) =>
+    c.json(service.advisorQueue(QUEUE.body.parse(await c.req.json()))),
   );
 
   // The advisors' field notes, posted after their review, audit or verdict: each recorded as
   // written by `<role>:<name>`. Each note is checked on its own; a refused one is said.
-  app.post("/v1/journal", supervisor, bodyLimit({ maxSize: 2 * 1024 * 1024 }), async (c) => {
-    const body = z
-      .strictObject({
-        run: z.string().min(1).max(100),
-        role: z.enum(["teachers", "auditor", "review_panel"]),
-        by: z.string().trim().min(1).max(100),
-        notes: z.array(z.unknown()),
-      })
-      .parse(await c.req.json());
-    return c.json(service.advisorNotes(body));
-  });
+  app.post(JOURNAL.path, supervisor, limitOf(JOURNAL), async (c) =>
+    c.json(service.advisorNotes(JOURNAL.body.parse(await c.req.json()))),
+  );
 
   // Past research for a run's folder, from control's knowledge base (the supervisor syncs it):
   // each item a file under the run's knowledge/. `folders` (the folders the run's campaign may
   // read now) removes a folder whose grant was revoked.
-  app.post("/v1/kb", supervisor, bodyLimit({ maxSize: 32 * 1024 * 1024 }), async (c) => {
-    const body = z
-      .strictObject({
-        run: z.string().min(1).max(100),
-        items: z.array(z.unknown()),
-        folders: z.array(z.string().min(1).max(200)).optional(),
-      })
-      .parse(await c.req.json());
+  app.post(KB.path, supervisor, limitOf(KB), async (c) => {
+    const body = KB.body.parse(await c.req.json());
     return c.json(service.writeKnowledge(body.run, body.items, body.folders));
   });
 
   // A search of a run's past research for its advisors, read only (the supervisor gives it to
   // them as a tool): the items of its knowledge/ with every word given, newest first, marked as
   // data. Nothing here writes.
-  app.get("/v1/knowledge", supervisor, (c) => {
-    const q = z
-      .object({
-        run: z.string().min(1).max(100),
-        q: z.string().max(300).default(""),
-        kinds: z.string().max(200).optional(),
-        limit: z.coerce.number().int().min(1).max(SEARCH_MAX).optional(),
-      })
-      .parse({
-        run: c.req.query("run"),
-        q: c.req.query("q") ?? undefined,
-        kinds: c.req.query("kinds") ?? undefined,
-        limit: c.req.query("limit") ?? undefined,
-      });
+  app.get(KNOWLEDGE.path, supervisor, (c) => {
+    const q = KnowledgeQuery.parse({
+      run: c.req.query("run"),
+      q: c.req.query("q") ?? undefined,
+      kinds: c.req.query("kinds") ?? undefined,
+      limit: c.req.query("limit") ?? undefined,
+    });
     if (!service.ledger.runs.get(q.run)) return c.json({ error: `no run ${q.run}` }, 404);
     return c.json(
       service.knowledge.search(q.run, q.q, {
@@ -645,9 +564,9 @@ export function createHarnessApi(
   });
 
   // The live log, signed, for the supervisor to relay to control.
-  app.get("/v1/live", supervisor, (c) => {
+  app.get(LIVE.path, supervisor, (c) => {
     const after = Number(c.req.query("after") ?? "0");
-    const limit = Math.min(Number(c.req.query("limit") ?? "500"), 2000);
+    const limit = Math.min(Number(c.req.query("limit") ?? LIVE_PAGE_DEFAULT), LIVE_BATCH_MAX);
     if (!Number.isInteger(after) || after < 0 || !Number.isInteger(limit) || limit < 1) {
       return c.json({ error: "bad after or limit" }, 400);
     }
@@ -791,29 +710,16 @@ export function createHarnessApi(
 
   // The advisors' model usage (goal 075): one advisor's calls in a run, as the supervisor's code
   // measured them. Only the advisors' own kinds; the workers' and the planner's are the harness's.
-  app.post("/v1/model-calls", supervisor, bodyLimit({ maxSize: 1024 * 1024 }), async (c) => {
-    const b = z
-      .strictObject({
-        run: z.string().min(1).max(100),
-        round: z.string().min(1).max(200).nullable(),
-        agent: AdvisorAgent,
-        harness: UsageHarness,
-        provider: z.string().min(1).max(100).nullable(),
-        model: z.string().min(1).max(200),
-        calls: z.array(CallUsage).min(1).max(500),
-      })
-      .parse(await c.req.json());
-    const { run, calls, ...ctx } = b;
+  app.post(MODEL_CALLS.path, supervisor, limitOf(MODEL_CALLS), async (c) => {
+    const { run, calls, ...ctx } = MODEL_CALLS.body.parse(await c.req.json());
     return c.json(
       { recorded: service.usage.fromSupervisor(run, { trial: null, ...ctx }, calls) },
       201,
     );
   });
 
-  app.post("/v1/exports/done", supervisor, bodyLimit({ maxSize: 256 * 1024 }), async (c) => {
-    const body = z
-      .object({ names: z.array(z.string().max(80)).max(5000) })
-      .parse(await c.req.json());
+  app.post(EXPORTS_DONE.path, supervisor, limitOf(EXPORTS_DONE), async (c) => {
+    const body = EXPORTS_DONE.body.parse(await c.req.json());
     return c.json({ removed: service.removeExports(body.names) });
   });
 
@@ -829,20 +735,22 @@ export function createHarnessApi(
 
   // Workers submit with their trial token (the trial decides run, lane and parent); the
   // proposer token is for the CLI and scripted proposers in development.
-  app.post("/v1/attempts", bodyLimit({ maxSize: 32 * 1024 * 1024 }), async (c) => {
+  app.post(ATTEMPTS.path, limitOf(ATTEMPTS), async (c) => {
     if (trialToken(c.req.header("authorization"))) {
       const { token } = trialOf(c.req.header("authorization"));
-      const body = SubmitRequest.pick({
-        patch_base64: true,
-        hypothesis: true,
-        claim: true,
-        known_flaws: true,
-      }).parse(await c.req.json());
+      const body = ATTEMPTS.body
+        .pick({
+          patch_base64: true,
+          hypothesis: true,
+          claim: true,
+          known_flaws: true,
+        })
+        .parse(await c.req.json());
       return c.json(await service.submitForTrial(token, body), 201);
     }
     if (!allows(tokens, ["proposer"], c.req.header("authorization")))
       throw new Unauthorized("unauthorized");
-    const req = SubmitRequest.parse(await c.req.json());
+    const req = ATTEMPTS.body.parse(await c.req.json());
     return c.json(await service.submitAttempt(req, "proposer"), 201);
   });
 
@@ -973,7 +881,7 @@ export function createHarnessApi(
     }
   });
 
-  app.get("/v1/attempts/:id", async (c) => {
+  app.get(ATTEMPT.path, async (c) => {
     const id = c.req.param("id");
     if (trialToken(c.req.header("authorization"))) {
       // A worker reads any attempt of its own campaign on this rig: its lane's, another lane's

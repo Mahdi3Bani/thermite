@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
-import { z } from "zod";
+import type {
+  PaperExperiment,
+  PaperSubmission,
+  SteResult,
+} from "../../core/api/harness/research.ts";
 import type { ResearchContract } from "../../core/contract.ts";
 import { newExperimentId } from "../../core/ids.ts";
 import {
@@ -69,9 +73,6 @@ type Row = Record<string, unknown>;
 /** The parts code appends to an accepted paper: the writer writes none of them. */
 const APPENDED = ["references", "bibliography", "appendix", "review panel"];
 
-/** The most characters of a paper as the writer writes it (code appends the references). */
-export const PAPER_MAX = 100_000;
-
 /**
  * The most characters of the final writer's package (as JSON). A longer one is shortened in steps
  * the package states (`shortened`), never cut without a word: the writer reads the rest with its
@@ -119,76 +120,6 @@ export const PAPER_RULES = [
   "Discuss each hypothesis in the package's hypotheses, with the verdict that the review panel gave: supported, refuted or undecided (undecided when it gave none). Name a hypothesis by its words. The hypotheses in proposed were not judged: give them no verdict. A table row whose first cell names a hypothesis's id (h-…), or a line \"Verdict: …\" under a heading that names it, is checked: its verdict must be the review panel's.",
   `Put the next experiments in the part on future work: the measurement gaps of the cards and the next experiments that the review panel named (questions[].next_experiments), then what else to try, each with why. Give it a ### section for each kind of next experiment it has: ${NEXT_KINDS.map((k) => `### ${NEXT_HEADINGS[k]} (${NEXT_KIND_WORDS[k]})`).join(", and ")}. Give each next experiment the same kind in experiments.`,
 ];
-
-/** The fields of one of the paper's next experiments (the supervisor reads a model's answer with them). */
-export const PAPER_EXPERIMENT_FIELDS = {
-  title: z.string().trim().min(1).max(200),
-  why: z.string().trim().min(1).max(2000),
-  details: z.string().max(4000).default(""),
-  /**
-   * The run it is for (goal 119): `hill_climb` or `goal`. Read whatever its case and spacing
-   * ("Hill climb", "goal campaign"); checked in code, with words, when it is neither.
-   */
-  kind: z.preprocess(
-    (v) =>
-      typeof v === "string"
-        ? v
-            .trim()
-            .toLowerCase()
-            .replace(/[\s-]+/g, "_")
-            .replace(/^goal_campaign$/, "goal")
-        : v,
-    z.string().max(40).default(""),
-  ),
-  /** For a hill climb, the metric it should move and which way; for a goal, how a check knows it is reached. */
-  measure: z.string().trim().max(2000).default(""),
-  findings: z.array(z.string().min(1).max(100)).max(50).default([]),
-  claims: z.array(z.string().min(1).max(100)).max(50).default([]),
-};
-
-/** One of the paper's next experiments, as the writer gives it beside the paper. */
-export const PaperExperiment = z.strictObject(PAPER_EXPERIMENT_FIELDS);
-export type PaperExperiment = z.infer<typeof PaperExperiment>;
-
-/** One finding of the STE checker, as the supervisor posts it. */
-const SteFinding = z.object({
-  line: z.number().int().min(0),
-  column: z.number().int().min(0).optional(),
-  severity: z.string().max(20),
-  rule: z.string().max(100),
-  message: z.string().max(1000),
-  text: z.string().max(500).default(""),
-});
-
-/**
- * The STE checker's result on the paper's text, as the supervisor ran it (never the model): its
- * counts and findings, and the SHA-256 of the text it checked. Or why it did not run.
- */
-export const SteResult = z.discriminatedUnion("checked", [
-  z.strictObject({
-    checked: z.literal(true),
-    sha256: z.string().regex(/^[0-9a-f]{64}$/),
-    version: z.string().max(100).nullable().default(null),
-    issue: z.string().max(100).nullable().default(null),
-    counts: z.strictObject({
-      error: z.number().int().min(0),
-      warning: z.number().int().min(0),
-      info: z.number().int().min(0),
-    }),
-    findings: z.array(SteFinding).max(200).default([]),
-  }),
-  z.strictObject({ checked: z.literal(false), why: z.string().min(1).max(500) }),
-]);
-export type SteResult = z.infer<typeof SteResult>;
-
-/** What the supervisor posts for a run's paper. */
-export const PaperSubmission = z.strictObject({
-  writer: z.string().trim().min(1).max(100),
-  paper: z.string().min(1).max(PAPER_MAX),
-  experiments: z.array(PaperExperiment).max(50).default([]),
-  ste: SteResult,
-});
-export type PaperSubmission = z.infer<typeof PaperSubmission>;
 
 /** A problem code found in a paper, at its line (1 first), or for the whole paper (null). */
 export interface PaperProblem {

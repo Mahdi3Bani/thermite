@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { errorText } from "../common/errors.ts";
-import { PAPER_MAX } from "../harness/research/paper.ts";
+import { PAPER_MAX } from "../core/api/harness/research.ts";
 import { toolText } from "./code-tools.ts";
 
 /**

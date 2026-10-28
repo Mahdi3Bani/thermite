@@ -2,13 +2,48 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { ApiError, UPLOAD_TIMEOUT_MS } from "../common/api/call.ts";
 import { errorText } from "../common/errors.ts";
 import { newToken } from "../control/credential.ts";
 import type { RunpodRigView } from "../control/runpod-rig-view.ts";
+import {
+  CAMPAIGN_CONTEXT,
+  CAMPAIGN_COPY,
+  CLOUD_LAUNCH,
+  CLOUD_RIGS,
+  ENROLL,
+  ISSUE,
+  KIT_ADD,
+  KITS,
+  MCP_SERVER_ADD,
+  MCP_SERVER_CHANGE,
+  MCP_SERVER_CHECK,
+  MCP_SERVER_DELETE,
+  MCP_SERVER_SIGN_IN,
+  MCP_SERVERS,
+  type McpServerLine,
+  RESET,
+  RESET_CANCEL,
+  RESET_CONFIRM,
+  RESETS,
+  RESTART,
+  RETIRE,
+  RIG_TOKEN,
+  RIGS,
+  RUNPOD_LIMITS,
+  RUNPOD_RIG,
+  RUNPOD_START,
+  RUNPOD_STOP,
+  RUNPOD_TERMINATE,
+  START_RUN,
+  UNTRIED,
+} from "../core/api/control/owner.ts";
+import { ATTEMPT, ATTEMPTS } from "../core/api/harness/proposer.ts";
 import { briefChange } from "../core/brief.ts";
-import { generateSigningKeys } from "../core/commands.ts";
+import { type CommandKind, generateSigningKeys } from "../core/commands.ts";
 import { agentsContextRefusal } from "../core/compaction.ts";
 import { CommitSchema, parseContract } from "../core/contract.ts";
+import { controlAt, harnessAt, orFail } from "./calls.ts";
 import { answeringEngines, doctor, doctorExit, formatReport, machineProbes } from "./doctor.ts";
 import {
   chooseOwner,
@@ -27,7 +62,7 @@ import {
   rigReport,
   upWithGpus,
 } from "./machine.ts";
-import { type Enrolled, formatRigList, type RigList, writeRigFiles } from "./rig.ts";
+import { formatRigList, writeRigFiles } from "./rig.ts";
 
 /**
  * The thermite command line: the machine's checks, contract checks, key generation, issuing
@@ -294,13 +329,6 @@ function readJsonArg(value: string): unknown {
   return JSON.parse(value.startsWith("@") ? readFileSync(value.slice(1), "utf8") : value);
 }
 
-async function get(url: string, token: string): Promise<unknown> {
-  const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
-  const text = await res.text();
-  if (!res.ok) fail(`${url} -> ${res.status} ${text}`);
-  return JSON.parse(text);
-}
-
 /**
  * Prints an issued command's answer: its JSON on standard output, and, when control started the
  * rig's stopped RunPod pod first (an assigned or resumed run), its words on standard error.
@@ -309,40 +337,6 @@ function printIssued(out: unknown): void {
   process.stdout.write(`${JSON.stringify(out)}\n`);
   const woke = (out as { woke?: unknown } | null)?.woke;
   if (typeof woke === "string" && woke) process.stderr.write(`${woke}\n`);
-}
-
-async function post(url: string, token: string, body: unknown): Promise<unknown> {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const text = await res.text();
-  if (!res.ok) fail(`${url} -> ${res.status} ${text}`);
-  return JSON.parse(text);
-}
-
-async function send(method: string, url: string, token: string, body?: unknown): Promise<unknown> {
-  const res = await fetch(url, {
-    method,
-    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-  });
-  const text = await res.text();
-  if (!res.ok) fail(`${url} -> ${res.status} ${text}`);
-  return JSON.parse(text);
-}
-
-/** An MCP server as control lists it (never a secret). */
-interface McpServerLine {
-  name: string;
-  url: string;
-  auth: string;
-  status: string;
-  last_error: string | null;
-  secret_hint: string | null;
-  tools: { name: string; reads: boolean }[] | null;
-  named_by?: string[];
 }
 
 /** One line per server, then its last error and its tools, for `thermite mcp`. */
@@ -661,11 +655,13 @@ async function main(argv: string[]): Promise<void> {
       // the words and authors control's records hold for this contract's campaign, as over MCP.
       let queue: unknown[] = [];
       if (past) {
-        const control = (values.control as string).replace(/\/$/, "");
-        const from = (await get(
-          `${control}/v1/rigs/${encodeURIComponent(past.rig)}/runs/${encodeURIComponent(past.run)}/untried?campaign=${encodeURIComponent(contract.campaign)}`,
-          readFileSync(values["token-file"] as string, "utf8").trim(),
-        )) as { queue: unknown[] };
+        const control = controlAt(values.control as string, values["token-file"] as string);
+        const from = await orFail(
+          control.call(UNTRIED, {
+            params: { rig: past.rig, run: past.run },
+            query: { campaign: contract.campaign },
+          }),
+        );
         queue = from.queue;
         if (!queue.length)
           process.stderr.write(
@@ -694,16 +690,16 @@ async function main(argv: string[]): Promise<void> {
         process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
         return;
       }
-      const token = readFileSync(values["token-file"] as string, "utf8").trim();
-      const out = await post(
-        `${(values.control as string).replace(/\/$/, "")}/v1/commands`,
-        token,
-        {
-          rig: values.rig,
-          kind: "assign_campaign",
-          payload,
-          ...(values.ttl ? { ttl_minutes: Number(values.ttl) } : {}),
-        },
+      const control = controlAt(values.control as string, values["token-file"] as string);
+      const out = await orFail(
+        control.call(ISSUE, {
+          body: {
+            rig: values.rig as string,
+            kind: "assign_campaign",
+            payload,
+            ...(values.ttl ? { ttl_minutes: Number(values.ttl) } : {}),
+          },
+        }),
       );
       printIssued(out);
       return;
@@ -719,16 +715,8 @@ async function main(argv: string[]): Promise<void> {
           },
         });
         if (!values.control || !values["token-file"]) fail(USAGE);
-        const res = await fetch(`${values.control.replace(/\/$/, "")}/v1/rigs`, {
-          headers: {
-            authorization: `Bearer ${readFileSync(values["token-file"], "utf8").trim()}`,
-          },
-        });
-        const text = await res.text();
-        if (!res.ok) fail(`${values.control}/v1/rigs -> ${res.status} ${text}`);
-        process.stdout.write(
-          values.json ? `${text}\n` : formatRigList(JSON.parse(text) as RigList),
-        );
+        const listed = await orFail(controlAt(values.control, values["token-file"]).call(RIGS));
+        process.stdout.write(values.json ? `${JSON.stringify(listed)}\n` : formatRigList(listed));
         return;
       }
       const [sub, rig, ...args] = rest;
@@ -741,15 +729,14 @@ async function main(argv: string[]): Promise<void> {
         },
       });
       if (!rig || !values.control || !values["token-file"]) fail(USAGE);
-      const control = values.control.replace(/\/$/, "");
-      const token = readFileSync(values["token-file"], "utf8").trim();
-      const at = `${control}/v1/rigs`;
+      const url = values.control.replace(/\/$/, "");
+      const control = controlAt(url, values["token-file"]);
       if (sub === "add") {
         if (!values.out) fail(USAGE);
         if (existsSync(values.out) && readdirSync(values.out).length)
           fail(`${values.out} is not empty; a rig's files are never overwritten`);
-        const enrolled = (await post(at, token, { rig })) as Enrolled;
-        const files = writeRigFiles(values.out, enrolled, control);
+        const enrolled = await orFail(control.call(ENROLL, { body: { rig } }));
+        const files = writeRigFiles(values.out, enrolled, url);
         process.stdout.write(
           `enrolled ${rig}; control's key fingerprint ${enrolled.control_fingerprint}\nwrote ${files.map((f) => join(values.out as string, f)).join("\n      ")}\n`,
         );
@@ -758,9 +745,7 @@ async function main(argv: string[]): Promise<void> {
       if (sub === "token") {
         if (!values.out) fail(USAGE);
         if (existsSync(values.out)) fail(`${values.out} exists; a token is never overwritten`);
-        const out = (await post(`${at}/${encodeURIComponent(rig)}/token`, token, {})) as {
-          token: string;
-        };
+        const out = await orFail(control.call(RIG_TOKEN, { params: { rig }, body: {} }));
         writeFileSync(values.out, `${out.token}\n`, { mode: 0o600, flag: "wx" });
         process.stdout.write(
           `${rig} has a new token, in ${values.out}; its old token no longer works\n`,
@@ -768,7 +753,7 @@ async function main(argv: string[]): Promise<void> {
         return;
       }
       if (sub === "retire") {
-        await post(`${at}/${encodeURIComponent(rig)}/retire`, token, {});
+        await orFail(control.call(RETIRE, { params: { rig }, body: {} }));
         process.stdout.write(`${rig} is retired: its token no longer works\n`);
         return;
       }
@@ -799,8 +784,7 @@ async function main(argv: string[]): Promise<void> {
         },
       });
       if (!values.control || !values["token-file"]) fail(USAGE);
-      const control = values.control.replace(/\/$/, "");
-      const token = readFileSync(values["token-file"], "utf8").trim();
+      const control = controlAt(values.control, values["token-file"]);
       const { formatRunpodRigs, launchBody, lifecycleSaid, limitsBody, openResetOf } = await import(
         "./runpod.ts"
       );
@@ -810,44 +794,40 @@ async function main(argv: string[]): Promise<void> {
           (sub === "stop" || sub === "start" || sub === "restart" || sub === "terminate") &&
           named
         ) {
-          const at = `${control}/v1/rigs/${encodeURIComponent(named)}`;
+          const params = { rig: named };
           // Restart is the route every rig has; the others are RunPod's own.
-          if (sub === "restart") await post(`${at}/restart`, token, {});
-          const rig = (
+          if (sub === "restart") await orFail(control.call(RESTART, { params, body: {} }));
+          const rig = (await orFail(
             sub === "restart"
-              ? await get(`${at}/runpod`, token)
-              : await post(
-                  `${at}/runpod/${sub}`,
-                  token,
-                  // Naming the rig in the command is the confirmation.
-                  sub === "terminate" ? { confirm: `terminate ${named}` } : {},
-                )
-          ) as RunpodRigView;
+              ? control.call(RUNPOD_RIG, { params })
+              : sub === "terminate"
+                ? // Naming the rig in the command is the confirmation.
+                  control.call(RUNPOD_TERMINATE, {
+                    params,
+                    body: { confirm: `terminate ${named}` },
+                  })
+                : control.call(sub === "stop" ? RUNPOD_STOP : RUNPOD_START, { params, body: {} }),
+          )) as RunpodRigView;
           process.stdout.write(`${formatRunpodRigs([rig])}${lifecycleSaid(sub)}`);
           return;
         }
         // A rig on RunPod only: any other rig gets 404 here, and nothing starts.
         if (["reset", "confirm-wipe", "cancel-reset"].includes(sub ?? "") && named)
-          await get(`${control}/v1/rigs/${encodeURIComponent(named)}/runpod`, token);
+          await orFail(control.call(RUNPOD_RIG, { params: { rig: named } }));
         if (sub === "reset" && named) {
-          const r = (await post(`${control}/v1/rigs/${encodeURIComponent(named)}/reset`, token, {
-            confirm: `reset ${named}`,
-          })) as { reset: number };
+          const r = await orFail(
+            control.call(RESET, { params: { rig: named }, body: { confirm: `reset ${named}` } }),
+          );
           process.stdout.write(
             `Full reset ${r.reset} of ${named} started: its runs are paused, and every result leaves the pod. Check the export, then confirm the wipe with thermite runpod confirm-wipe ${named}.\n`,
           );
           return;
         }
         if ((sub === "confirm-wipe" || sub === "cancel-reset") && named) {
-          const { resets } = (await get(`${control}/v1/resets`, token)) as {
-            resets: { id: number; rig: string; state: string }[];
-          };
+          const { resets } = await orFail(control.call(RESETS));
           const r = openResetOf(resets, named);
-          await post(
-            `${control}/v1/resets/${r.id}/${sub === "confirm-wipe" ? "confirm" : "cancel"}`,
-            token,
-            {},
-          );
+          const route = sub === "confirm-wipe" ? RESET_CONFIRM : RESET_CANCEL;
+          await orFail(control.call(route, { params: { id: r.id }, body: {} }));
           process.stdout.write(
             sub === "confirm-wipe"
               ? `The wipe of reset ${r.id} is confirmed: ${named}'s state is wiped, and the pod and its GPU stay.\n`
@@ -856,10 +836,8 @@ async function main(argv: string[]): Promise<void> {
           return;
         }
         if (sub === "launch" && named) {
-          const rig = (await post(
-            `${control}/v1/gpu-clouds/${encodeURIComponent(named)}/rigs`,
-            token,
-            launchBody(values),
+          const rig = (await orFail(
+            control.call(CLOUD_LAUNCH, { params: { name: named }, body: launchBody(values) }),
           )) as RunpodRigView;
           process.stdout.write(
             `${formatRunpodRigs([rig])}Launched: RunPod bills the pod from now. Control enrolls it once it runs; follow it with thermite runpod list.\n`,
@@ -867,23 +845,19 @@ async function main(argv: string[]): Promise<void> {
           return;
         }
         if (sub === "list") {
-          const rigs = named
-            ? ((await get(
-                `${control}/v1/gpu-clouds/${encodeURIComponent(named)}/rigs`,
-                token,
-              )) as RunpodRigView[])
-            : (((await get(`${control}/v1/rigs`, token)) as { runpod?: RunpodRigView[] }).runpod ??
-              []);
+          const rigs = (
+            named
+              ? await orFail(control.call(CLOUD_RIGS, { params: { name: named } }))
+              : ((await orFail(control.call(RIGS))).runpod ?? [])
+          ) as RunpodRigView[];
           process.stdout.write(
             values.json ? `${JSON.stringify(rigs, null, 2)}\n` : formatRunpodRigs(rigs),
           );
           return;
         }
         if (sub === "limits" && named) {
-          const rig = (await post(
-            `${control}/v1/rigs/${encodeURIComponent(named)}/runpod/limits`,
-            token,
-            limitsBody(values),
+          const rig = (await orFail(
+            control.call(RUNPOD_LIMITS, { params: { rig: named }, body: limitsBody(values) }),
           )) as RunpodRigView;
           process.stdout.write(formatRunpodRigs([rig]));
           return;
@@ -922,11 +896,12 @@ async function main(argv: string[]): Promise<void> {
       } catch (err) {
         fail(errorText(err));
       }
-      const out = (await post(
-        `${values.control.replace(/\/$/, "")}/v1/campaigns/${encodeURIComponent(campaign)}/runs`,
-        readFileSync(values["token-file"], "utf8").trim(),
-        body,
-      )) as { started?: boolean; said?: string; woke?: string; notes?: string[] };
+      const out = await orFail(
+        controlAt(values.control, values["token-file"]).call(START_RUN, {
+          params: { campaign },
+          body,
+        }),
+      );
       process.stdout.write(`${JSON.stringify(out)}\n`);
       process.stderr.write(runStartSaid(out));
       // Not started yet (the rig was given a model first): a script must not take it as started.
@@ -949,11 +924,12 @@ async function main(argv: string[]): Promise<void> {
         });
         if (!values.control || !values["token-file"])
           fail("give --control and --token-file: control keeps the campaign");
-        const out = (await post(
-          `${values.control.replace(/\/$/, "")}/v1/campaigns/${encodeURIComponent(campaign)}/context`,
-          readFileSync(values["token-file"], "utf8").trim(),
-          contextFromFlags(values) ?? {},
-        )) as { said?: string };
+        const out = await orFail(
+          controlAt(values.control, values["token-file"]).call(CAMPAIGN_CONTEXT, {
+            params: { campaign },
+            body: contextFromFlags(values) ?? {},
+          }),
+        );
         process.stdout.write(`${JSON.stringify(out)}\n`);
         if (out.said) process.stderr.write(`${out.said}\n`);
         return;
@@ -990,16 +966,17 @@ async function main(argv: string[]): Promise<void> {
           fail(`--mcp-servers-json: ${mcpFile} is not a JSON list: ${errorText(err)}`);
         }
       }
-      const out = await post(
-        `${values.control.replace(/\/$/, "")}/v1/campaigns/${encodeURIComponent(from)}/copy`,
-        readFileSync(values["token-file"], "utf8").trim(),
-        {
-          name,
-          ...(mcpFile !== undefined ? { mcp_servers: mcpServers } : {}),
-          ...(ownContext ? { agents_context: ownContext } : {}),
-          // The copy's own brief (goal 078), each part in place of FROM's.
-          ...briefFromFlags(values),
-        },
+      const out = await orFail(
+        controlAt(values.control, values["token-file"]).call(CAMPAIGN_COPY, {
+          params: { campaign: from },
+          body: {
+            name,
+            ...(mcpFile !== undefined ? { mcp_servers: mcpServers } : {}),
+            ...(ownContext ? { agents_context: ownContext } : {}),
+            // The copy's own brief (goal 078), each part in place of FROM's.
+            ...briefFromFlags(values),
+          },
+        }),
       );
       process.stdout.write(`${JSON.stringify(out)}\n`);
       return;
@@ -1020,18 +997,9 @@ async function main(argv: string[]): Promise<void> {
       });
       if (!values.control || !values["token-file"])
         fail("give --control and --token-file: control keeps the kits");
-      const at = `${values.control.replace(/\/$/, "")}/v1/kits`;
-      const token = readFileSync(values["token-file"], "utf8").trim();
+      const control = controlAt(values.control, values["token-file"]);
       if (sub === "list" && !positionals.length) {
-        const out = (await get(at, token)) as {
-          kits: {
-            name: string;
-            head: string;
-            commits: number;
-            kit: { name: string; target: string } | null;
-            kit_error?: string;
-          }[];
-        };
+        const out = await orFail(control.call(KITS));
         if (values.json) process.stdout.write(`${JSON.stringify(out, null, 2)}\n`);
         else if (!out.kits.length) process.stdout.write("control keeps no kit\n");
         else
@@ -1049,26 +1017,18 @@ async function main(argv: string[]): Promise<void> {
       } catch (err) {
         fail(`${file}: ${errorText(err)}`);
       }
-      const q = new URLSearchParams({
-        ...(values.ref ? { ref: values.ref } : {}),
-        ...(values.force ? { force: "true" } : {}),
-      }).toString();
-      const res = await fetch(`${at}/${encodeURIComponent(name)}${q ? `?${q}` : ""}`, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${token}`,
-          "content-type": "application/octet-stream",
-        },
-        body: new Uint8Array(bundle),
-      });
-      const text = await res.text();
-      let out: { said?: string; error?: string } = {};
-      try {
-        out = JSON.parse(text);
-      } catch {
-        // not JSON: shown as it came
-      }
-      if (!res.ok) fail(`control refused the kit (${res.status}): ${out.error ?? text}`);
+      const out = await control
+        .call(KIT_ADD, {
+          params: { name },
+          query: { ref: values.ref || undefined, force: values.force ? "true" : undefined },
+          bytes: new Uint8Array(bundle),
+          timeoutMs: UPLOAD_TIMEOUT_MS,
+        })
+        .catch((err: unknown) => {
+          if (!(err instanceof ApiError) || err.status === undefined) throw err;
+          const said = (err.answer as { error?: string } | undefined)?.error ?? err.text;
+          return fail(`control refused the kit (${err.status}): ${said}`);
+        });
       process.stdout.write(`${JSON.stringify(out)}\n`);
       if (out.said) process.stderr.write(`${out.said}\n`);
       return;
@@ -1092,8 +1052,7 @@ async function main(argv: string[]): Promise<void> {
         },
       });
       if (!values.control || !values["token-file"]) fail(USAGE);
-      const at = `${values.control.replace(/\/$/, "")}/v1/mcp-servers`;
-      const token = readFileSync(values["token-file"], "utf8").trim();
+      const control = controlAt(values.control, values["token-file"]);
       const name = positionals[0];
       // Secrets come from files, never from the command line, where other users could see them.
       const fields = () => ({
@@ -1124,34 +1083,34 @@ async function main(argv: string[]): Promise<void> {
         if (out.error) process.stdout.write(`${out.error}\n`);
       };
       if (sub === "list") {
-        const out = (await get(at, token)) as { servers: McpServerLine[] };
+        const out = await orFail(control.call(MCP_SERVERS));
         process.stdout.write(
           values.json ? `${JSON.stringify(out, null, 2)}\n` : formatMcpServers(out.servers),
         );
         return;
       }
       if (!name) fail(USAGE);
-      const one = `${at}/${encodeURIComponent(name)}`;
+      const params = { name };
       if (sub === "add") {
         if (!values.url || !values.auth) fail(USAGE);
-        said((await post(at, token, { name, ...fields() })) as Parameters<typeof said>[0]);
+        said(await orFail(control.call(MCP_SERVER_ADD, { body: { name, ...fields() } })));
         return;
       }
       if (sub === "change") {
-        said((await send("PUT", one, token, fields())) as Parameters<typeof said>[0]);
+        said(await orFail(control.call(MCP_SERVER_CHANGE, { params, body: fields() })));
         return;
       }
       if (sub === "check") {
-        said((await post(`${one}/check`, token, {})) as Parameters<typeof said>[0]);
+        said(await orFail(control.call(MCP_SERVER_CHECK, { params, body: {} })));
         return;
       }
       if (sub === "sign-in") {
-        const out = (await post(`${one}/sign-in`, token, {})) as { url: string };
+        const out = await orFail(control.call(MCP_SERVER_SIGN_IN, { params, body: {} }));
         said({ sign_in_url: out.url });
         return;
       }
       if (sub === "delete") {
-        await send("DELETE", one, token);
+        await orFail(control.call(MCP_SERVER_DELETE, { params }));
         process.stdout.write(`${name} is deleted: control keeps nothing of its secrets\n`);
         return;
       }
@@ -1178,13 +1137,17 @@ async function main(argv: string[]): Promise<void> {
         !values.payload
       )
         fail(USAGE);
-      const token = readFileSync(values["token-file"], "utf8").trim();
-      const out = await post(`${values.control.replace(/\/$/, "")}/v1/commands`, token, {
-        rig: values.rig,
-        kind: values.kind,
-        payload: readJsonArg(values.payload),
-        ...(values.ttl ? { ttl_minutes: Number(values.ttl) } : {}),
-      });
+      const out = await orFail(
+        controlAt(values.control, values["token-file"]).call(ISSUE, {
+          body: {
+            rig: values.rig,
+            // Control checks the kind, and refuses one it does not know in words.
+            kind: values.kind as CommandKind,
+            payload: readJsonArg(values.payload),
+            ...(values.ttl ? { ttl_minutes: Number(values.ttl) } : {}),
+          },
+        }),
+      );
       printIssued(out);
       return;
     }
@@ -1209,13 +1172,16 @@ async function main(argv: string[]): Promise<void> {
       ) {
         fail(USAGE);
       }
-      const token = readFileSync(values["token-file"], "utf8").trim();
-      const out = await post(`${values.harness.replace(/\/$/, "")}/v1/attempts`, token, {
-        run: values.run,
-        patch_base64: readFileSync(values["patch-file"]).toString("base64"),
-        hypothesis: values.hypothesis,
-        known_flaws: values["known-flaw"] ?? [],
-      });
+      const out = await orFail(
+        harnessAt(values.harness, values["token-file"]).call(ATTEMPTS, {
+          body: {
+            run: values.run,
+            patch_base64: readFileSync(values["patch-file"]).toString("base64"),
+            hypothesis: values.hypothesis,
+            known_flaws: values["known-flaw"] ?? [],
+          },
+        }),
+      );
       process.stdout.write(`${JSON.stringify(out)}\n`);
       return;
     }
@@ -1229,12 +1195,17 @@ async function main(argv: string[]): Promise<void> {
         },
       });
       if (!values.harness || !values["token-file"] || !values.attempt) fail(USAGE);
-      const token = readFileSync(values["token-file"], "utf8").trim();
-      const url = `${values.harness.replace(/\/$/, "")}/v1/attempts/${values.attempt}`;
-      const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
+      const harness = harnessAt(values.harness, values["token-file"]);
       // What the harness sent, as before; an error answer ends with a non-zero exit (goal 164).
-      process.stdout.write(`${await res.text()}\n`);
-      if (!res.ok) process.exitCode = 1;
+      const sent = await harness.call(ATTEMPT, { params: { id: values.attempt } }).then(
+        (answer) => JSON.stringify(answer),
+        (err: unknown) => {
+          if (!(err instanceof ApiError) || err.status === undefined) throw err;
+          process.exitCode = 1;
+          return err.text;
+        },
+      );
+      process.stdout.write(`${sent}\n`);
       return;
     }
     case "local": {

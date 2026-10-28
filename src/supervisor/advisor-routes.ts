@@ -1,6 +1,9 @@
+import { ApiError } from "../common/api/call.ts";
+import { controlClient } from "../common/api/control.ts";
 import { EFFORTS } from "../core/agents.ts";
+import { ADVISOR_ROUTES, type AdvisorRoute, TEACHERS_MAX } from "../core/api/control/rigs.ts";
+import type { AnswerOf } from "../core/api/route.ts";
 import { COMPACT_AT_MAX, COMPACT_AT_MIN } from "../core/compaction.ts";
-import { buildHeaders } from "../core/version.ts";
 import { type AdvisorRuntime, AdvisorsConfig } from "./advisors.ts";
 
 /**
@@ -15,24 +18,8 @@ import { type AdvisorRuntime, AdvisorsConfig } from "./advisors.ts";
  * the review panel.
  */
 
-/** A route as control hands it (see the harness's ControlRoute); its key stays in memory. */
-export interface AdvisorRoute {
-  name: string;
-  type: string;
-  base_url: string;
-  model: string;
-  /** The route's window: the provider's, or the owner's cap on the role's model (goal 070). */
-  context_window: number;
-  /** The role's compaction point, when the owner set one (goal 070). */
-  compact_at?: number | undefined;
-  /** The model's maximum output from the provider's list; 0 or none: none sent (goal 079). */
-  max_tokens?: number | undefined;
-  reasoning: string | null;
-  effort?: string | null | undefined;
-  /** The harness the role runs in (older controls: none, Pi or what the model needs). */
-  harness?: string | undefined;
-  api_key: string;
-}
+/** A route as control hands it (core/api/control/rigs.ts); its key stays in memory. */
+export type { AdvisorRoute };
 
 export interface ControlAdvisors {
   teachers?: AdvisorRuntime[] | undefined;
@@ -145,15 +132,20 @@ export async function fetchControlAdvisors(o: {
   controlToken: string;
   fetchImpl?: typeof fetch | undefined;
 }): Promise<ControlAdvisors> {
-  const res = await (o.fetchImpl ?? fetch)(
-    `${o.controlUrl}/v1/rigs/${encodeURIComponent(o.rig)}/advisor-routes`,
-    { headers: { authorization: `Bearer ${o.controlToken}`, ...buildHeaders() } },
-  );
-  // An older control has no such endpoint: its rigs keep their own configuration.
-  if (res.status === 404) return {};
-  if (!res.ok) throw new Error(`control's advisor routes: HTTP ${res.status}`);
-  const body = (await res.json()) as Record<string, unknown>;
-  const r = body as Record<string, AdvisorRoute | null>;
+  const control = controlClient({
+    url: o.controlUrl,
+    token: o.controlToken,
+    rig: o.rig,
+    fetchImpl: o.fetchImpl,
+  });
+  let r: AnswerOf<typeof ADVISOR_ROUTES>;
+  try {
+    r = await control.call(ADVISOR_ROUTES);
+  } catch (err) {
+    // An older control has no such endpoint: its rigs keep their own configuration.
+    if (err instanceof ApiError && err.code === "not_found") return {};
+    throw err;
+  }
   const many = (route: AdvisorRoute | null | undefined, base: string, n: number) => {
     if (!route) return undefined;
     const list = Array.from({ length: n }, (_, i) => runtimeOf(route, `${base}-${i + 1}`)).filter(
@@ -161,10 +153,8 @@ export async function fetchControlAdvisors(o: {
     );
     return list.length ? list : undefined;
   };
-  const teachers = (
-    Array.isArray(body.teacher_models) ? (body.teacher_models as AdvisorRoute[]) : []
-  )
-    .slice(0, 2)
+  const teachers = (r.teacher_models ?? [])
+    .slice(0, TEACHERS_MAX)
     .map((route, i) => runtimeOf(route, `teacher-${i + 1}`))
     .filter((x): x is AdvisorRuntime => x !== undefined);
   return {

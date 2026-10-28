@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { gitSync, gitText } from "../common/git.ts";
+import { KIT_BUNDLE_MAX } from "../core/api/control/owner.ts";
 import { KitSchema } from "../harness/kit.ts";
 
 /**
@@ -25,8 +26,8 @@ import { KitSchema } from "../harness/kit.ts";
 
 const NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
-/** The largest kit bundle control takes (REST's limit too; MCP's requests are smaller). */
-export const KIT_BUNDLE_MAX = 64 * 1024 * 1024;
+/** The largest kit bundle control takes (its home: core/api/control/owner.ts). */
+export { KIT_BUNDLE_MAX };
 
 /** A kit bundle control refuses, in words, with the HTTP status that says why. */
 export class KitRefused extends Error {

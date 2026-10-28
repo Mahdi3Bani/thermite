@@ -41,20 +41,25 @@ export const LiveEntry = z.object({
 });
 export type LiveEntry = z.infer<typeof LiveEntry>;
 
+/** The most lines in one batch: a page of the harness's live log, as control takes it. */
+export const LIVE_BATCH_MAX = 2000;
+
 export const LiveBatch = z.object({
   rig: z.string().min(1),
   /** Changes when the controller restarts; sequence numbers start again under a new id. */
   log_id: z.string().min(1).max(64),
   from: z.number().int().min(0),
   next: z.number().int().min(0),
-  entries: z.array(LiveEntry).max(2000),
+  entries: z.array(LiveEntry).max(LIVE_BATCH_MAX),
   rig_pubkey: z.string().min(1).optional(),
   signature: z.string().min(1).optional(),
 });
 export type LiveBatch = z.infer<typeof LiveBatch>;
 
 /** A live batch as control reads it: its lines checked one by one (readLiveEntries). */
-export const LiveBatchWire = LiveBatch.extend({ entries: z.array(z.unknown()).max(2000) });
+export const LiveBatchWire = LiveBatch.extend({
+  entries: z.array(z.unknown()).max(LIVE_BATCH_MAX),
+});
 
 /**
  * A batch's lines as control reads them (goal 171): those it knows, and a count of the rest by

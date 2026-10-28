@@ -1,4 +1,16 @@
-import { z } from "zod";
+import {
+  CARD_ANSWER_MAX,
+  CARD_CLAIMS_MAX,
+  CARD_GAP_MAX,
+  CARD_GAPS_MAX,
+  CARD_WHY_MAX,
+  CardInput,
+  type CardSubmission,
+  CERTAINTIES,
+  type Certainty,
+  GAP_KINDS,
+  type GapKind,
+} from "../../core/api/harness/research.ts";
 import type { ResearchContract } from "../../core/contract.ts";
 import { MEASURES_NOTHING, questionLabel } from "../../core/research-check.ts";
 import type { CardRow } from "../ledger/cards.ts";
@@ -7,7 +19,8 @@ import { type Ledger, LedgerError } from "../ledger.ts";
 import { checkCited } from "./checks.ts";
 import { registrableDomain } from "./fetcher.ts";
 
-export { questionLabel };
+/** A card's wire words and limits (their home: core/api/harness/research.ts). */
+export { CARD_ANSWER_MAX, CARD_GAP_MAX, CardInput, type CardSubmission, questionLabel };
 
 /**
  * Answer cards (goal 117): the harness keeps one card for each question of a research run, as
@@ -32,23 +45,6 @@ export { questionLabel };
  * next one.
  */
 
-/** The certainty scale, from the most certain to no answer. */
-export const CERTAINTIES = ["high", "moderate", "low", "insufficient", "none"] as const;
-export type Certainty = (typeof CERTAINTIES)[number];
-
-/** The kinds of gap a card names. */
-export const GAP_KINDS = ["evidence", "measurement"] as const;
-export type GapKind = (typeof GAP_KINDS)[number];
-
-/** The most characters of a card's answer: a few paragraphs. */
-export const CARD_ANSWER_MAX = 6000;
-/** The most claims a card cites. */
-export const CARD_CLAIMS_MAX = 60;
-/** The most gaps a card names, and the most characters of each. */
-export const CARD_GAPS_MAX = 12;
-export const CARD_GAP_MAX = 500;
-/** The most characters of why a card borrows a claim recorded for another question. */
-export const CARD_WHY_MAX = 500;
 /** The most characters of one run's request for cards (the synthesizer reads the rest with tools). */
 export const CARDS_PACKAGE_MAX = 150_000;
 /** The most characters of a card's answer that a worker's brief shows (the card file is whole). */
@@ -200,35 +196,6 @@ export interface CardsPackage {
   /** Said when claims were left out to keep the request short. */
   shortened?: string;
 }
-
-/** A gap as the supervisor posts it: its kind and words are checked in code, with words. */
-const GapInput = z.strictObject({
-  kind: z.string().max(100),
-  text: z.string().max(20_000),
-});
-
-/** One card as the supervisor posts it. Its bounds are checked in code, so a problem has words. */
-export const CardInput = z.strictObject({
-  question: z.number().int(),
-  answer: z.string().max(100_000),
-  certainty: z.string().max(100),
-  claims: z.array(z.string().max(200)).max(1000).default([]),
-  borrowed: z
-    .array(z.strictObject({ claim: z.string().max(200), why: z.string().max(20_000) }))
-    .max(1000)
-    .default([]),
-  gaps: z.array(GapInput).max(1000).default([]),
-  /** The `through` the request gave for this question; null: the card's request named none. */
-  through: z.string().max(200).nullable().default(null),
-});
-export type CardInput = z.infer<typeof CardInput>;
-
-/** What the supervisor posts for a run: the synthesizer's name and one or more cards. */
-export const CardSubmission = z.strictObject({
-  synthesizer: z.string().trim().min(1).max(100),
-  cards: z.array(CardInput).min(1).max(100),
-});
-export type CardSubmission = z.infer<typeof CardSubmission>;
 
 /** The answer for each card posted: kept, with its version, or refused, with its problems. */
 export type CardResult =

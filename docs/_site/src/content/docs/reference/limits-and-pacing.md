@@ -187,6 +187,7 @@ The dashboard calls an epoch a **round**.
 | An audit or review that failed | Tried again 30 minutes later, each audit or review counting its own tries. An audit is tried up to 5 times in all, then waits for the owner (its hand-off is sent again every 30 minutes until it arrives). A review's fifth try, or any later one, posts it as not passed when a reviewer still gives no answer, each such reviewer failing it | Fixed |
 | Past research synced into each running run's `knowledge/` folder | Every 180 s. A run that control says it did not assign, such as a rig check's run, is asked about again 1 hour later, or once it has stopped running and runs again | `THERMITE_KB_SYNC_SECONDS`. `0` turns it off. The hour is fixed |
 | A rig's MCP servers, from control to its supervisor and harness | Every 30 s, with the model route. Control renews an OAuth or client sign-in when less than 5 minutes of its access token are left | `THERMITE_MODEL_ROUTE_POLL_SECONDS` |
+| One call of the supervisor's, or of the command line's, to control or to the rig's harness | Ends after 5 minutes with no answer, as a call that failed: the supervisor makes it again at its next round. A call that sends a champion's patch or a kit's bundle, up to 64 MiB, has 30 minutes. A command the harness was still applying answers `in_progress` to the next call, and is applied once | Fixed |
 | An MCP server's tool list, as the harness and the supervisor keep it | Read again at the first use after 5 minutes, or when the server's sign-in changes | Fixed |
 | Research digests | Every 60 minutes. After `min_duration`, at a digest, the review panel is asked about the items with no standing decision, when every question has an answer card, the run has `min_verified_claims` (when set) and no review of the run waits; then the progress rule is checked | The contract's `report_cadence.digest_minutes` |
 | Research fetches | 6 a minute for each domain: a fetch waits, it is never refused for this | A research run: the contract's `fetch_policy.per_domain_per_minute`. A hill-climb or goal run: fixed |
@@ -348,7 +349,7 @@ None of these ends anything. Nothing limits how many [field notes](knowledge-bas
 | SSH connections | 15 s to connect |
 | `kubectl` requests | 30 s |
 | The live view | The newest 20,000 lines of each rig, and each open trial's newest 400 past them (the trials the rig's last report lists), so a trial that writes many lines can't push out another's |
-| A daily report | 200,000 characters |
+| A daily report | 200,000 characters: the supervisor cuts a longer one to that, and its end says so |
 | A kit uploaded on the **New campaign** page | 64 MB and 2,000 files |
 | A kit's git bundle given to control | 64 MiB over REST and `thermite kit add`; over MCP's `kit_add`, 4,000,000 characters of base64, a bundle of at most 3,000,000 bytes, as an MCP request is at most 4 MiB |
 | A message to an agent | 1 to 4,000 characters, after control trims it. One with no words: `Write a message first.` |

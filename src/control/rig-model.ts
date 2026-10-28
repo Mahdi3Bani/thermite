@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { reaches, routeRefusal } from "../core/agents.ts";
 import {
+  type AdvisorSetupView,
+  AdvisorsFileSchema,
+  type AdvisorsFileView,
+} from "../core/api/control/rigs.ts";
+import {
   COMPACT_AT_DEFAULT,
   COMPACT_AT_MAX,
   COMPACT_AT_MIN,
@@ -421,36 +426,8 @@ export function agentModelsOf(store: ControlStore, rig: string): AgentModels {
   };
 }
 
-/**
- * One advisor of a rig's advisors file, as its supervisor reports it (goal 074): where it runs
- * (pi, claude-code, opencode, codex, or cli for a command-line agent), its model (null: a
- * command-line agent names none), its provider's name and kind (its API, or claude), its window
- * (null: none) and its compaction point (null: the default). The supervisor sends no key, token or
- * address. Read loosely: a field this control does not know is dropped.
- */
-const AdvisorSetupSchema = z.object({
-  harness: z.string().min(1).max(40),
-  model: z.string().max(200).nullable(),
-  provider: z.string().max(200).nullable(),
-  api: z.string().max(40).nullable(),
-  context_window: z.number().int().min(0).max(100_000_000).nullable(),
-  compact_at: z.number().int().min(0).max(100).nullable(),
-});
-export type AdvisorSetupView = z.infer<typeof AdvisorSetupSchema>;
-
-/**
- * What a rig's advisors file sets up for each advisor, as its supervisor reports it in
- * `advisors.file` (goal 074): the teachers (none, one or two), their merged by model, the auditor
- * and the review panel (two to five reviewers). An advisor with no model from control uses the
- * file's; with none there either, it is off.
- */
-export const AdvisorsFileSchema = z.object({
-  teachers: z.array(AdvisorSetupSchema).max(2),
-  merged_by: AdvisorSetupSchema.nullable(),
-  auditor: AdvisorSetupSchema.nullable(),
-  review_panel: z.array(AdvisorSetupSchema).max(5),
-});
-export type AdvisorsFileView = z.infer<typeof AdvisorsFileSchema>;
+/** What a rig's advisors file sets up, as its supervisor reports it (core/api/control/rigs.ts). */
+export type { AdvisorSetupView, AdvisorsFileView };
 
 /** A file that names no advisor: what a supervisor that reports no advisors at all has. */
 const NO_ADVISORS: AdvisorsFileView = {

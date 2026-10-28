@@ -1,5 +1,11 @@
+import { ApiError } from "../common/api/call.ts";
+import { controlClient } from "../common/api/control.ts";
+import { harnessClient } from "../common/api/harness.ts";
 import { log } from "../common/env.ts";
-import { buildHeaders } from "../core/version.ts";
+import { MODEL_ROUTE } from "../core/api/control/rigs.ts";
+import { MODEL_ROUTE_GET, MODEL_ROUTE_PUT } from "../core/api/harness/supervisor.ts";
+import type { ControlRoute } from "../core/api/model-route.ts";
+import type { AnswerOf } from "../core/api/route.ts";
 
 /**
  * The agents' model route comes from control: the owner sets it on the settings page, and control
@@ -38,25 +44,26 @@ export async function syncModelRouteRound(
 }
 
 export async function syncModelRoute(s: RouteSync): Promise<RouteSyncResult> {
-  const fetch = s.fetchImpl ?? globalThis.fetch;
-  const res = await fetch(`${s.controlUrl}/v1/rigs/${encodeURIComponent(s.rig)}/model-route`, {
-    headers: { authorization: `Bearer ${s.controlToken}`, ...buildHeaders() },
+  const control = controlClient({
+    url: s.controlUrl,
+    token: s.controlToken,
+    rig: s.rig,
+    fetchImpl: s.fetchImpl,
   });
-  if (!res.ok) throw new Error(`control's model route: HTTP ${res.status}`);
-  const { route, planner = null } = (await res.json()) as {
-    route: { name: string; version: number; revision: string } | null;
-    /** The planner's own route, when the owner gave the planner a model (newer controls). */
-    planner?: { revision: string } | null;
-  };
-  const harness = { authorization: `Bearer ${s.harnessToken}` };
-  const cur = await fetch(`${s.harnessUrl}/v1/model-route`, { headers: harness });
-  if (cur.status === 404) return "no_agents";
-  if (!cur.ok) throw new Error(`the harness's model route: HTTP ${cur.status}`);
-  const info = (await cur.json()) as {
-    source: string;
-    revision?: string;
-    planner_revision?: string | null;
-  };
+  const harness = harnessClient({
+    url: s.harnessUrl,
+    token: s.harnessToken,
+    fetchImpl: s.fetchImpl,
+  });
+  // The planner's own route, when the owner gave the planner a model (newer controls).
+  const { route, planner = null } = await control.call(MODEL_ROUTE);
+  let info: AnswerOf<typeof MODEL_ROUTE_GET>;
+  try {
+    info = await harness.call(MODEL_ROUTE_GET);
+  } catch (err) {
+    if (err instanceof ApiError && err.code === "not_found") return "no_agents";
+    throw err;
+  }
   const plannerSame = (info.planner_revision ?? null) === (planner?.revision ?? null);
   if (
     plannerSame &&
@@ -65,12 +72,10 @@ export async function syncModelRoute(s: RouteSync): Promise<RouteSyncResult> {
       : info.source !== "control")
   )
     return "unchanged";
-  const put = await fetch(`${s.harnessUrl}/v1/model-route`, {
-    method: "PUT",
-    headers: { ...harness, "content-type": "application/json" },
-    body: JSON.stringify({ route, planner }),
+  // Control's routes, passed on untouched: the harness checks each whole.
+  await harness.call(MODEL_ROUTE_PUT, {
+    body: { route: route as ControlRoute | null, planner: planner as ControlRoute | null },
   });
-  if (!put.ok) throw new Error(`handing the model route to the harness: HTTP ${put.status}`);
   log("supervisor", route ? "model route handed to the harness" : "model route cleared", {
     name: route?.name ?? null,
     version: route?.version ?? null,

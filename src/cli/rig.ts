@@ -1,14 +1,11 @@
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { newToken } from "../control/credential.ts";
+import type { ENROLL, ListedBuild, RigList } from "../core/api/control/owner.ts";
+import type { AnswerOf } from "../core/api/route.ts";
 
-/** What control answers when it enrolls a rig. */
-export interface Enrolled {
-  rig: string;
-  token: string;
-  control_public_key: string;
-  control_fingerprint: string;
-}
+/** What control answers when it enrolls a rig (core/api/control/owner.ts). */
+export type Enrolled = AnswerOf<typeof ENROLL>;
 
 /**
  * The files a new rig starts from, written for the rig's host: its control token, a fresh token
@@ -51,30 +48,8 @@ Keep secrets/ private. A lost or leaked token is replaced with \`thermite rig to
   return files.map(([name]) => name);
 }
 
-/** A build as control's rig list gives it. */
-interface ListedBuild {
-  version: string | null;
-  commit: string | null;
-  protocol: number | null;
-  oldest_protocol?: number | null;
-}
-
-/** What control answers for its rig list (GET /v1/rigs). An older control sends no versions. */
-export interface RigList {
-  control?: ListedBuild;
-  rigs: {
-    id: string;
-    last_seen: string;
-    state?: string;
-    version?: {
-      state: string;
-      notice: string | null;
-      harness: ListedBuild | null;
-      supervisor: ListedBuild | null;
-    };
-  }[];
-  enrolled?: { rig: string; retired_at: string | null }[];
-}
+/** What control answers for its rig list (its home: core/api/control/owner.ts). */
+export type { RigList };
 
 const short = (b: ListedBuild | null | undefined) =>
   b?.version ? `${b.version}${b.commit ? ` (${b.commit.slice(0, 12)})` : ""}` : "no version";

@@ -2,7 +2,8 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
-import { paperSha, type SteResult } from "../harness/research/paper.ts";
+import type { SteResult } from "../core/api/harness/research.ts";
+import { paperSha } from "../harness/research/paper.ts";
 
 /**
  * The Simplified Technical English checker a deployment gives its supervisor (goal 112), for the

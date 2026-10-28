@@ -7,10 +7,10 @@
       "lines": 952
     },
     "src/cli/thermite.ts": {
-      "lines": 1327
+      "lines": 1298
     },
     "src/control/api.ts": {
-      "lines": 1463
+      "lines": 1446
     },
     "src/control/mcp-servers.ts": {
       "lines": 992
@@ -43,7 +43,7 @@
       "lines": 832
     },
     "src/harness/api.ts": {
-      "lines": 1006
+      "lines": 914
     },
     "src/harness/broker.ts": {
       "lines": 1203
@@ -55,13 +55,13 @@
       "lines": 2002
     },
     "src/harness/research/paper.ts": {
-      "lines": 1144
+      "lines": 1075
     },
     "src/harness/research/research.ts": {
       "lines": 1451
     },
     "src/harness/research/review.ts": {
-      "lines": 1148
+      "lines": 1114
     },
     "src/harness/schema.ts": {
       "lines": 875
@@ -70,10 +70,10 @@
       "lines": 1023
     },
     "src/harness/service.ts": {
-      "lines": 2876
+      "lines": 2830
     },
     "src/supervisor/advise.ts": {
-      "lines": 1366
+      "lines": 1320
     },
     "src/supervisor/advisors.ts": {
       "lines": 2724

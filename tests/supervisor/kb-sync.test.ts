@@ -280,12 +280,16 @@ describe("past research, synced from control into the run's folder", () => {
   test("a run control did not assign is no error, and is left alone for an hour; one control has not heard of yet is asked again", async () => {
     const s = await setup([item(1)]);
     let clock = Date.parse("2026-10-20T12:00:00.000Z");
-    let answer = "control did not assign run smoke-1 to this rig";
+    // Control's 404 names its code when it did not assign the run; its words are for people.
+    let answer: { error: string; code?: string } = {
+      error: "control did not assign run smoke-1 to this rig",
+      code: "not_assigned",
+    };
     const fetchImpl: typeof fetch = async (input, init) => {
       if (new URL(String(input)).host !== "control")
         return (s.cfg.fetchImpl as typeof fetch)(input, init);
       s.asked.push(String(input));
-      return Response.json({ error: answer }, { status: 404 });
+      return Response.json(answer, { status: 404 });
     };
     const cfg = { ...s.cfg, fetchImpl, now: () => clock };
     const r = await syncKnowledgeOnce(cfg, emptyKbSyncState());
@@ -300,7 +304,7 @@ describe("past research, synced from control into the run's folder", () => {
     assert.equal(s.asked.length, 1, "not asked again within the hour");
     assert.deepEqual(later.state, r.state);
     clock += 2 * 60_000;
-    answer = "this rig has no run smoke-1";
+    answer = { error: "this rig has no run smoke-1" };
     const after = await syncKnowledgeOnce(cfg, later.state);
     assert.equal(s.asked.length, 2, "asked again after the hour");
     assert.deepEqual(after.errors, []);

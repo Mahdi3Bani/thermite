@@ -1,5 +1,10 @@
 import { createHash } from "node:crypto";
-import { z } from "zod";
+import {
+  type AnswerCertainty,
+  type HypothesisDecision,
+  type QuestionDecision,
+  ResearchVerdicts,
+} from "../../core/api/harness/research.ts";
 import type { ResearchContract } from "../../core/contract.ts";
 import {
   ANSWERED,
@@ -17,17 +22,7 @@ import { type CardGap, cardsOf, rubricOf } from "./cards.ts";
 import { checkCited } from "./checks.ts";
 import { registrableDomain } from "./fetcher.ts";
 import { hypothesisEnded, hypothesisEvidence, hypothesisTasksDone } from "./hypothesis-evidence.ts";
-import {
-  ANSWER_CERTAINTIES,
-  type AnswerCertainty,
-  HYPOTHESIS_DECISIONS,
-  type HypothesisDecision,
-  QUESTION_DECISIONS,
-  type QuestionDecision,
-  questionEnded,
-  type StandingDecision,
-  standingDecisions,
-} from "./progress.ts";
+import { questionEnded, type StandingDecision, standingDecisions } from "./progress.ts";
 
 /**
  * A research run's reviews (goals 112 and 117). The run's items are its questions, each with its
@@ -58,7 +53,8 @@ import {
 
 type Row = Record<string, unknown>;
 
-export { ANSWERED, PROGRESS_STOPPED, RESEARCH_REVIEW };
+/** A reviewer's verdicts on the wire (their home: core/api/harness/research.ts). */
+export { ANSWERED, PROGRESS_STOPPED, RESEARCH_REVIEW, ResearchVerdicts };
 
 /** The most characters of a research review's package (the reviewers read the rest with tools). */
 export const RESEARCH_PACKAGE_MAX = 200_000;
@@ -171,36 +167,6 @@ export interface ResearchPackage {
   /** The required hypotheses (the author's and promoted ones), those to decide first. */
   hypotheses: PackageHypothesis[];
 }
-
-/** A reviewer's answers to a research package, as the supervisor posts them (goal 117). */
-export const ResearchVerdicts = z.strictObject({
-  questions: z
-    .array(
-      z.strictObject({
-        index: z.number().int().min(0),
-        verdict: z.enum(QUESTION_DECISIONS),
-        certainty: z.enum(ANSWER_CERTAINTIES).nullable().default(null),
-        answer: z.string().max(8000).default(""),
-        claims: z.array(z.string().max(200)).max(100).default([]),
-        gaps: z.string().max(4000).default(""),
-        next_experiments: z.string().max(4000).default(""),
-      }),
-    )
-    .max(2000)
-    .default([]),
-  hypotheses: z
-    .array(
-      z.strictObject({
-        id: z.string().max(200),
-        verdict: z.enum(HYPOTHESIS_DECISIONS),
-        why: z.string().max(4000).default(""),
-        claims: z.array(z.string().max(200)).max(100).default([]),
-      }),
-    )
-    .max(5000)
-    .default([]),
-});
-export type ResearchVerdicts = z.infer<typeof ResearchVerdicts>;
 
 /** One reviewer's answer to a question, with the harness's check. */
 export interface CheckedQuestion {

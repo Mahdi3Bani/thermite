@@ -14,6 +14,13 @@ import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { redact } from "../common/env.ts";
 import { errorText } from "../common/errors.ts";
+import {
+  FIGURE_MODEL_FROM_MAX,
+  FIGURE_MODEL_NAME_MAX,
+  FIGURE_MODELS_MAX,
+  FIGURE_RUN_MAX,
+  FIGURE_TEXT_MAX,
+} from "../core/api/control/rigs.ts";
 
 /**
  * Model files by URL (an assignment's `model` imports with a source): the supervisor downloads
@@ -78,17 +85,17 @@ export class ModelDownloads {
   ) {
     this.live = o.live ?? (() => {});
     this.now = o.now ?? (() => new Date());
-    this.keep = o.keep ?? 20;
+    this.keep = o.keep ?? FIGURE_MODELS_MAX;
   }
 
   /** The newest downloads first, for the supervisor's report (within what control takes). */
   list(): ModelProgress[] {
     return [...this.items.values()].reverse().map((p) => ({
       ...p,
-      name: p.name.slice(0, 200),
-      path: p.path.slice(0, 1000),
-      from: p.from.slice(0, 300),
-      ...(p.run !== undefined ? { run: p.run.slice(0, 80) } : {}),
+      name: p.name.slice(0, FIGURE_MODEL_NAME_MAX),
+      path: p.path.slice(0, FIGURE_TEXT_MAX),
+      from: p.from.slice(0, FIGURE_MODEL_FROM_MAX),
+      ...(p.run !== undefined ? { run: p.run.slice(0, FIGURE_RUN_MAX) } : {}),
     }));
   }
 

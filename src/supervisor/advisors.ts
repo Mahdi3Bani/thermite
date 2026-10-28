@@ -16,6 +16,23 @@ import { PAST_SEARCH_DESCRIPTION, PAST_SEARCH_TOOL } from "../agents/tools/names
 import { errorText } from "../common/errors.ts";
 import type { McpCallResult } from "../common/mcp-client.ts";
 import { EFFORTS } from "../core/agents.ts";
+import { CITATION_MAX, CITATIONS_MAX, REASONS_MAX } from "../core/api/harness/advisors.ts";
+import {
+  ANSWER_CERTAINTIES,
+  CARD_ANSWER_MAX,
+  CARD_CLAIMS_MAX,
+  CARD_GAP_MAX,
+  CARD_GAPS_MAX,
+  CARD_WHY_MAX,
+  CERTAINTIES,
+  GAP_KINDS,
+  HYPOTHESIS_DECISIONS,
+  PAGE_MAX,
+  PAPER_EXPERIMENT_FIELDS,
+  PAPER_MAX,
+  QUESTION_DECISIONS,
+  SEARCH_MAX,
+} from "../core/api/harness/research.ts";
 import { ExperimentId, QueuePosition, StructuredDirective } from "../core/commands.ts";
 import {
   type AgentsContext,
@@ -65,25 +82,8 @@ import {
   opencodeKeepEnv,
 } from "../harness/agents/opencode.ts";
 import { PiMeter } from "../harness/agents/usage-meter.ts";
-import { SEARCH_MAX } from "../harness/knowledge.ts";
-import {
-  CARD_ANSWER_MAX,
-  CARD_CLAIMS_MAX,
-  CARD_GAP_MAX,
-  CARD_GAPS_MAX,
-  CARD_WHY_MAX,
-  CERTAINTIES,
-  GAP_KINDS,
-} from "../harness/research/cards.ts";
 import { Fetcher, FetchRefused } from "../harness/research/fetcher.ts";
-import { PAPER_EXPERIMENT_FIELDS, PAPER_MAX } from "../harness/research/paper.ts";
-import {
-  ANSWER_CERTAINTIES,
-  HYPOTHESIS_DECISIONS,
-  QUESTION_DECISIONS,
-} from "../harness/research/progress.ts";
 import { GAP_LINE } from "../harness/research/shares.ts";
-import { PAGE_MAX } from "../harness/run-research.ts";
 import {
   type CliAnswer,
   codexAdvisorArgs,
@@ -1729,8 +1729,8 @@ const ResearchDirectiveAnswer = Type.Object({
 
 export const AuditAnswer = z.strictObject({
   decision: z.enum(["clear", "block", "needs_owner"]),
-  reasons: z.string().min(1).max(8000),
-  citations: z.array(z.string().min(1).max(500)).max(20).default([]),
+  reasons: z.string().min(1).max(REASONS_MAX),
+  citations: z.array(z.string().min(1).max(CITATION_MAX)).max(CITATIONS_MAX).default([]),
   answers: OwnerAnswers,
   journal: LenientNotes,
   /** A doubt the auditor could not settle: an experiment that would (a re-measure, a check). */
@@ -1772,7 +1772,7 @@ const AuditAnswerSchema = Type.Object({
 const longText = z
   .string()
   .min(1)
-  .transform((s) => s.slice(0, 8000));
+  .transform((s) => s.slice(0, REASONS_MAX));
 
 export const PanelAnswer = z.object({
   pass: z.boolean(),

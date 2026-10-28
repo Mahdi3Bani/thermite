@@ -1,4 +1,7 @@
+import { ApiError } from "../common/api/call.ts";
+import { harnessClient } from "../common/api/harness.ts";
 import { log } from "../common/env.ts";
+import { ADVISORS, SETTINGS } from "../core/api/harness/supervisor.ts";
 
 /** The advisors' switches in the rig's settings (Edit rig). */
 export interface AdvisorSwitches {
@@ -20,21 +23,20 @@ export interface AdvisorsTold {
  * failure and not again until the call goes through (goal 164), as the relays to control do.
  */
 export function harnessAdvisors(harnessUrl: string, harnessToken: string, say: typeof log = log) {
-  const auth = { authorization: `Bearer ${harnessToken}` };
+  const harness = harnessClient({ url: harnessUrl, token: harnessToken });
   const streak = (msg: string) => {
     let failing = false;
-    return async (call: () => Promise<Response>): Promise<Response | undefined> => {
-      let r: Response | undefined;
+    return async <T>(call: () => Promise<T>): Promise<T | undefined> => {
       let fields: Record<string, unknown>;
       try {
-        r = await call();
-        if (r.ok) {
-          failing = false;
-          return r;
-        }
-        fields = { status: r.status, answer: (await r.text()).slice(0, 300) };
+        const r = await call();
+        failing = false;
+        return r;
       } catch (err) {
-        fields = { error: String(err) };
+        fields =
+          err instanceof ApiError && err.status !== undefined
+            ? { status: err.status, answer: err.text.slice(0, 300) }
+            : { error: String(err) };
       }
       if (!failing) say("supervisor", msg, fields);
       failing = true;
@@ -46,8 +48,8 @@ export function harnessAdvisors(harnessUrl: string, harnessToken: string, say: t
   let last: AdvisorSwitches = { teachers: true, auditor: true, review: true };
   const settingsCall = streak("the harness did not give the rig's settings: the last ones stand");
   const settings = async (): Promise<AdvisorSwitches> => {
-    const r = await settingsCall(() => fetch(`${harnessUrl}/v1/settings`, { headers: auth }));
-    if (r) last = { ...last, ...((await r.json()) as Partial<AdvisorSwitches>) };
+    const r = await settingsCall(() => harness.call(SETTINGS));
+    if (r) last = { ...last, ...r };
     return last;
   };
 
@@ -65,13 +67,7 @@ export function harnessAdvisors(harnessUrl: string, harnessToken: string, say: t
     if (!a) return;
     told = a;
     toldAt = Date.now();
-    await tellCall(() =>
-      fetch(`${harnessUrl}/v1/advisors`, {
-        method: "PUT",
-        headers: { ...auth, "content-type": "application/json" },
-        body: JSON.stringify(a),
-      }),
-    );
+    await tellCall(() => harness.call(ADVISORS, { body: a }));
   };
   const retell = () => (Date.now() - toldAt >= 60_000 ? tell() : undefined);
 

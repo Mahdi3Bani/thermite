@@ -11,11 +11,13 @@ import {
 } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { pipeline } from "node:stream/promises";
+import { ApiError } from "../common/api/call.ts";
+import { controlClient } from "../common/api/control.ts";
 import { log } from "../common/env.ts";
 import { git as gitRun } from "../common/git.ts";
 import { type GitAuth, withGitAuth } from "../common/git-auth.ts";
+import { GIT_ACCESS, gitRepoPath } from "../core/api/control/rigs.ts";
 import type { SignedCommand } from "../core/commands.ts";
-import { buildHeaders } from "../core/version.ts";
 import { sshCommand } from "./git-export.ts";
 import { downloadModel, ModelDownloads } from "./model-download.ts";
 
@@ -223,7 +225,7 @@ async function bundleFromGit(
     throw new Error(`${imp.path}: a kit from control, but this supervisor has no control to ask`);
   const url =
     "control" in imp.source
-      ? `${cfg.controlUrl}/v1/rigs/${encodeURIComponent(cfg.rig)}/git/${imp.source.control}.git`
+      ? `${cfg.controlUrl}${gitRepoPath(cfg.rig, imp.source.control)}`
       : imp.source.git;
   const dir = cfg.sourcesDir ?? join(dirname(cfg.resultsRepo), "sources");
   const cache = join(dir, `${createHash("sha256").update(url).digest("hex").slice(0, 16)}.git`);
@@ -277,17 +279,11 @@ async function bundleFromGit(
 async function gitAccessFromControl(cfg: StagingConfig, name: string): Promise<GitAuth> {
   if (!cfg.controlUrl || !cfg.controlToken)
     throw new Error(`Git access ${name}: this supervisor has no control to ask`);
-  const res = await fetch(
-    `${cfg.controlUrl}/v1/rigs/${encodeURIComponent(cfg.rig)}/git-access/${encodeURIComponent(name)}`,
-    { headers: { authorization: `Bearer ${cfg.controlToken}`, ...buildHeaders() } },
-  );
-  if (!res.ok) throw new Error(`Git access ${name}: control answered ${res.status}`);
-  const g = (await res.json()) as {
-    kind?: string;
-    private_key?: string;
-    token?: string;
-    username?: string;
-  };
+  const control = controlClient({ url: cfg.controlUrl, token: cfg.controlToken, rig: cfg.rig });
+  const g = await control.call(GIT_ACCESS, { params: { name } }).catch((err: unknown) => {
+    const answered = err instanceof ApiError && err.status !== undefined;
+    throw answered ? new Error(`Git access ${name}: control answered ${err.status}`) : err;
+  });
   if (g.kind === "ssh" && g.private_key) return { kind: "ssh", privateKey: g.private_key };
   if (g.kind === "token" && g.token) return { kind: "token", token: g.token, username: g.username };
   throw new Error(`Git access ${name}: control's answer has no key`);

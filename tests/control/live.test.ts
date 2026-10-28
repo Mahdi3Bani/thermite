@@ -180,6 +180,24 @@ describe("the owner's messages to agents", () => {
     );
     assert.ok(r.status === "applied" && !r.accepted, JSON.stringify(r));
   });
+
+  test("lines past what control takes in one call go fewer at a time, and all arrive (goal 125, T2)", async () => {
+    const s = setup();
+    await relayOnce(s.cfg, { cursor: 0 });
+    // 600 lines of 8,000 characters, each of two bytes: about 9.6 MB, past control's 4 MiB.
+    for (let i = 0; i < 600; i++)
+      s.env.service.live.append({
+        source: "planner",
+        kind: "text",
+        text: `${i}:${"é".repeat(7990)}`,
+      });
+    let st = { cursor: 0, ownCursor: 0 };
+    for (let round = 0; round < 10 && st.cursor < 600; round++) st = await relayLiveOnce(s.cfg, st);
+    assert.equal(st.cursor, 600);
+    const kept = s.store.liveTail("rig-a", 1000).filter((e) => e.source === "planner");
+    assert.equal(kept.length, 600);
+    assert.equal(kept.at(-1)?.text.split(":")[0], "599");
+  });
 });
 
 describe("a run's Live lines", () => {

@@ -25,7 +25,7 @@
   "src/control/views.ts": ["src/harness/goal-checks.ts", "src/harness/judge/goal-values.ts"],
   "src/core/tunnel.ts": ["node:path"],
   "src/core/version.ts": ["node:fs"],
-  "src/supervisor/advise.ts": ["src/harness/mcp-gateway.ts", "src/harness/run-research.ts"],
+  "src/supervisor/advise.ts": ["src/harness/mcp-gateway.ts"],
   "src/supervisor/advisor-cli.ts": [
     "src/harness/agents/cli-compaction.ts",
     "src/harness/agents/codex.ts",
@@ -47,17 +47,9 @@
     "src/harness/agents/notes-tool.ts",
     "src/harness/agents/opencode.ts",
     "src/harness/agents/usage-meter.ts",
-    "src/harness/knowledge.ts",
-    "src/harness/research/cards.ts",
     "src/harness/research/fetcher.ts",
-    "src/harness/research/paper.ts",
-    "src/harness/research/progress.ts",
-    "src/harness/research/shares.ts",
-    "src/harness/run-research.ts"
+    "src/harness/research/shares.ts"
   ],
   "src/supervisor/main.ts": ["src/harness/agents/model-stall.ts", "src/harness/mcp-gateway.ts"],
-  "src/supervisor/paper-tools.ts": ["src/harness/research/paper.ts"],
-  "src/supervisor/past-mcp.ts": ["src/harness/knowledge.ts"],
-  "src/supervisor/research-tools.ts": ["src/harness/knowledge.ts", "src/harness/run-research.ts"],
   "src/supervisor/ste-checker.ts": ["src/harness/research/paper.ts"]
 }

@@ -6,6 +6,9 @@ import { z } from "zod";
 import { log } from "../common/env.ts";
 import { BadInput, errorText, Refusal } from "../common/errors.ts";
 import type { McpConnect } from "../common/mcp-client.ts";
+import { AdvisorQueueRequest } from "../core/api/harness/advisors.ts";
+import { SubmitRequest } from "../core/api/harness/proposer.ts";
+import type { CardSubmission, PaperSubmission } from "../core/api/harness/research.ts";
 import { type BriefData, briefData } from "../core/brief.ts";
 import { sha256Hex } from "../core/canonical.ts";
 import {
@@ -16,7 +19,6 @@ import {
   type ImportSpec,
   type KeyPairPem,
   OWNER_ONLY_KINDS,
-  QueuePosition,
   reportBody,
   StructuredDirective,
   signJson,
@@ -25,7 +27,7 @@ import {
 import { type Contract, contractSha, parseContract } from "../core/contract.ts";
 import { isLegacyRule, researchDirectionRefusal } from "../core/directions.ts";
 import type { Hardware } from "../core/hardware.ts";
-import { ExperimentId, newAttemptId } from "../core/ids.ts";
+import { newAttemptId } from "../core/ids.ts";
 import { type LiveKind, LiveLog, liveBody } from "../core/live.ts";
 import { canonicalUses, type McpUse, McpUses, sameUses, usesWords } from "../core/mcp.ts";
 import { ideaWords, queueTarget, ruleRefusal } from "../core/queue-target.ts";
@@ -79,9 +81,9 @@ import type { ProviderErrorAnswer } from "./model-forward.ts";
 import { writeExport } from "./outbox.ts";
 import { receivePropagation } from "./propagation.ts";
 import { type Experiment, ExperimentInput, ExperimentQueue } from "./queue.ts";
-import { type CardResult, type CardSubmission, Cards } from "./research/cards.ts";
+import { type CardResult, Cards } from "./research/cards.ts";
 import { folderRootOf, SAVED_LANES_DIR } from "./research/folder.ts";
-import { type PaperPackage, type PaperSubmission, Papers } from "./research/paper.ts";
+import { type PaperPackage, Papers } from "./research/paper.ts";
 import { NOTE_REPEATS, setHypothesisStatus, startingHypotheses } from "./research/research.ts";
 import {
   checkResearchPanel,
@@ -125,38 +127,6 @@ const CLOSED_RUN_REFUSALS = {
   accept_review: "its goals are not checked again",
   conclude: "it can't end as not possible or go on",
 } as const;
-
-/** An advisor's additions and moves for a run's queue (the supervisor's /v1/queue). */
-export const AdvisorQueueRequest = z.strictObject({
-  run: z.string().min(1).max(100),
-  /** The advisor role that proposes them: it is recorded as who added or moved each one. */
-  role: z.enum(["teacher", "auditor"]),
-  add: z
-    .array(
-      z.strictObject({
-        title: ExperimentText.title,
-        details: ExperimentText.details.optional(),
-        family: ExperimentText.family.optional(),
-        why: z.string().trim().min(1).max(2000),
-        position: QueuePosition.optional(),
-        /** A research run's task: the question it is about, an index from 0 (goal 117). */
-        question: z.number().int().min(0).optional(),
-      }),
-    )
-    .max(20)
-    .default([]),
-  move: z
-    .array(
-      z.strictObject({
-        id: ExperimentId,
-        position: QueuePosition,
-        why: z.string().trim().min(1).max(2000),
-      }),
-    )
-    .max(20)
-    .default([]),
-});
-export type AdvisorQueueRequest = z.infer<typeof AdvisorQueueRequest>;
 
 /** A worker's idea for its run's queue (`thermite-trial idea`, or Pi's idea tool). */
 export const IdeaRequest = z.strictObject({
@@ -245,22 +215,6 @@ export type CommandOutcome =
   | { status: "rejected"; reason: string }
   /** The same command is being applied by another request; ask again later. */
   | { status: "in_progress" };
-
-export const SubmitRequest = z.object({
-  run: z.string().min(1),
-  lane: z.string().min(1).optional(),
-  /** Base64 of `git add -A && git diff --cached --binary` against the parent. */
-  patch_base64: z.string().min(1),
-  /** Parent commit; defaults to the current champion. */
-  parent: z
-    .string()
-    .regex(/^[0-9a-f]{7,64}$/)
-    .optional(),
-  hypothesis: z.string().min(1).max(4000),
-  claim: z.string().max(4000).optional(),
-  known_flaws: z.array(z.string().min(1).max(1000)).max(50).default([]),
-});
-export type SubmitRequest = z.infer<typeof SubmitRequest>;
 
 export interface SubmitResult {
   attempt: string;

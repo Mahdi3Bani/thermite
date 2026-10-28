@@ -8,13 +8,24 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import type { z } from "zod";
+import { controlClient } from "../common/api/control.ts";
+import { harnessClient } from "../common/api/harness.ts";
 import { busUrl, natsBus } from "../common/bus.ts";
 import { log, optionalSecretFromFile, requireEnv, secretFromFile } from "../common/env.ts";
 import { startLogging } from "../common/log.ts";
+import {
+  FIGURE_EXPORTS_MAX,
+  FIGURE_TEXT_MAX,
+  FIGURES,
+  REPORTS,
+  type SupervisorFigures,
+} from "../core/api/control/rigs.ts";
+import { EXPORTS_DONE, MCP_EVENTS } from "../core/api/harness/supervisor.ts";
 import { untoldKinds } from "../core/kb.ts";
 import { rigInboxPrefix } from "../core/link/users.ts";
 import type { McpUse } from "../core/mcp.ts";
-import { buildHeaders, buildInfo } from "../core/version.ts";
+import { buildInfo } from "../core/version.ts";
 import { modelStallMs } from "../harness/agents/model-stall.ts";
 import { McpGateway } from "../harness/mcp-gateway.ts";
 import { type AdviseState, adviseOnce, emptyAdviseState, teachersCalled } from "./advise.ts";
@@ -79,11 +90,16 @@ async function main(): Promise<void> {
   const rig = requireEnv("THERMITE_RIG_ID");
   const harnessUrl = requireEnv("HARNESS_URL").replace(/\/$/, "");
   const harnessToken = secretFromFile("THERMITE_HARNESS_TOKEN_FILE");
+  const harness = harnessClient({ url: harnessUrl, token: harnessToken });
   // Pull mode (a rig on RunPod): this rig never connects to control. Control connects to the
   // tunnel's port; the supervisor's calls go to the tunnel's local port and wait there for it.
   const pull = await startPullMode(env, rig, home);
   const controlUrl = pull?.controlUrl ?? env.CONTROL_URL?.replace(/\/$/, "");
   const controlToken = pull?.controlToken ?? optionalSecretFromFile("THERMITE_CONTROL_TOKEN_FILE");
+  const control =
+    controlUrl && controlToken
+      ? controlClient({ url: controlUrl, token: controlToken, rig })
+      : undefined;
   // The message bus (goal 168): with THERMITE_NATS_URL, reports go there instead of to control's
   // ingest route, and commands come from there; a bad address stops the supervisor here. It signs
   // in with the rig's own key, which control learns from the supervisor's figures.
@@ -176,19 +192,14 @@ async function main(): Promise<void> {
     gateway: new McpGateway({
       uses: (run) => advisorMcpUses.get(run) ?? [],
       record: (run, kind, body) => {
-        void fetch(`${harnessUrl}/v1/mcp-events`, {
-          method: "POST",
-          headers: { authorization: `Bearer ${harnessToken}`, "content-type": "application/json" },
-          body: JSON.stringify({
-            run,
-            server: body.server,
-            ok: kind === "mcp_server_back",
-            ...("error" in body ? { error: body.error } : {}),
-          }),
-        })
-          .then((res) => {
-            if (!res.ok) log("supervisor", "MCP event not recorded", { run, status: res.status });
-          })
+        const event = {
+          run,
+          server: body.server,
+          ok: kind === "mcp_server_back",
+          ...("error" in body ? { error: body.error } : {}),
+        };
+        harness
+          .call(MCP_EVENTS, { body: event })
           .catch((err) => log("supervisor", "MCP event not recorded", { run, error: String(err) }));
       },
       say: (_source, run, text) =>
@@ -254,20 +265,9 @@ async function main(): Promise<void> {
   process.on("SIGTERM", () => stop("SIGTERM"));
   process.on("SIGINT", () => stop("SIGINT"));
 
-  const toControl = async (path: string, body: unknown): Promise<unknown> => {
-    if (!controlUrl || !controlToken) return undefined;
-    const res = await fetch(`${controlUrl}/v1/rigs/${encodeURIComponent(rig)}${path}`, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${controlToken}`,
-        "content-type": "application/json",
-        ...buildHeaders(),
-      },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new Error(`POST ${path} -> ${res.status}`);
-    return await res.json().catch(() => undefined);
-  };
+  // The supervisor's figures, its regular call; control's answer names its place in the reports.
+  const sendFigures = async () =>
+    control ? await control.call(FIGURES, { body: figures() }) : undefined;
 
   // The harness may still be starting: wait for it once, before the relays begin.
   await waitForHarness(harnessUrl, () => stopping);
@@ -277,7 +277,7 @@ async function main(): Promise<void> {
   const { tell: tellAdvisors, retell } = harnessLink;
 
   // The supervisor's figures for control, its regular call: git sync, advisors, relay.
-  const figures = () => ({
+  const figures = (): z.input<typeof SupervisorFigures> => ({
     at: new Date().toISOString(),
     relay: { cursor: state.cursor },
     export: {
@@ -287,7 +287,7 @@ async function main(): Promise<void> {
       pushed: exportState.pushed ?? [],
       pushed_commit: exportState.pushedCommit ?? null,
       last_push_at: exportState.lastPushAt ?? null,
-      uploaded: uploadState.uploaded.slice(-50),
+      uploaded: uploadState.uploaded.slice(-FIGURE_EXPORTS_MAX),
       last_upload_at: uploadState.lastUploadAt ?? null,
       // What has not left the rig: exports not yet taken from the outbox, and those taken
       // but not yet pushed (or sent to control).
@@ -300,7 +300,8 @@ async function main(): Promise<void> {
             : 0),
       champions_waiting: championQueue.length,
       last_error:
-        ((!remote && uploadState.lastError) || exportState.lastError)?.slice(0, 900) ?? null,
+        ((!remote && uploadState.lastError) || exportState.lastError)?.slice(0, FIGURE_TEXT_MAX) ??
+        null,
     },
     models: models.list(),
     advisors: advisors
@@ -327,7 +328,7 @@ async function main(): Promise<void> {
   // With the bus, the figures go once now, before the first report: control gives the rig's key
   // its user, and the reports and commands on the bus need it.
   if (bus)
-    await toControl("/supervisor", figures()).catch((err) =>
+    await sendFigures().catch((err) =>
       log("supervisor", "control report error", { error: String(err) }, "error"),
     );
 
@@ -636,13 +637,11 @@ async function main(): Promise<void> {
         safe.push(...uploadState.uploaded.filter((n) => !before.uploaded.includes(n)));
       }
       if (safe.length) {
-        await fetch(`${harnessUrl}/v1/exports/done`, {
-          method: "POST",
-          headers: { authorization: `Bearer ${harnessToken}`, "content-type": "application/json" },
-          body: JSON.stringify({ names: safe }),
-        }).catch((err) =>
-          log("supervisor", "outbox cleanup error", { error: String(err) }, "error"),
-        );
+        await harness
+          .call(EXPORTS_DONE, { body: { names: safe } })
+          .catch((err) =>
+            log("supervisor", "outbox cleanup error", { error: String(err) }, "error"),
+          );
       }
     } catch (err) {
       log("supervisor", "export error", { error: String(err) }, "error");
@@ -656,7 +655,7 @@ async function main(): Promise<void> {
       championQueue = left;
     }
     try {
-      const answer = await toControl("/supervisor", figures());
+      const answer = await sendFigures();
       // On the bus, control's answer names its place in the rig's events: after a page it
       // refused, the reports go back there.
       const healed = bus ? healCursor(state, answer) : state;
@@ -674,7 +673,7 @@ async function main(): Promise<void> {
           uploadState: uploadToControl ? uploadState : undefined,
           adviseState,
         });
-        await toControl("/reports", { kind: "daily", body });
+        await control?.call(REPORTS, { body: { kind: "daily", body } });
         reportState = { lastDailyAt: new Date().toISOString() };
         save(reportPath, reportState);
       }
