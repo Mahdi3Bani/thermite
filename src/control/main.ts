@@ -11,6 +11,7 @@ import { createControlApi } from "./api.ts";
 import { realKubectl } from "./clusters/kubectl.ts";
 import { Credential } from "./credential.ts";
 import { followReports } from "./ingest.ts";
+import { sendCommandsOn } from "./issue/bus.ts";
 import { KitRepos } from "./kit-repos.ts";
 import { advanceResets, driverFromEnv } from "./lifecycle.ts";
 import { openSsh } from "./machines/ssh.ts";
@@ -87,7 +88,8 @@ async function main(): Promise<void> {
   const driver = driverFromEnv(env);
   // Optional: the owner accepts each rig's first report key (no trust on first use).
   const requireKeyAcceptance = env.THERMITE_CONTROL_REQUIRE_KEY_ACCEPT === "1";
-  // The message bus (goal 168): with THERMITE_NATS_URL, rigs' reports arrive there too.
+  // The message bus (goal 168): with THERMITE_NATS_URL, rigs' reports arrive there too, and
+  // commands leave there too.
   const natsUrl = busUrl(env);
   // The key that seals model routes' API keys: its own file, made on first use. Mount it
   // from a separate secret to keep it off the database's volume.
@@ -155,12 +157,17 @@ async function main(): Promise<void> {
     lifecycle: driver?.kind ?? null,
     bus: natsUrl ? new URL(natsUrl).host : null,
   });
-  // Reports from the bus, folded through the ingest route's checks as they arrive.
+  // Reports from the bus, folded through the ingest route's checks as they arrive; and each
+  // command control issues, published to its rig's subject as well as kept in the store.
   const bus = natsUrl ? natsBus(natsUrl, "control") : undefined;
-  if (bus)
+  if (bus) {
     followReports(bus, { store, control: buildInfo(), requireKeyAcceptance }).catch((err) =>
       log("control", "reports from the bus stopped", { error: String(err) }, "error"),
     );
+    sendCommandsOn(store, bus).catch((err) =>
+      log("control", "commands stream not made", { error: String(err) }, "error"),
+    );
+  }
   // Full resets advance as their evidence arrives.
   const resets = setInterval(() => {
     advanceResets({ store, privateKeyPem, driver, staleAfterMs }).catch((err) =>

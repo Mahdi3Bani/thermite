@@ -70,6 +70,6 @@ The compose file pins each image by its digest. The same images also have the ta
 
 The compose file runs the CPU harness, or the CUDA 12 harness with `compose.gpu.yaml`. Control sets rigs up on other machines and clusters from the CPU harness, the CUDA 12 harness (for GPU rigs) and the supervisor. For GPUs that CUDA 12.6 does not know, such as Blackwell and the DGX Spark, set `THERMITE_RIG_HARNESS_CUDA_IMAGE` to the CUDA 13 harness; CUDA 13 does not build for Pascal or Volta. The CUDA 13 harness is untested: the release builds and checks it, but it has not yet run on a GPU. It launches rigs on RunPod from the rig image: the CUDA harness and the supervisor in one container. The images do not contain Claude Code.
 
-With the `bus` profile, the compose file also runs a message bus for the rigs' reports: the NATS server, from its official image `docker.io/library/nats:2.15.1-alpine` (Apache-2.0), pinned by its digest. Without it, nothing of it starts.
+With the `bus` profile, the compose file also runs a message bus for the rigs' reports and commands: the NATS server, from its official image `docker.io/library/nats:2.15.1-alpine` (Apache-2.0), pinned by its digest. Without it, nothing of it starts.
 
 The source code is at <@@REPO_URL@@>, under the MIT license. The harness images also carry OpenCode (MIT) and the Codex CLI (Apache-2.0), and the control image carries kubectl (Apache-2.0), each with its license.

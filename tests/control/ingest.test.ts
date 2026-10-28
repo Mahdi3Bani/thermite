@@ -60,7 +60,8 @@ describe("control folds rigs' reports from the message bus", () => {
     // The bus as followReports sees it: each message handed over in order, and acked after.
     const bus: Pick<Bus, "follow"> = {
       async follow(stream, consumer, handle) {
-        followed = { stream: stream.name, consumer: consumer.durable_name };
+        const name = typeof stream === "string" ? stream : stream.name;
+        followed = { stream: name, consumer: consumer.durable_name };
         for (const p of pages) {
           const m = message(p);
           await handle(m);

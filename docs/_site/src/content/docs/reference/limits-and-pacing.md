@@ -173,7 +173,7 @@ The dashboard calls an epoch a **round**.
 | --- | --- | --- |
 | Exports | Every 60 minutes, when anything new was recorded | `THERMITE_EXPORT_MINUTES`; **Edit rig** › **Exports** |
 | Reports to control, exports pushed, champion uploads | Every 60 s | `THERMITE_POLL_SECONDS` |
-| Commands fetched from control | Every 5 s | `THERMITE_COMMAND_POLL_SECONDS` |
+| Commands fetched from control | Every 5 s; with the message bus, as they are issued, and fetched every 180 s for any that never reached the bus | `THERMITE_COMMAND_POLL_SECONDS`; `THERMITE_NATS_URL` |
 | Live view lines sent to control | Every 3,000 ms | `THERMITE_LIVE_INTERVAL_MS` |
 | One line of the live view | 8,000 characters: a longer line, such as a long reply, is cut and ends with `[cut]` | Fixed |
 | The model route checked on control | Every 30 s | `THERMITE_MODEL_ROUTE_POLL_SECONDS` |

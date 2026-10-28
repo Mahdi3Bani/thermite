@@ -3,6 +3,7 @@ import { errorText, Refusal } from "../common/errors.ts";
 import { ADVISOR_ROLES, type AdvisorRole } from "../core/agents.ts";
 import { canonicalJson } from "../core/canonical.ts";
 import {
+  COMMAND_MAX_BYTES,
   type CommandKind,
   CommandPayloads,
   type SignedCommand,
@@ -12,6 +13,7 @@ import { MAX_LANES } from "../core/contract.ts";
 import { RESEARCH_TASK_KINDS, researchDirectionRefusal } from "../core/directions.ts";
 import { McpUses, sameUses, usesWords } from "../core/mcp.ts";
 import { campaignContextRefusal } from "./campaign-context.ts";
+import { publishCommand, unpublishCommand } from "./issue/bus.ts";
 import { mcpRefusal } from "./mcp-servers.ts";
 import { usedRunRefusal } from "./run-names.ts";
 import type { ControlStore } from "./store.ts";
@@ -302,7 +304,20 @@ export function issueCommand(
 ): { id: string } {
   const signed = prepareCommand(store, privateKeyPem, input);
   store.enqueueCommand(signed);
+  publishCommand(store, signed);
   return { id: signed.envelope.id };
+}
+
+/**
+ * The owner withdraws a command that has not been delivered: control records it failed, and,
+ * with the message bus on, takes it off its rig's subject, so the rig's supervisor never delivers
+ * it. False when it was not pending.
+ */
+export function cancelCommand(store: ControlStore, id: string, actor: string): boolean {
+  const rig = store.commandRow(id)?.rig;
+  if (!store.cancelCommand(id, actor)) return false;
+  if (rig) unpublishCommand(store, rig, id);
+  return true;
 }
 
 /** The commands that start a run on a rig: on a stopped RunPod pod, they start the pod first. */
@@ -356,6 +371,7 @@ export async function issueWaking(
     }
   }
   store.enqueueCommand(signed);
+  publishCommand(store, signed);
   return { id: signed.envelope.id, woke };
 }
 
@@ -423,8 +439,8 @@ export function prepareCommand(
     },
     privateKeyPem,
   );
-  // The harness takes commands up to 4 MiB: a bigger one could never be delivered.
-  if (Buffer.byteLength(JSON.stringify(signed)) > 3.5 * 1024 * 1024)
+  // A bigger one could never be delivered, over HTTP or the message bus.
+  if (Buffer.byteLength(JSON.stringify(signed)) > COMMAND_MAX_BYTES)
     throw new Error(`the ${input.kind} command is too large to deliver`);
   return signed;
 }

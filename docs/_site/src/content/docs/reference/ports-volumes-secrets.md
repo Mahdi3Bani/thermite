@@ -90,7 +90,7 @@ In a **slot**, a namespace the cluster's operators made for Thermite, the operat
 | Harness | `/inbox` | Read-only: project and kit bundles and [model files](model-files.md) the supervisor fetched |
 | Harness | `/outbox` | Exports, written by the harness |
 | Harness | `/keys` | Read-only: control's public key |
-| NATS, the `nats` service | `/data` | JetStream's store: the `REPORTS` stream, every rig's reports sent over the bus, kept for good. Control's consumer of it, `control-reports`, keeps its place there |
+| NATS, the `nats` service | `/data` | JetStream's store: the `REPORTS` stream, every rig's reports sent over the bus, kept for good, and the `COMMANDS` stream, each rig's commands until its supervisor takes them. Control's consumer of the reports, `control-reports`, and each rig's consumer of its commands, `rig-<rig>-commands`, keep their places there |
 | Supervisor | `/var/lib/thermite-supervisor` | Its relay and export state, the exports waiting to be sent to control (`export-uploads.json`), where each run's past research sync is (`kb-state.json`), its local results repository (`results.git/`), its fetch caches, advisor records and the `ssh` home (`home/`). In pull mode also `tunnel/` (`THERMITE_TUNNEL_DIR`, 0700: the pod's keys, its enrollment and the nonces it has seen) and `enrolled/` (`THERMITE_TUNNEL_ENROLLED_DIR`: `control.pub`, `rig.json` and `rig.env` for the harness) |
 | Supervisor | `/inbox` | Read and write: what it fetches for the harness |
 | Supervisor | `/outbox` | Read-only: the harness's exports |

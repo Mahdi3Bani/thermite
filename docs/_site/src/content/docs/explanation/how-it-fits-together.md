@@ -76,7 +76,7 @@ The judge, the scheduler and the exports run as separate loops, so a slow model 
 The supervisor connects the rig to the outside. It runs six loops side by side, so a slow one never holds up the others:
 
 - **Reports:** it sends the harness's new events to control, pushes the rig's results to git and uploads each new champion's patch to control, once a minute by default.
-- **Commands:** it fetches control's pending commands, fetches any project, kit or champion they name, and hands them to the harness. It asks every 5 seconds by default, so a pause or a message lands quickly.
+- **Commands:** it fetches control's pending commands, fetches any project, kit or champion they name, and hands them to the harness. It asks every 5 seconds by default, so a pause or a message lands quickly. With the [message bus](how-the-parts-talk.md#commands-over-the-message-bus), each command comes as soon as control issues it.
 - **Live view:** every few seconds, it sends the harness's newest live lines to control, with lines of its own, for **Live** on the dashboard.
 - **Model route and MCP servers:** it hands the harness the agents' model and key chosen on control, by the owner or an operator's agent. On the same beat, it hands the harness the [MCP servers](../how-to/campaigns/give-agents-mcp-tools.md) that its runs' kits give the workers and the planner, and keeps the advisors' for itself.
 - **Past research:** every three minutes by default, it fetches from control the new items of the folders that each running run's campaign may read, and hands them to the harness, which writes them into the run's `knowledge/` folder.

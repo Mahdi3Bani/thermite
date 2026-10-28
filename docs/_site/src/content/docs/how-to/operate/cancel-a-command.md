@@ -40,7 +40,7 @@ curl -sS -X POST -H "Authorization: Bearer $(cat .dev/secrets/control-admin-toke
   http://127.0.0.1:8800/v1/commands/0b6d3e52-6f1a-4c2e-9a57-3f4e1d2c8b90/cancel
 ```
 
-- `{"cancelled":true}`: control withdrew it. The rig will never receive it.
+- `{"cancelled":true}`: control withdrew it. The rig will never receive it. With the message bus, control also takes it off the bus.
 - `404 {"error":"no such pending command"}`: it is no longer pending. The rig already took it, or it expired or was cancelled before. Its status says which.
 
 ## Check the result

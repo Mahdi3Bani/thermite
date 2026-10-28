@@ -50,7 +50,7 @@ The stack, its settings and how to operate it are described on the site:
 - MCP and the REST API: [Let an agent run Thermite over MCP](_site/src/content/docs/how-to/automate/agent-over-mcp.md) and [Script Thermite with the REST API](_site/src/content/docs/how-to/automate/rest-api.md);
 - the command line: [Command line](_site/src/content/docs/reference/command-line.md).
 
-The `two-rigs` profile adds a second rig (`local-2`), which the control and steering acceptance tests use. The `bus` profile adds the message bus, a NATS server with JetStream (`nats`); with `THERMITE_NATS_URL=nats://nats:4222` too, the supervisors send their reports over it and control reads them from it ([The compose file](_site/src/content/docs/reference/settings.md#the-compose-file)). `compose.lifecycle.yaml` lets control restart containers through the engine's socket; it is for development only.
+The `two-rigs` profile adds a second rig (`local-2`), which the control and steering acceptance tests use. The `bus` profile adds the message bus, a NATS server with JetStream (`nats`); with `THERMITE_NATS_URL=nats://nats:4222` too, the supervisors send their reports over it and control reads them from it, and control sends its commands over it and the supervisors take them from it ([The compose file](_site/src/content/docs/reference/settings.md#the-compose-file)). `compose.lifecycle.yaml` lets control restart containers through the engine's socket; it is for development only.
 
 `compose.yaml` passes the optional settings through from your shell or `.env`, each with its default. That includes the knowledge base's timer, `THERMITE_KB_SYNC_SECONDS`, for both rigs' supervisors (180). Set it lower to see past research move sooner, or to `0` to turn it off.
 
@@ -98,7 +98,7 @@ COMPOSE="podman compose" npm run smoke:compose
 COMPOSE="podman-compose" npm run smoke:compose
 ```
 
-With `THERMITE_NATS_URL=nats://nats:4222`, it starts the stack with the `bus` profile, so the supervisor sends its reports over the message bus, and before step 6 it checks that they came that way: the NATS server's `REPORTS` stream holds them, and control's consumer acked every one. Run it with and without, to compare the bus with today's reports over HTTP.
+With `THERMITE_NATS_URL=nats://nats:4222`, it starts the stack with the `bus` profile, so the supervisor sends its reports over the message bus and takes its commands from it, and before step 6 it checks that the reports came that way: the NATS server's `REPORTS` stream holds them, and control's consumer acked every one. Run it with and without, to compare the bus with today's reports over HTTP.
 
 Set `KEEP=1` to leave the stack running afterwards. To run it beside another stack, give it its own project and control port: `THERMITE_PROJECT=thermite-smoke THERMITE_CONTROL_PORT=8801`.
 

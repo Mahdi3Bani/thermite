@@ -13,6 +13,7 @@ flowchart LR
   B[Browser, scripts, MCP clients] -->|pages, REST, MCP| C[Control]
   S[Supervisor] -->|reports, live lines, figures, exports| C
   S -.->|reports, with the bus| N[NATS, with JetStream] -.-> C
+  C -.->|commands, with the bus| N -.-> S
   C -->|commands, settings, past research, kits| S
   S -->|commands, settings, content in /inbox| H[Harness]
   H -->|events, live lines, exports in /outbox| S
@@ -48,11 +49,22 @@ Each channel keeps its own place, so a call that fails is simply made again at t
 
 ### Reports over the message bus
 
-The events can also travel on a message bus: a NATS server with JetStream, which the compose stack runs as its `nats` service with the `bus` profile. When `THERMITE_NATS_URL` names it for control and the supervisor, the supervisor publishes each page of events, as the harness signed it, to the rig's own subject, `thermite.rig.<rig>.report`, in the `REPORTS` stream, instead of posting it to control. Control reads the stream with one consumer, one message at a time, in order, and takes each page with the same checks as a page posted to it. The other channels in the table stay on HTTP, and the supervisor still reads its harness's new events every `THERMITE_POLL_SECONDS`.
+The events can also travel on a message bus: a NATS server with JetStream, which the compose stack runs as its `nats` service with the `bus` profile. When `THERMITE_NATS_URL` names it for control and the supervisor, the supervisor publishes each page of events, as the harness signed it, to the rig's own subject, `thermite.rig.<rig>.report`, in the `REPORTS` stream, instead of posting it to control. Control reads the stream with one consumer, one message at a time, in order, and takes each page with the same checks as a page posted to it. Commands travel on the bus too, below. The other channels in the table stay on HTTP, and the supervisor still reads its harness's new events every `THERMITE_POLL_SECONDS`.
 
-- **The supervisor moves on once the bus has a page.** A page's message id names its ledger and its events, so a page published twice is kept once. A page too large for one message, 8 MiB, goes in halves.
+- **The supervisor moves on once the bus has a page.** A page's message id names its ledger and its events, so a page published twice within two minutes is kept once. A page too large for one message, 8 MiB, goes in halves.
 - **The stream keeps every report:** no limit on their count, size or age, and none can be deleted.
-- **Control can't send the supervisor back.** A page control has already is passed over. A page it refuses is recorded as one posted to it would be (a gap in the events, for one, is `report_refused` in its audit log), its log says why in a line `report from the bus refused`, and it reads on. No answer reaches the supervisor, so nothing sends that page again.
+- **Control reads on past a page it refuses.** A page control has already is passed over. A page it refuses is recorded as one posted to it would be (a gap in the events, for one, is `report_refused` in its audit log), its log says why in a line `report from the bus refused`, and it reads on.
+- **Control's answer sends the supervisor back.** No answer to a page on the bus reaches the supervisor, so a page control refused, for example while the rig's key waits for the owner or while the rig's clock is ahead, would leave every later page refused as a gap. Instead, control's answer to the supervisor's figures, its regular call, names where control is in the rig's events: the ledger and the cursor after the last event it holds. When control is still behind what the supervisor had sent by its call a round before, in the same ledger or holding none of that ledger, control is not just slow to read: it refused a page. The supervisor goes back to where control is, and its log says `control is behind this rig's reports on the bus; sending again from its cursor`. It then sends one page a round, as a page posted to control is tried again once a round, until control's answer shows that control took it; then the rest goes at once. A page sent again unchanged within the bus's two minutes is kept once, so it reaches control a round or two later. A rig whose builds control refuses gets no answer at all, so it goes back once control works with it again.
+
+### Commands over the message bus
+
+With the same setting, control publishes each command it issues to the rig's own subject, `thermite.rig.<rig>.cmd`, in the `COMMANDS` stream, as well as keeping it as before. The message is the command exactly as control signed and stored it, with the command's id as its message id, so a command published twice is kept once. The supervisor takes its rig's commands from its own consumer, `rig-<rig>-commands`, as soon as they are published, and delivers each one as it delivers one it fetched: it stages the content, hands the command to the harness, and gives control the harness's answer. A command reaches the harness within a fraction of a second, instead of at the next poll.
+
+- **Control's store stays the record.** A command's status there stays the truth, and the harness still checks control's signature on every command.
+- **The supervisor acks a command only once control has its outcome.** Until then, the bus hands it again every 5 seconds: while its content is still being fetched, while the harness is applying it, or while control does not answer. The commands after it go on meanwhile. A command the supervisor delivered already is acked and not delivered again, and one past its expiry is acked and not delivered.
+- **The poll stays, slower.** With the bus, the supervisor asks control for its pending commands every 3 minutes instead of every `THERMITE_COMMAND_POLL_SECONDS`, for a command that reached control's store but not the bus. A publish that fails leaves the command pending, and that poll delivers it. The poll also keeps a command alive while its content is fetched, as without the bus.
+- **The stream is a work queue.** A command the supervisor acked is gone from it. It holds up to 100 commands for each rig, and a command for at most a week: a full queue refuses the next command, which stays pending on control for the poll.
+- **A cancelled command is taken off the bus,** so the rig's supervisor never delivers it, unless the supervisor had taken it already.
 
 ### A rig on RunPod
 
@@ -92,7 +104,7 @@ Because each hop waits for its timer, the time a change takes to show is the sum
 
 | A change | Its way | At most, by default |
 | --- | --- | --- |
-| A command, such as **Pause** | control → supervisor → harness | 5 seconds |
+| A command, such as **Pause** | control → supervisor → harness | 5 seconds; with the message bus, a fraction of a second |
 | A step of an agent, in Live | agent → harness → supervisor → control → Live | about 3 seconds, then Live's next refresh |
 | A verdict, on the run's page | judge → ledger → supervisor → control | 60 seconds, then a reload of the page |
 | A new model route | control → supervisor → harness | 30 seconds |

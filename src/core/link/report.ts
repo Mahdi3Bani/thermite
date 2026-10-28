@@ -103,6 +103,18 @@ export const REPORT_CONSUMER_CONFIG = {
 } satisfies Partial<ConsumerConfig> & { durable_name: string };
 
 /**
+ * Control's place in a rig's events, in its answer to the supervisor's figures
+ * (`POST /v1/rigs/<rig>/supervisor`): the ledger it holds the rig's events of, null before the
+ * first report it took, and the cursor after the last event it holds. No answer to a report on the
+ * bus comes back, so a supervisor ahead of this in the same ledger goes back to it.
+ */
+export const ReportPlace = z.object({
+  ledger_id: z.string().nullable(),
+  cursor: z.number().int().min(0),
+});
+export type ReportPlace = z.infer<typeof ReportPlace>;
+
+/**
  * The harness's signed report, as control reads it. A field this control does not know is
  * dropped, in the report or in an event, and the signature (over reportBody) is checked on what is
  * left. So the signed part stays exact: a field a newer harness signs there fails the check. New

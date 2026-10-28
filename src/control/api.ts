@@ -39,8 +39,8 @@ import { CopyCampaignBody, copyACampaign, copyCampaignAnswer } from "./copy-camp
 import { Credential, newToken } from "./credential.ts";
 import { createDashboard } from "./dashboard.ts";
 import { ExportFiles, mountExports } from "./exports.ts";
-import { takeReport } from "./ingest.ts";
-import { issueWaking, pendingFor, propagateChampion, WakeRefused } from "./issue.ts";
+import { reportPlace, takeReport } from "./ingest.ts";
+import { cancelCommand, issueWaking, pendingFor, propagateChampion, WakeRefused } from "./issue.ts";
 import { addKit, kitAnswer, kitsAnswer } from "./kit-add.ts";
 import { KIT_BUNDLE_MAX, type KitRepos } from "./kit-repos.ts";
 import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
@@ -447,7 +447,7 @@ export function createControlApi(
   );
 
   app.post("/v1/commands/:id/cancel", admin, (c) =>
-    store.cancelCommand(c.req.param("id"), "owner:api")
+    cancelCommand(store, c.req.param("id"), "owner:api")
       ? c.json({ cancelled: true })
       : c.json({ error: "no such pending command" }, 404),
   );
@@ -472,7 +472,7 @@ export function createControlApi(
     store.setSupervisor(rig, stats);
     for (const s of modelSteps(before, stats.models))
       store.rigSetupEvent(rig, s.step, s.ok, s.detail);
-    return c.json({ ok: true });
+    return c.json({ ok: true, reports: reportPlace(store, rig) });
   });
 
   // The live view: the harness's signed lines, and the supervisor's own (live-in.ts).

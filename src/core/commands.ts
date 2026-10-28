@@ -581,6 +581,12 @@ export const SignedCommand = z.object({
 });
 export type SignedCommand = z.infer<typeof SignedCommand>;
 
+/**
+ * The largest signed command, in bytes of its JSON: control refuses to sign a larger one, and the
+ * message bus takes none larger (core/link/commands.ts). The harness takes requests up to 4 MiB.
+ */
+export const COMMAND_MAX_BYTES = 3.5 * 1024 * 1024;
+
 export interface KeyPairPem {
   privateKeyPem: string;
   publicKeyPem: string;

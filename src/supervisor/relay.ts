@@ -3,6 +3,7 @@ import { log } from "../common/env.ts";
 import type { SignedCommand } from "../core/commands.ts";
 import {
   REPORT_MAX_BYTES,
+  ReportPlace,
   reportFits,
   reportMessageId,
   reportSubject,
@@ -39,8 +40,18 @@ export interface RelayConfig {
   /** Of those, the ones whose sources are still being fetched: control keeps them alive. */
   staging?: Set<string> | undefined;
   /**
+   * The ids of the commands whose outcome control has, newest last, DELIVERED_KEPT at most: one
+   * the message bus hands again is not delivered twice.
+   */
+  delivered?: Set<string> | undefined;
+  /**
+   * Turns for delivering commands, one at a time (oneAtATime): with the message bus, its commands
+   * and those of the poll over HTTP never stage or reach the harness at once.
+   */
+  turn?: Turn | undefined;
+  /**
    * The message bus (THERMITE_NATS_URL, goal 168): reports go there instead of to control's ingest
-   * route. Commands still come over HTTP.
+   * route. Its commands come from there too (relay/commands.ts).
    */
   bus?: ReportBus | undefined;
 }
@@ -51,7 +62,33 @@ export interface RelayState {
   ledgerId?: string | undefined;
   /** Events per report page; halved when control refuses a page as too large. */
   pageLimit?: number | undefined;
+  /**
+   * On the bus: the ledger and cursor at the supervisor's last call to control with its figures.
+   * The pages before it have had a whole round to reach control (healCursor).
+   */
+  atLastCall?: { ledgerId: string; cursor: number } | undefined;
+  /**
+   * On the bus: going back after a page control refused (healCursor). One page a round is sent
+   * until control's answer shows it took it.
+   */
+  healing?: boolean | undefined;
 }
+
+/** Runs one piece of work after the one before it has ended. */
+export type Turn = <T>(work: () => Promise<T>) => Promise<T>;
+
+/** A turn for each piece of work, one at a time, in the order asked. */
+export function oneAtATime(): Turn {
+  let last: Promise<unknown> = Promise.resolve();
+  return (work) => {
+    const next = last.then(work);
+    last = next.catch(() => undefined);
+    return next;
+  };
+}
+
+/** How many delivered commands' ids the supervisor remembers (RelayConfig.delivered). */
+const DELIVERED_KEPT = 1000;
 
 interface Reply {
   status: number;
@@ -195,99 +232,167 @@ export async function relayOnce(cfg: RelayConfig, state: RelayState): Promise<Re
         must(r, "ingest");
       }
       cursor = snap.next;
-      if (snap.events.length < pageLimit) break;
+      // Sent again from control's place on the bus: one page a round, until control has it.
+      if ((cfg.bus && state.healing) || snap.events.length < pageLimit) break;
     }
   } catch (err) {
     reportError = err;
   }
   if (!cfg.skipCommands) await relayCommandsOnce(cfg);
-  const next = { cursor, ledgerId, pageLimit };
+  const next: RelayState = { cursor, ledgerId, pageLimit };
+  if (cfg.bus && state.atLastCall) next.atLastCall = state.atLastCall;
+  if (cfg.bus && state.healing) next.healing = true;
   if (reportError) throw new RelayError(String(reportError), next);
   return next;
 }
 
 /**
+ * On the message bus, the relay state after control's answer to the supervisor's figures, which
+ * names control's place in the rig's events (ReportPlace). No answer to a page on the bus comes
+ * back, so a page control refused (a key that waits for the owner, a build it refuses, a clock
+ * ahead) would leave every later page refused as a gap. When control is behind what the
+ * supervisor had sent by its last call, a round ago, in the same ledger (at 0 in a ledger control
+ * has none of yet), control is not still reading those pages: it refused one. The supervisor goes
+ * back to control's cursor and sends again from there, one page a round, until control has taken
+ * what it sent. An answer without a place, from an older control, changes nothing.
+ */
+export function healCursor(state: RelayState, answer: unknown): RelayState {
+  const read = ReportPlace.safeParse((answer as { reports?: unknown } | null)?.reports);
+  const ledgerId = state.ledgerId;
+  if (!read.success || ledgerId === undefined) return state;
+  const theirs = read.data.ledger_id === ledgerId ? read.data.cursor : 0;
+  const last = state.atLastCall?.ledgerId === ledgerId ? state.atLastCall.cursor : 0;
+  // While it heals, the one page it sent since: one control has not taken by now goes again.
+  const due = state.healing ? state.cursor : last;
+  if (theirs >= due) {
+    if (!state.healing && last === state.cursor) return state;
+    return { ...state, atLastCall: { ledgerId, cursor: state.cursor }, healing: false };
+  }
+  log(
+    "supervisor",
+    "control is behind this rig's reports on the bus; sending again from its cursor",
+    { ledger: ledgerId, from: state.cursor, to: theirs },
+    "warn",
+  );
+  return { ...state, cursor: theirs, atLastCall: { ledgerId, cursor: theirs }, healing: true };
+}
+
+/**
  * Control's pending commands for this rig, staged and delivered to the harness, each acked with
  * its outcome. The supervisor runs this every few seconds on its own (a pause should not wait for
- * the next report); relayOnce runs it too unless told to skip it.
+ * the next report), or every few minutes with the message bus, for a command that never reached
+ * it; relayOnce runs it too unless told to skip it.
  */
 export async function relayCommandsOnce(cfg: RelayConfig): Promise<void> {
   const f = cfg.fetchImpl ?? fetch;
-  if (cfg.controlUrl && cfg.controlToken) {
-    const held = cfg.held ?? new Map<string, SignedCommand>();
-    const staging = cfg.staging ?? new Set<string>();
-    const list = (ids: Iterable<string>) => encodeURIComponent([...ids].join(","));
-    const have = held.size ? `?have=${list(held.keys())}&staging=${list(staging)}` : "";
-    const pending = must(
-      await call(
-        f,
-        `${cfg.controlUrl}/v1/rigs/${encodeURIComponent(cfg.rig)}/commands/pending${have}`,
-        cfg.controlToken,
-        toControl(),
-      ),
-      "pending commands",
-    ) as { commands: SignedCommand[]; held?: string[] };
-    // What control still holds pending, oldest first; a control that names none sent all whole.
-    const still = new Set(pending.held ?? []);
-    for (const id of [...held.keys()]) if (!still.has(id)) held.delete(id);
-    for (const cmd of pending.commands) held.set(cmd.envelope.id, cmd);
-    for (const id of [...staging]) if (!held.has(id)) staging.delete(id);
-    for (const cmd of [...held.values()]) {
-      try {
-        const staged = cfg.stage ? await cfg.stage(cmd) : "ready";
-        if (staged === "wait") staging.add(cmd.envelope.id);
-        else staging.delete(cmd.envelope.id);
-        if (staged === "wait") continue;
-        if (staged !== "ready") {
-          // The content never arrived: the harness would only refuse it, without the reason.
-          await call(
-            f,
-            `${cfg.controlUrl}/v1/rigs/${encodeURIComponent(cfg.rig)}/commands/${cmd.envelope.id}/ack`,
-            cfg.controlToken,
-            toControl({
-              method: "POST",
-              body: JSON.stringify({ status: "failed", outcome: { error: staged.failed } }),
-            }),
-          );
-          log("supervisor", "command not relayed", { id: cmd.envelope.id, error: staged.failed });
-          continue;
-        }
-        const outcome = await call(f, `${cfg.harnessUrl}/v1/commands`, cfg.harnessToken, {
-          method: "POST",
-          body: JSON.stringify(cmd),
-        });
-        // Another request is applying it right now: acknowledge on a later round, from the replay.
-        if (outcome.body.status === "in_progress") continue;
-        const status =
-          outcome.status === 403
-            ? "rejected"
-            : outcome.status >= 300 || outcome.body.accepted === false
-              ? "failed"
-              : "delivered";
-        const reported =
-          outcome.status >= 300 && outcome.status !== 403
-            ? { http: outcome.status, error: outcome.body.error ?? null }
-            : outcome.body;
-        await call(
-          f,
-          `${cfg.controlUrl}/v1/rigs/${encodeURIComponent(cfg.rig)}/commands/${cmd.envelope.id}/ack`,
-          cfg.controlToken,
-          toControl({ method: "POST", body: JSON.stringify({ status, outcome: reported }) }),
-        );
-        log("supervisor", "relayed command", {
-          id: cmd.envelope.id,
-          kind: cmd.envelope.kind,
-          status,
-        });
-        cfg.onDelivered?.(cmd.envelope.kind, status === "delivered");
-      } catch (err) {
-        log(
-          "supervisor",
-          "command relay error",
-          { id: cmd.envelope.id, error: String(err) },
-          "error",
-        );
-      }
+  if (!cfg.controlUrl || !cfg.controlToken) return;
+  const held = cfg.held ?? new Map<string, SignedCommand>();
+  const staging = cfg.staging ?? new Set<string>();
+  const list = (ids: Iterable<string>) => encodeURIComponent([...ids].join(","));
+  const have = held.size ? `?have=${list(held.keys())}&staging=${list(staging)}` : "";
+  const pending = must(
+    await call(
+      f,
+      `${cfg.controlUrl}/v1/rigs/${encodeURIComponent(cfg.rig)}/commands/pending${have}`,
+      cfg.controlToken,
+      toControl(),
+    ),
+    "pending commands",
+  ) as { commands: SignedCommand[]; held?: string[] };
+  // What control still holds pending, oldest first; a control that names none sent all whole.
+  const still = new Set(pending.held ?? []);
+  for (const id of [...held.keys()]) if (!still.has(id)) held.delete(id);
+  for (const cmd of pending.commands) held.set(cmd.envelope.id, cmd);
+  for (const id of [...staging]) if (!held.has(id)) staging.delete(id);
+  for (const cmd of [...held.values()]) await deliverCommand({ ...cfg, held, staging }, cmd);
+}
+
+/**
+ * One command, from control's pending list or from the message bus: its content staged, the
+ * command delivered to the harness, and the harness's answer acked to control, in its turn. True
+ * once control has the outcome: it took the ack, or holds the command pending no more. False while
+ * the command waits (its sources still stage, or the harness is applying it) or a call failed: the
+ * next round, or the bus, hands it again. Each command on its own: one's failure never holds up
+ * the others.
+ */
+export async function deliverCommand(cfg: RelayConfig, cmd: SignedCommand): Promise<boolean> {
+  const turn = cfg.turn ?? ((work) => work());
+  return await turn(() => deliverInTurn(cfg, cmd));
+}
+
+async function deliverInTurn(cfg: RelayConfig, cmd: SignedCommand): Promise<boolean> {
+  const f = cfg.fetchImpl ?? fetch;
+  const id = cmd.envelope.id;
+  if (cfg.delivered?.has(id)) return true;
+  if (!cfg.controlUrl || !cfg.controlToken) return false;
+  const ackUrl = `${cfg.controlUrl}/v1/rigs/${encodeURIComponent(cfg.rig)}/commands/${id}/ack`;
+  try {
+    const staged = cfg.stage ? await cfg.stage(cmd) : "ready";
+    if (staged === "wait") {
+      cfg.staging?.add(id);
+      return false;
     }
+    cfg.staging?.delete(id);
+    let ack: Reply;
+    if (staged !== "ready") {
+      // The content never arrived: the harness would only refuse it, without the reason.
+      ack = await call(
+        f,
+        ackUrl,
+        cfg.controlToken,
+        toControl({
+          method: "POST",
+          body: JSON.stringify({ status: "failed", outcome: { error: staged.failed } }),
+        }),
+      );
+      log("supervisor", "command not relayed", { id, error: staged.failed });
+    } else {
+      const outcome = await call(f, `${cfg.harnessUrl}/v1/commands`, cfg.harnessToken, {
+        method: "POST",
+        body: JSON.stringify(cmd),
+      });
+      // Another request is applying it right now: acknowledge on a later round, from the replay.
+      if (outcome.body.status === "in_progress") return false;
+      const status =
+        outcome.status === 403
+          ? "rejected"
+          : outcome.status >= 300 || outcome.body.accepted === false
+            ? "failed"
+            : "delivered";
+      const reported =
+        outcome.status >= 300 && outcome.status !== 403
+          ? { http: outcome.status, error: outcome.body.error ?? null }
+          : outcome.body;
+      ack = await call(
+        f,
+        ackUrl,
+        cfg.controlToken,
+        toControl({ method: "POST", body: JSON.stringify({ status, outcome: reported }) }),
+      );
+      log("supervisor", "relayed command", { id, kind: cmd.envelope.kind, status });
+      cfg.onDelivered?.(cmd.envelope.kind, status === "delivered");
+    }
+    // A 404: control holds it pending no more (the harness's report came first, or it expired).
+    if (ack.status === 404 || (ack.status >= 200 && ack.status < 300)) {
+      remember(cfg.delivered, id);
+      cfg.held?.delete(id);
+      return true;
+    }
+    const why = { id, status: ack.status, error: ack.body.error ?? null };
+    log("supervisor", "control did not take a command's outcome", why, "warn");
+    return false;
+  } catch (err) {
+    log("supervisor", "command relay error", { id, error: String(err) }, "error");
+    return false;
+  }
+}
+
+/** Keeps a delivered command's id, and forgets the oldest past DELIVERED_KEPT. */
+function remember(delivered: Set<string> | undefined, id: string): void {
+  if (!delivered) return;
+  delivered.add(id);
+  for (const old of delivered) {
+    if (delivered.size <= DELIVERED_KEPT) break;
+    delivered.delete(old);
   }
 }

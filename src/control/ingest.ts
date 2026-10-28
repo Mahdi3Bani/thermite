@@ -4,6 +4,7 @@ import { errorText } from "../common/errors.ts";
 import {
   REPORT_CONSUMER_CONFIG,
   REPORT_STREAM_CONFIG,
+  type ReportPlace,
   readReport,
   reportSignedBy,
   rigOfSubject,
@@ -131,15 +132,31 @@ function noteReportAfterWait(store: ControlStore, rig: string): void {
 /** What one message from the reports stream came to. */
 export type Folded = { folded: number } | { skipped: string } | { refused: string };
 
+/** The rig's row as reports move it: its current ledger, the cursor after it, its newest report. */
+function reportsOf(store: ControlStore, rig: string) {
+  return store.db
+    .prepare("select ledger_id, last_cursor, report_at from rig where id = ?")
+    .get(rig) as { ledger_id: unknown; last_cursor: unknown; report_at: unknown } | undefined;
+}
+
+/**
+ * Control's place in a rig's events (ReportPlace), for its answer to the supervisor's figures: a
+ * supervisor on the message bus goes back there after a page control refused.
+ */
+export function reportPlace(store: ControlStore, rig: string): ReportPlace {
+  const u = reportsOf(store, rig);
+  return typeof u?.ledger_id === "string"
+    ? { ledger_id: u.ledger_id, cursor: Number(u.last_cursor) }
+    : { ledger_id: null, cursor: 0 };
+}
+
 /**
  * Whether control holds this report already: from the rig's current ledger, every event in it
  * taken, and a report at least as new taken too. It brings nothing new, such as a page the bus
  * hands again after control folded it but before its ack arrived.
  */
 function alreadyTaken(store: ControlStore, rig: string, r: SignedReport): boolean {
-  const u = store.db
-    .prepare("select ledger_id, last_cursor, report_at from rig where id = ?")
-    .get(rig) as { ledger_id: unknown; last_cursor: unknown; report_at: unknown } | undefined;
+  const u = reportsOf(store, rig);
   return (
     u !== undefined &&
     u.ledger_id === r.ledger_id &&

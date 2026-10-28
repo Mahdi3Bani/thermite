@@ -28,7 +28,15 @@ import { type LiveRelayState, relayLiveOnce, supervisorLive } from "./live.ts";
 import { syncMcpServers } from "./mcp-sync.ts";
 import { ModelDownloads } from "./model-download.ts";
 import { syncModelRouteRound } from "./model-route.ts";
-import { RelayError, type RelayState, relayCommandsOnce, relayOnce } from "./relay.ts";
+import { commandPollMs, followCommands } from "./relay/commands.ts";
+import {
+  healCursor,
+  oneAtATime,
+  RelayError,
+  type RelayState,
+  relayCommandsOnce,
+  relayOnce,
+} from "./relay.ts";
 import { dailyReport } from "./report.ts";
 import { SUPERVISOR_NUMBERS, supervisorMs } from "./settings.ts";
 import { stageCommand } from "./staging.ts";
@@ -75,10 +83,13 @@ async function main(): Promise<void> {
   const controlUrl = pull?.controlUrl ?? env.CONTROL_URL?.replace(/\/$/, "");
   const controlToken = pull?.controlToken ?? optionalSecretFromFile("THERMITE_CONTROL_TOKEN_FILE");
   // The message bus (goal 168): with THERMITE_NATS_URL, reports go there instead of to control's
-  // ingest route; a bad address stops the supervisor here.
+  // ingest route, and commands come from there; a bad address stops the supervisor here.
   const natsUrl = busUrl(env);
   const bus = natsUrl ? natsBus(natsUrl, `supervisor ${rig}`) : undefined;
-  if (natsUrl) log("supervisor", "reports go over the message bus", { bus: new URL(natsUrl).host });
+  if (natsUrl)
+    log("supervisor", "reports and commands go over the message bus", {
+      bus: new URL(natsUrl).host,
+    });
   // A full reset keeps the tunnel's keys and enrollment: control's trust in the pod stays.
   const keepOnWipe = new Set(
     (pull?.dirs ?? []).filter((d) => dirname(d) === home).map((d) => basename(d)),
@@ -103,6 +114,9 @@ async function main(): Promise<void> {
     bus,
     held: new Map(),
     staging: new Set<string>(),
+    // Commands from the bus and from the poll over HTTP: each delivered once, one at a time.
+    delivered: new Set<string>(),
+    turn: oneAtATime(),
     stage: (cmd: Parameters<typeof stageCommand>[1]) =>
       stageCommand(
         {
@@ -228,8 +242,8 @@ async function main(): Promise<void> {
   process.on("SIGTERM", () => stop("SIGTERM"));
   process.on("SIGINT", () => stop("SIGINT"));
 
-  const toControl = async (path: string, body: unknown) => {
-    if (!controlUrl || !controlToken) return;
+  const toControl = async (path: string, body: unknown): Promise<unknown> => {
+    if (!controlUrl || !controlToken) return undefined;
     const res = await fetch(`${controlUrl}/v1/rigs/${encodeURIComponent(rig)}${path}`, {
       method: "POST",
       headers: {
@@ -240,6 +254,7 @@ async function main(): Promise<void> {
       body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(`POST ${path} -> ${res.status}`);
+    return await res.json().catch(() => undefined);
   };
 
   // The harness may still be starting: wait for it once, before the relays begin.
@@ -365,8 +380,13 @@ async function main(): Promise<void> {
   const livingDone = living();
 
   // Commands on their own short interval: a pause or a message should not wait for the next
-  // report. The report loop below leaves commands to this one.
-  const commandMs = supervisorMs(env, SUPERVISOR_NUMBERS.commandPollSeconds);
+  // report. The report loop below leaves commands to this one. With the bus, each command comes
+  // from there as control issues it, and this poll is a slow fallback for one the bus never had.
+  if (bus && controlUrl && controlToken)
+    followCommands(bus, cfg).catch((err) =>
+      log("supervisor", "commands from the bus stopped", { error: String(err) }, "error"),
+    );
+  const commandMs = commandPollMs(env, Boolean(bus));
   const commanding = async () => {
     let failing = false;
     while (!stopping && controlUrl && commandMs > 0) {
@@ -569,7 +589,7 @@ async function main(): Promise<void> {
     }
     try {
       // Supervisor figures for control: git sync, advisors, relay.
-      await toControl("/supervisor", {
+      const answer = await toControl("/supervisor", {
         at: new Date().toISOString(),
         relay: { cursor: state.cursor },
         export: {
@@ -613,6 +633,13 @@ async function main(): Promise<void> {
             }
           : null,
       });
+      // On the bus, control's answer names its place in the rig's events: after a page it
+      // refused, the reports go back there.
+      const healed = bus ? healCursor(state, answer) : state;
+      if (healed !== state) {
+        state = healed;
+        save(statePath, state);
+      }
       const lastDaily = reportState.lastDailyAt ? Date.parse(reportState.lastDailyAt) : 0;
       if (Date.now() - lastDaily >= 24 * 3_600_000) {
         const body = await dailyReport({

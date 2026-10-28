@@ -47,7 +47,7 @@ Control's key pair is `control-signing.key` and `control-signing.pub` in control
 | Step | Where | What happens |
 | --- | --- | --- |
 | 1. Issue | Control | Control checks that it knows the rig (it has reported and is not retired, is enrolled, or is in the rig tokens file), checks the payload against the kind's schema, signs the envelope and stores the command as `pending`. For a `message_agent`, it first trims the text and refuses a message that nothing on the rig would read (see [`message_agent`](#message_agent)). A signed command larger than 3.5 MiB is refused: `the <kind> command is too large to deliver` |
-| 2. Fetch | Supervisor | The supervisor asks control for its rig's pending commands, oldest first, every `THERMITE_COMMAND_POLL_SECONDS` seconds (default 5) |
+| 2. Fetch | Supervisor | The supervisor asks control for its rig's pending commands, oldest first, every `THERMITE_COMMAND_POLL_SECONDS` seconds (default 5). With the [message bus](../explanation/how-the-parts-talk.md#commands-over-the-message-bus), control also publishes the command to the rig's subject, and the supervisor takes it from there at once; it then asks control only every 3 minutes |
 | 3. Stage | Supervisor | If the command names content to fetch (a project, a kit, a model or another rig's champion), the supervisor fetches it into the rig's inbox first. The command stays `pending` while it waits |
 | 4. Apply | Harness | The supervisor posts the command to the harness, which checks it and applies it once |
 | 5. Acknowledge | Supervisor | The supervisor tells control the status and the harness's answer, which become the command's status and outcome |
@@ -98,7 +98,7 @@ Once control has the harness's own record of an applied command (step 6), the ou
 - **Kept alive while its content is fetched.** While the supervisor fetches a command's content (a repository bundle, a kit, a model download), it tells control so with each request. Within 10 minutes of the command's `expires_at`, control signs it again with an `expires_at` an hour later, and the audit log records `command_renewed`. It does so at most 24 hours after `issued_at`: a fetch that takes longer lets the command expire.
 - **Each command's content crosses once.** The supervisor names the commands it holds already, and control answers those with their ids alone. A command signed again is sent whole once more.
 - **Expiry at the harness.** The harness refuses a command whose `expires_at` has passed by the rig's clock (`expired`), or whose `issued_at` is more than 5 minutes ahead of it (`issued in the future`).
-- **Cancelling.** The owner can cancel a command while it is `pending`, with `POST /v1/commands/<id>/cancel` and the owner's token. The command becomes `failed` with the outcome `{"cancelled_by": "owner:api"}`. A command that is not pending gives `404 {"error":"no such pending command"}`. The dashboard, the command line and MCP have no way to cancel. See [Cancel a pending command](../how-to/operate/cancel-a-command.md).
+- **Cancelling.** The owner can cancel a command while it is `pending`, with `POST /v1/commands/<id>/cancel` and the owner's token. The command becomes `failed` with the outcome `{"cancelled_by": "owner:api"}`. A command that is not pending gives `404 {"error":"no such pending command"}`. With the message bus, control also takes the cancelled command off the rig's subject. The dashboard, the command line and MCP have no way to cancel. See [Cancel a pending command](../how-to/operate/cancel-a-command.md).
 
 ## What the harness checks
 
