@@ -72,13 +72,13 @@ The writers and verifiers of the documentation site (goal [060](_completed/060-d
 - [ ] A retired rig that is brought back cannot get a token: `thermite rig token` refuses a retired rig and the dashboard offers no way, so only a new enrollment works (`src/control/store.ts`).
 - [ ] After a rig is retired, the dashboard always adds "If its token is in control's settings, take it out there too", also for enrolled rigs (`src/control/dashboard.ts`).
 - [ ] Retiring an enrolled rig writes `rig_retired` to the audit log twice (`src/control/store.ts`).
-- [ ] After a full reset, the rig's earlier runs leave the rig page, the campaign pages and the leaderboard; control still holds their events, but no page shows them (`src/control/views.ts`).
+- [ ] After a full reset, the rig's earlier runs leave the rig page, the campaign pages and the leaderboard; control still holds their events, but no page shows them (`src/control/views/rig.ts`).
 - [ ] Changing an owner, operator, agent or reader token needs a control restart; no page, API call or MCP tool does it (`src/control/main.ts`).
 
 ### Dashboard
 
 - [ ] A change submitted by hand is described as "An agent changed …", and approving a held change on a rig with no auditor is recorded as "You overrode the audit" (`src/control/ui/**`).
-- [ ] The leaderboard counts a campaign's runs as rigs (`src/control/views.ts`).
+- [ ] The leaderboard counts a campaign's runs as rigs (`src/control/views/leaderboard.ts`).
 - [x] Fixed in `5e4a7d6`. A rig that has never reported shows an age counted from 1970: `No report for 20746 days`, also on its page and in **Needs you** (`src/control/ui/**`).
 - [ ] Saving **Edit rig** is not all or nothing: it stops at the first refused role, and earlier roles stay saved (`src/control/dashboard.ts`).
 - [ ] Small rough edges: a cluster's **Nodes** fact shows raw memory (`8095856Ki`); a joined rig's steps list `✓ First report reached control` twice; the Providers header reads `1 models are read…`; the harness list shows **Pi** for a rig that runs OpenCode v2 from its own settings; a keyless provider's edit form shows `empty keeps the key ending ` with nothing after it; a short key shows as `key …`; Edit rig's message when roles go back to the advisors file repeats itself.
@@ -113,7 +113,7 @@ The writers and verifiers of the documentation site (goal [060](_completed/060-d
 - [ ] The page has no money or device-hours budget, only "Stop after (hours)" (`src/control/ui/new-campaign.ts`).
 - [ ] "Look it up" keeps the first commit after the Repository or Start from field changes (`src/control/ui/new-campaign-client.ts`).
 - [ ] In "Files for the check", the tick "the run reads these too" applies when the files are chosen, not when the form is sent, so files chosen before the tick stay hidden from the run (`src/control/ui/new-campaign-client.ts`).
-- [ ] A campaign saved without a start is not on the Campaigns list until a rig reports a run of it (`src/control/views.ts`).
+- [ ] A campaign saved without a start is not on the Campaigns list until a rig reports a run of it (`src/control/views/campaigns.ts`).
 - [ ] After a start, "Starting …" shows only for a campaign's first run, and it stays with no error when the assignment fails; the reason is only on the Commands page (`src/control/dashboard.ts`).
 
 ### Contracts and kits
@@ -203,7 +203,7 @@ The writers and verifiers of the documentation site (goal [060](_completed/060-d
 - [ ] `reset_workers.reseed_commit` is accepted by the schema and always refused (`src/core/commands.ts`, `src/harness/service/commands.ts`).
 - [ ] The same token role reads different things over REST and MCP: the reader token reads rigs, runs and events over MCP, but only `/metrics` and the live log over REST (`src/control/api/context.ts`, `src/control/mcp/context.ts`).
 - [ ] MCP `retire_rig` finds only rigs that have reported, while REST also retires enrolled or tokens-file rigs that never reported (`src/control/mcp/rigs.ts`, `src/control/api/rigs.ts`).
-- [ ] MCP `recent_events` takes a `limit` up to 500 but returns at most 50 events (`src/control/mcp/reads.ts`, `src/control/views.ts`).
+- [ ] MCP `recent_events` takes a `limit` up to 500 but returns at most 50 events (`src/control/mcp/reads.ts`, `src/control/views/fold/index.ts`).
 - [ ] Two rules for a rig's name: REST enrollment takes 2 to 40 characters that start and end with a letter or digit, and Add a rig and MCP `add_cluster_rig` take up to 63 that may end with a dash (`src/control/store.ts`, `src/control/machines/deploy.ts`).
 - [ ] `POST /v1/rigs/<rig>/reset` accepts an unknown rig and fails a step later (`src/control/api/lifecycle.ts`, `src/control/lifecycle.ts`).
 - [ ] `GET /v1/gpu-clouds/<name>/tests` answers `[]`, not 404, for a cloud that is not in Providers (`src/control/api/gpu-clouds.ts`).

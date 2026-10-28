@@ -12,9 +12,6 @@
     "src/control/store.ts": {
       "lines": 3672
     },
-    "src/control/views.ts": {
-      "lines": 2191
-    },
     "src/harness/broker.ts": {
       "lines": 1203
     },

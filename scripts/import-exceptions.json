@@ -22,7 +22,10 @@
   "src/control/plan-usage.ts": ["src/control/ui/components.ts"],
   "src/control/research-view.ts": ["src/harness/research/progress.ts"],
   "src/control/ui/goal-checks.ts": ["src/harness/goal-checks.ts"],
-  "src/control/views.ts": ["src/harness/goal-checks.ts", "src/harness/judge/goal-values.ts"],
+  "src/control/views/fold/goals.ts": [
+    "src/harness/goal-checks.ts",
+    "src/harness/judge/goal-values.ts"
+  ],
   "src/core/tunnel.ts": ["node:path"],
   "src/core/version.ts": ["node:fs"],
   "src/supervisor/advise/context.ts": ["src/harness/mcp-gateway.ts"],

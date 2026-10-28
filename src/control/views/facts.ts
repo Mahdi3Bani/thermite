@@ -1,4 +1,4 @@
-import type { ChampionStep } from "../views.ts";
+import type { ChampionStep } from "./types.ts";
 
 /**
  * Control's facts about a run, worked out once (goal 125, T1), as its screens, MCP and metrics
