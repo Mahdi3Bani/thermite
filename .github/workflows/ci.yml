@@ -222,7 +222,8 @@ jobs:
           # Rigs on RunPod, pull mode, results sent to control, and the rig image.
           RUNPOD: |
             ^src/control/runpod
-            ^tests/control/runpod
+            ^tests/control/runpod/
+            ^tests/control/dashboard/runpod\.test\.ts$
             ^src/control/exports\.ts$
             ^src/control/store/(runpod|tunnels|exports)\.ts$
             ^src/core/(tunnel|paths)\.ts$

@@ -1,7 +1,7 @@
 /**
  * A campaign's Agents' context in the browser (goal 070). CC_CORE_JS is the part that touches no
  * page, shared by the campaign's page, the Copy panel and New campaign, and run by the tests as
- * the browser runs it (campaign-context-ui.test.ts):
+ * the browser runs it (tests/control/ui/campaigns/context.test.ts):
  * - `ccRead(windowText, pointText)`: the two fields as typed, `{cw, at, errs}` (null: empty), with
  *   control's words for a value it refuses (agentsContextRefusal);
  * - `ccApply(own, c)`: what a rig's workers get with the numbers, and the model that refuses a

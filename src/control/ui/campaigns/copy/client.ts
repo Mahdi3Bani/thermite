@@ -12,7 +12,7 @@ import { CC_CORE_JS } from "../context/index.ts";
  */
 
 /**
- * The panel's parts that touch no page, also run by the tests (copy-campaign-client.test.ts):
+ * The panel's parts that touch no page, also run by the tests (tests/control/ui/campaigns/copy/client.test.ts):
  * - `nameCheck(value, taken, folderOnly)`: what the name field says, as control answers:
  *   `{ok, cls, say, fix}`, where `fix` is a valid, free name to offer for one that is not valid;
  * - `sameUses(a, b)`: whether two lists of servers are the same, as control compares them;

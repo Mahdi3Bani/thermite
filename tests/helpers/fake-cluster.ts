@@ -6,7 +6,7 @@ import { ADMIN, controlOnly, mcpClient, type Requester, signIn } from "./control
 
 /**
  * Control over a fake Kubernetes cluster, for the tests of clusters in Providers, Add a rig and
- * a cluster rig's page. Moved out of tests/control/clusters-ui.test.ts.
+ * a cluster rig's page. Moved out of the clusters page's test (tests/control/dashboard/clusters.test.ts).
  */
 
 export { ADMIN };

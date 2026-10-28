@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { ADVISOR_ROUTES, MODEL_ROUTE } from "../../../src/core/api/control/rigs.ts";
 import { MODEL_ROUTE_PUT } from "../../../src/core/api/harness/supervisor.ts";
 import { ControlRoute } from "../../../src/core/api/model-route.ts";
-import { stack } from "../../control/rig-model/stack.ts";
+import { stack } from "../../control/rigs/model/stack.ts";
 
 /**
  * The model route has one home (core/api/model-route.ts): control builds it, the supervisor reads

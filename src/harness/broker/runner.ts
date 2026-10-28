@@ -50,7 +50,7 @@ export const IDS = {
   maxLanes: MAX_LANES,
 } as const;
 
-/** The lane numbers below stop at IDS.maxLanes (tests/core/lanes.test.ts checks it). */
+/** The lane numbers below stop at IDS.maxLanes (tests/system/lanes.test.ts checks it). */
 export const RoleSchema = z
   .string()
   .regex(

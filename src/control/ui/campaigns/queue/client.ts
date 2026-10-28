@@ -11,7 +11,7 @@ import { DIRECTION_TOKEN_SOURCE } from "../../../../core/directions.ts";
  */
 
 /**
- * The picker's parts that touch no page, also run by the tests (planner-client.test.ts):
+ * The picker's parts that touch no page, also run by the tests (tests/control/ui/campaigns/queue/client.test.ts):
  * - `nameOf(text)`: a direction's name, as control's directionName makes it, or "" for none;
  * - `pickContext(value, caret)`: the name being typed after a `:`, and where its colon is;
  * - `pickItems(dirs, q)`: the run's directions that hold `q`, then a new one, in order;
