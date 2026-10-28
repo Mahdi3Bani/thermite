@@ -1,64 +1,25 @@
-import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { z } from "zod";
-import {
-  CLAIM_LIMITS,
-  CODE_RESEARCH_TOOLS,
-  moreText,
-  READ_MAX,
-  researchTool,
-} from "../../agents/tools/research.ts";
+import { CODE_RESEARCH_TOOLS, researchTool } from "../../agents/tools/research.ts";
 import { log } from "../../common/env.ts";
-import { canonicalJson } from "../../core/canonical.ts";
-import type { ResearchContract } from "../../core/contract.ts";
-import { parseDuration } from "../../core/duration.ts";
-import { cutSaid, KB_BODY_MAX } from "../../core/kb-index.ts";
-import {
-  HYPOTHESES_RULE,
-  hypothesisStatusWords,
-  LIVE_HYPOTHESES,
-  questionLabel,
-} from "../../core/research-check.ts";
-import type { ClaimRow, FindingRow } from "../ledger/claims.ts";
-import type { HypothesisRow } from "../ledger/hypotheses.ts";
-import type { SourceRow } from "../ledger/sources.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
 import type { TaskYield } from "../queue.ts";
-import { statusEvents } from "../run-status.ts";
-import { blockedSpans } from "./blocked.ts";
-import { answersSection } from "./cards.ts";
+import { addClaim } from "./research/claims.ts";
+import { clockOf } from "./research/clock.ts";
+import { type ResearchContext, researchContext } from "./research/context.ts";
+import { addFinding } from "./research/findings.ts";
 import {
-  checkCited,
-  claimNumbers,
-  foldText,
-  normalizeQuote,
-  numbersIn,
-  withoutNames,
-} from "./checks.ts";
-import { Fetcher, htmlToText, registrableDomain } from "./fetcher.ts";
-import { Papers } from "./paper.ts";
-import { Refusals } from "./refusals.ts";
-import { answerSections, checkLine, researchEnd } from "./review.ts";
-import { DRAFT_FINDING, KEPT_FINDING, noQuestion, repeatsWords } from "./worker-words.ts";
+  hypothesesBrief,
+  proposeHypothesis,
+  reviseHypothesis,
+  setHypothesisStatus,
+} from "./research/hypotheses.ts";
+import { addNote } from "./research/notes.ts";
+import { report, updateSection } from "./research/report.ts";
+import { fetchSource, frontier, readSource, searchCorpus, searchWeb } from "./research/sources.ts";
+import { statsOf } from "./research/stats.ts";
+import { trialYield } from "./research/yield.ts";
 
 /** The research service's operations a hill-climb or goal run takes (its code trials' tools). */
 const CODE_OPS = new Set(CODE_RESEARCH_TOOLS.map((n) => researchTool(n)?.op ?? n));
-
-const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
-
-/** The start of a fetched page's text that fetch answers with (read_source reads the rest). */
-const VIEW_CHARS = 6000;
-/** The links a fetch answers with, in characters, beside the text, within OUTPUT_MAX. */
-const VIEW_LINKS_CHARS = 5000;
-/** One page of search_corpus: at most this many matches, and this many characters of them. */
-const SEARCH_PAGE = 30;
-const SEARCH_CHARS = 11_000;
-/** The run's newest notes a new note may not repeat (goal 117). */
-export const NOTE_REPEATS = 200;
-/** The hypotheses a worker's brief lists: those that need a verdict, and the pool's newest. */
-const BRIEF_REQUIRED = 30;
-const BRIEF_POOL = 10;
 
 /**
  * Research mode's integrity rules, enforced by code (the research form of "agents never judge"):
@@ -75,239 +36,33 @@ const BRIEF_POOL = 10;
  * - reports show worker-written sections as notes, never as findings, and flag numbers in them
  *   that no verified claim supports;
  * - the harness owns the clock (running time only): workers cannot end a campaign.
+ *
+ * The class holds the service's state and is its interface. The bodies of its operations are in
+ * research/, a module for each part: sources.ts (fetch, read and search the archive, and the
+ * links to follow), claims.ts, notes.ts, findings.ts, hypotheses.ts (with the brief's list and
+ * the free functions the harness's service calls), yield.ts (what a trial added), clock.ts,
+ * stats.ts and report.ts. context.ts holds what they share.
  */
 
-export { normalizeQuote };
-
-/** A label at a line's start that numbers a question or a claim: "Question 0:", "Claim c-005:". */
-const LABEL = /^[*_]*(?:question|claim)\s*#?\s*[\w.-]*\d[\w-]*\s*[:.)\]]/i;
-
-/**
- * The heading or label of a claim's text that a number comes from, if it comes from one: a
- * Markdown heading line ("# Claim c-verify-005") or a label at a line's start ("Question 0:").
- * Such a number counts like any other (the check is the same); the problem only says where it is.
- */
-function headingWith(text: string, num: string): string | undefined {
-  for (const line of text.split("\n")) {
-    const t = line.trim();
-    const head = /^#{1,6}\s/.test(t) ? t : LABEL.exec(t)?.[0];
-    if (head && numbersIn(head).includes(num)) return head;
-  }
-  return undefined;
-}
-
-/** A URL as the archive stores it (parsed, without its fragment); undefined when it is not one. */
-export function archiveUrl(s: string): string | undefined {
-  try {
-    const u = new URL(s);
-    u.hash = "";
-    return u.toString();
-  } catch {
-    return undefined;
-  }
-}
-
-/** A URL loosely, to name what a source could be: no scheme, no "www.", no fragment or end slash. */
-const looseUrl = (s: string) =>
-  s
-    .trim()
-    .toLowerCase()
-    .replace(/^[a-z][a-z0-9+.-]*:\/\//, "")
-    .replace(/^www\./, "")
-    .replace(/#.*$/, "")
-    .replace(/\/+$/, "");
-
-/** A quote as a claim keeps it: its source's id, and what the worker cited when that was not it. */
-interface ClaimQuote {
-  source: string;
-  quote: string;
-  resolved_from?: string;
-}
-
-/** The most draft reasons a `claim_added` event carries (the claim's record keeps them all). */
-const EVENT_PROBLEMS = 20;
-
-/** A claim's identity for deduplication: its words, case and punctuation folded. */
-const claimKey = foldText;
-
-/** A claim as a worker sends it, within the limits add_claim's text gives (CLAIM_LIMITS). */
-export const ClaimInput = z.object({
-  text: z.string().min(CLAIM_LIMITS.text.min).max(CLAIM_LIMITS.text.max),
-  quotes: z
-    .array(
-      z.object({
-        source: z.string().min(1),
-        quote: z.string().min(CLAIM_LIMITS.quote.min).max(CLAIM_LIMITS.quote.max),
-      }),
-    )
-    .min(CLAIM_LIMITS.quotes.min)
-    .max(CLAIM_LIMITS.quotes.max),
-  question: z.number().int().min(0).optional(),
-  confidence: z.number().min(0).max(1).optional(),
-});
-
-/** A hypothesis's longest text: a longer one is cut to it. */
-const HYPOTHESIS_MAX = 2000;
-
-const ClaimIds = z.array(z.string().max(500)).max(50);
-
-export const HypothesisInput = z.object({
-  text: z.string(),
-  question: z.number().int().nullable().optional(),
-  supporting: ClaimIds.default([]),
-});
-
-export const HypothesisRevision = z.object({
-  id: z.string().min(1).max(200),
-  text: z.string().optional(),
-  question: z.number().int().nullable().optional(),
-  supporting: ClaimIds.optional(),
-});
-
-export const FindingInput = z.object({
-  text: z.string().min(5).max(4000),
-  summary: z.string().min(5).max(8000),
-  why_it_matters: z.string().min(5).max(8000),
-  supporting: z.array(z.string().min(1)).min(1).max(50),
-});
-
-/**
- * A research run's starting hypotheses (goal 078): those of its campaign's brief, recorded as the
- * run's first hypotheses when the run is made, each whole, with no supporting claim yet and no
- * lane. Each is a hypothesis_added event by `by` (who assigned the run), so the campaign's folder
- * in the knowledge base holds them too. Returns their ids.
- */
-export function startingHypotheses(
-  ledger: Ledger,
-  run: string,
-  texts: string[],
-  by: string,
-): string[] {
-  return ledger.tx(() =>
-    texts.map((text) => {
-      const id = `h-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
-      ledger.hypotheses.add({
-        id,
-        run,
-        lane: null,
-        question: null,
-        text,
-        supporting: [],
-        status: "author",
-      });
-      ledger.appendEvent(by, "hypothesis_added", run, {
-        hypothesis: id,
-        lane: null,
-        text,
-        supporting: [],
-        from: "brief",
-        question: null,
-        status: "author",
-      });
-      return id;
-    }),
-  );
-}
-
-/** The statuses a hypothesis may be given by command (goal 117): promoted, back to the pool, retired. */
-export const HYPOTHESIS_STATUS_CHANGES = ["promoted", "pool", "retired"] as const;
-export type HypothesisStatusChange = (typeof HYPOTHESIS_STATUS_CHANGES)[number];
-
-/** A change of a hypothesis's status, as the owner's command and the planner give it. */
-export const HypothesisStatusInput = z.strictObject({
-  id: z.string().trim().min(1).max(64),
-  status: z.enum(HYPOTHESIS_STATUS_CHANGES),
-  reason: z.string().trim().min(1).max(2000),
-});
-export type HypothesisStatusInput = z.infer<typeof HypothesisStatusInput>;
-
-/** The event of a hypothesis whose status was changed by command or by the planner. */
-export const HYPOTHESIS_STATUS = "hypothesis_status";
-
-/**
- * Changes a hypothesis's status (goal 117): the owner's `hypothesis_status` command and the
- * planner's promotions and retirements both come here. A pool hypothesis may be promoted (it then
- * needs a verdict from the review panel, as the author's do) or retired; a promoted one may go
- * back to the pool or be retired; a retired one may go back to the pool or be promoted, unless
- * its words now repeat a live hypothesis of the run. Refused in words: an unknown hypothesis, one
- * of the author's (the campaign's brief sets those), and a merged one. The same status again
- * changes nothing and records nothing. Each change is the event `hypothesis_status`, with who
- * changed it and why. Who may do what beyond this (the planner's bounds) is the caller's.
- */
-export function setHypothesisStatus(
-  ledger: Ledger,
-  run: string,
-  input: unknown,
-  by: string,
-): {
-  hypothesis: string;
-  status: HypothesisStatusChange;
-  from: string;
-  changed: boolean;
-  note?: string;
-} {
-  const p = HypothesisStatusInput.safeParse(input);
-  if (!p.success)
-    throw new LedgerError(
-      "invalid",
-      `a status change is {"id", "status": "promoted", "pool" or "retired", "reason"}: ${p.error.issues[0]?.path.join(".") || "it"} ${p.error.issues[0]?.message ?? "is not valid"}`,
-    );
-  const { id, status, reason } = p.data;
-  const h = ledger.hypotheses.get(run, id);
-  if (!h) throw new LedgerError("not_found", `no hypothesis ${id} in run ${run}`);
-  const from = h.status;
-  if (from === "author")
-    throw new LedgerError(
-      "invalid",
-      `hypothesis ${id} is one of the author's: it needs a verdict already, and only the campaign's brief changes it`,
-    );
-  if (from === "merged")
-    throw new LedgerError(
-      "invalid",
-      `hypothesis ${id} was merged into ${String(h.merged_into)}: change ${String(h.merged_into)} instead`,
-    );
-  if (from === status)
-    return {
-      hypothesis: id,
-      status,
-      from,
-      changed: false,
-      note: `hypothesis ${id} is ${hypothesisStatusWords(status)} already: nothing changed`,
-    };
-  // A retired hypothesis comes back only when no live one repeats it meanwhile.
-  if (from === "retired") {
-    const key = foldText(h.text);
-    const twin = ledger.hypotheses
-      .withStatus(run, LIVE_HYPOTHESES)
-      .find((t) => t.id !== id && foldText(t.text) === key);
-    if (twin)
-      throw new LedgerError(
-        "invalid",
-        `hypothesis ${id}'s words repeat ${twin.id} (${hypothesisStatusWords(twin.status)}): change ${twin.id} instead`,
-      );
-  }
-  ledger.tx(() => {
-    ledger.hypotheses.setStatus(id, status);
-    ledger.appendEvent(by, HYPOTHESIS_STATUS, run, {
-      hypothesis: id,
-      status,
-      from,
-      by,
-      reason,
-      question: h.question,
-      text: h.text,
-    });
-  });
-  return { hypothesis: id, status, from, changed: true };
-}
+export { normalizeQuote } from "./checks.ts";
+export { ClaimInput } from "./research/claims.ts";
+export { FindingInput } from "./research/findings.ts";
+export {
+  HYPOTHESIS_STATUS,
+  HYPOTHESIS_STATUS_CHANGES,
+  HypothesisInput,
+  HypothesisRevision,
+  type HypothesisStatusChange,
+  HypothesisStatusInput,
+  setHypothesisStatus,
+  startingHypotheses,
+} from "./research/hypotheses.ts";
+export { NOTE_REPEATS } from "./research/notes.ts";
+export { archiveUrl } from "./research/sources.ts";
 
 export class Research {
-  private readonly ledger: Ledger;
-  private readonly stateDir: string;
-  private readonly fetchers = new Map<string, Fetcher>();
-  private readonly refusals: Refusals;
-  private readonly allowPrivate: boolean;
-  private readonly maxCorpusBytes: number;
+  /** What the research service's parts share (research/context.ts). */
+  private readonly ctx: ResearchContext;
   /** Told after each change to a run's research (the research folder follows it). */
   onChange: ((run: string) => void) | undefined;
 
@@ -320,12 +75,7 @@ export class Research {
       onChange?: ((run: string) => void) | undefined;
     } = {},
   ) {
-    this.ledger = ledger;
-    this.refusals = new Refusals(ledger);
-    this.stateDir = stateDir;
-    this.allowPrivate = opts.allowPrivate ?? false;
-    // No cap on the corpus unless one is configured (the owner's direction, 2026-10-15).
-    this.maxCorpusBytes = opts.maxCorpusBytes ?? Number.POSITIVE_INFINITY;
+    this.ctx = researchContext(ledger, stateDir, opts, (run) => this.changed(run));
     this.onChange = opts.onChange;
   }
 
@@ -343,7 +93,7 @@ export class Research {
    * goal run records sources, claims and notes (goal 065), and the rest belongs to research runs.
    */
   requireRunning(run: string, op?: string | undefined): void {
-    const inst = this.ledger.runs.get(run);
+    const inst = this.ctx.ledger.runs.get(run);
     if (!inst) throw new LedgerError("not_found", `no run ${run}`);
     if (inst.status !== "running") throw new LedgerError("invalid", `run ${run} is ${inst.status}`);
     if (inst.mode !== "research" && (op === undefined || !CODE_OPS.has(op)))
@@ -353,596 +103,50 @@ export class Research {
       );
   }
 
-  private contract(run: string): ResearchContract {
-    const inst = this.ledger.runs.get(run);
-    if (!inst) throw new LedgerError("not_found", `no run ${run}`);
-    const c = this.ledger.contracts.get(inst.campaign, inst.version);
-    if (c?.mode === "research") return c;
-    throw new LedgerError("invalid", `${run} is not a research campaign`);
+  /** A page fetched and archived for the run, as its worker sees it: research/sources.ts. */
+  fetch(run: string, lane: string | null, url: string) {
+    return fetchSource(this.ctx, run, lane, url);
   }
 
-  private fetcher(run: string): Fetcher {
-    let f = this.fetchers.get(run);
-    if (!f) {
-      // A research contract's fetch policy and scope; another run's are the policy's defaults
-      // (robots.txt respected, a polite rate per domain, a size bound per page), no scope.
-      const inst = this.ledger.runs.get(run);
-      const c = inst ? this.ledger.contracts.get(inst.campaign, inst.version) : undefined;
-      const policy =
-        c?.mode === "research"
-          ? c.fetch_policy
-          : { respect_robots: true, per_domain_per_minute: 6, max_bytes: 5_000_000 };
-      const scope = c?.mode === "research" ? c.scope : { include_domains: [], exclude_domains: [] };
-      f = new Fetcher(
-        {
-          respectRobots: policy.respect_robots,
-          perDomainPerMinute: policy.per_domain_per_minute,
-          maxBytes: policy.max_bytes,
-          includeDomains: scope.include_domains,
-          excludeDomains: scope.exclude_domains,
-          allowPrivate: this.allowPrivate,
-        },
-        join(this.stateDir, "research", run),
-      );
-      this.fetchers.set(run, f);
-    }
-    return f;
+  /** Part of an archived source's text, from an offset: research/sources.ts. */
+  read(run: string, source: string, offset?: number, length?: number) {
+    return readSource(this.ctx, run, source, offset, length);
   }
 
-  private text(source: SourceRow): string {
-    return readFileSync(source.text_path, "utf8");
+  /** Plain-text search over the archived texts, a page at a time: research/sources.ts. */
+  searchCorpus(run: string, text: string, skip?: number) {
+    return searchCorpus(this.ctx, run, text, skip);
   }
 
-  async fetch(run: string, lane: string | null, url: string) {
-    // Look up the URL in the form it is stored in (no fragment, normalized by URL); not a URL:
-    // the fetcher refuses it below.
-    const key = archiveUrl(url) ?? url;
-    const existing = this.ledger.sources.atUrl(run, key);
-    if (existing) return this.view(existing, "already archived");
-    const again = this.refusals.again(run, lane, url, key);
-    if (again) return again;
-    const used = this.ledger.sources.bytes(run);
-    if (used >= this.maxCorpusBytes) {
-      return { refused: `the corpus is full (${Math.round(used / 1024 ** 2)} MiB archived)` };
-    }
-    let f: Awaited<ReturnType<Fetcher["fetch"]>>;
-    try {
-      f = await this.fetcher(run).fetch(url);
-    } catch (err) {
-      return this.refusals.refuse(run, lane, url, key, err);
-    }
-    const same = this.ledger.sources.withContent(run, f.sha256);
-    if (same) return this.view(same, "the same content is already archived under this id", f.links);
-    const id = `s-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
-    this.ledger.tx(() => {
-      this.ledger.sources.add({
-        id,
-        run,
-        url: f.url,
-        finalUrl: f.finalUrl,
-        domain: f.domain,
-        status: f.status,
-        contentType: f.contentType,
-        bytes: f.bytes,
-        sha256: f.sha256,
-        title: f.title,
-        rawPath: f.rawPath,
-        textPath: f.textPath,
-        by: lane ?? "research",
-      });
-      // Its address, its title and the text that was read (cut to an item's length), so the
-      // campaign's folder in the knowledge base holds the source itself, from events alone.
-      this.ledger.appendEvent(lane ?? "research", "source_fetched", run, {
-        source: id,
-        domain: f.domain,
-        status: f.status,
-        bytes: f.bytes,
-        url: clip(f.url, 2000),
-        title: f.title ? clip(f.title, 500) : null,
-        text: clip(f.text, KB_BODY_MAX),
-      });
-    });
-    const row = this.ledger.sources.get(run, id) as SourceRow;
-    this.changed(run);
-    return this.view(row, undefined, f.links);
-  }
-
-  /**
-   * A fetched page as its worker sees it: the start of its text, with where to read on when there
-   * is more, and the links found on it, as many as fit beside the text (goal 117: nothing is cut
-   * without a word; the links left out are said, and the frontier keeps them).
-   */
-  private view(source: SourceRow, note?: string, links: string[] = []) {
-    const text = this.text(source);
-    const id = source.id;
-    const shown: string[] = [];
-    let size = 0;
-    for (const l of links.slice(0, 60)) {
-      if (size + l.length + 3 > VIEW_LINKS_CHARS) break;
-      shown.push(l);
-      size += l.length + 3;
-    }
-    const part = text.slice(0, VIEW_CHARS);
-    return {
-      source: id,
-      url: source.url,
-      title: source.title,
-      status: source.http_status,
-      ...(note ? { note } : {}),
-      chars: text.length,
-      offset: 0,
-      text: part,
-      ...moreText({ source: id }, part.length, text.length),
-      links: shown,
-      ...(links.length > shown.length
-        ? {
-            links_not_shown: links.length - shown.length,
-            links_note: `${links.length - shown.length} more of the page's links are not shown, to fit this answer`,
-          }
-        : {}),
-    };
-  }
-
-  /**
-   * Part of an archived source's text, from an offset: at most READ_MAX characters, so that the
-   * answer fits a tool's answer whole, with `next_offset` and where to read on when more is left.
-   */
-  read(run: string, source: string, offset = 0, length = VIEW_CHARS) {
-    const s = this.ledger.sources.get(run, source);
-    if (!s) throw new LedgerError("not_found", `no source ${source} in this run`);
-    const text = this.text(s);
-    const from = Math.max(0, Math.min(text.length, Math.trunc(Number(offset) || 0)));
-    const asked = Math.trunc(Number(length) || VIEW_CHARS);
-    const part = text.slice(from, from + Math.max(1, Math.min(asked, READ_MAX)));
-    return {
-      source,
-      url: s.url,
-      chars: text.length,
-      offset: from,
-      text: part,
-      ...moreText({ source }, from + part.length, text.length),
-      ...(asked > READ_MAX ? { note: `a read gives at most ${READ_MAX} characters` } : {}),
-      ...(from >= text.length && text.length > 0
-        ? { note: `offset ${from} is at the end: the text has ${text.length} characters` }
-        : {}),
-    };
-  }
-
-  /**
-   * Case-insensitive plain-text search over the archived texts (no regular expressions), a page
-   * at a time: up to 30 matches, and fewer when their excerpts would not fit a tool's answer;
-   * `next_skip` gives the next page (goal 117: a page that stops says so).
-   */
-  searchCorpus(run: string, text: string, skip = 0) {
-    const needle = text.trim().toLowerCase().slice(0, 200);
-    if (needle.length < 2) return { matches: [] };
-    const from = Math.max(0, Math.trunc(Number(skip) || 0));
-    const out: { source: string; url: string; excerpt: string }[] = [];
-    let seen = 0;
-    let size = 0;
-    let more = false;
-    for (const s of this.ledger.sources.list(run)) {
-      const body = this.text(s);
-      const at = body.toLowerCase().indexOf(needle);
-      if (at < 0) continue;
-      if (seen++ < from) continue;
-      const m = {
-        source: s.id,
-        url: s.url,
-        excerpt: body.slice(Math.max(0, at - 200), at + 300),
-      };
-      const len = JSON.stringify(m).length;
-      if (out.length >= SEARCH_PAGE || (out.length > 0 && size + len > SEARCH_CHARS)) {
-        more = true;
-        break;
-      }
-      out.push(m);
-      size += len;
-    }
-    return {
-      matches: out,
-      ...(from ? { skip: from } : {}),
-      ...(more
-        ? {
-            next_skip: from + out.length,
-            more: `more sources match: search_corpus again with skip ${from + out.length} for the next page`,
-          }
-        : {}),
-    };
-  }
-
-  /** Web search: every query is checked against the contract's search policy and logged. */
+  /** Web search, checked against the contract's search policy and logged: research/sources.ts. */
   search(run: string, lane: string | null, query: string) {
-    const c = this.contract(run);
-    const q = query.slice(0, 500);
-    const blocked = (c.search_policy?.blocked_patterns ?? []).find((p) =>
-      new RegExp(p, "i").test(q),
-    );
-    const reason = blocked
-      ? `blocked by the search policy (${blocked})`
-      : "this rig has no web search: fetch URLs from the seeds and the links of archived sources";
-    this.ledger.sources.recordQuery({ run, lane, query: q, allowed: false, reason });
-    return { results: [], note: reason };
+    return searchWeb(this.ctx, run, lane, query);
   }
 
-  /**
-   * The archived source a quote cites. A quote names it by the id fetch returned. A URL it was
-   * archived from (as fetched, or as its redirects ended; compared as the archive stores URLs) or
-   * its file name in the research folder (`sources/s-….txt`) names it too, when it names exactly
-   * one: the quote is then checked against that source, and the claim records what was cited.
-   * Anything else is a problem that says what the source could be. The check itself is the same.
-   */
-  private resolveSource(
-    run: string,
-    cited: string,
-  ): { row: SourceRow; from?: string | undefined } | { problem: string } {
-    const byId = (id: string) => this.ledger.sources.get(run, id);
-    const said = clip(cited, 200);
-    const s = cited.trim();
-    const exact = byId(s);
-    if (exact) return { row: exact, from: s === cited ? undefined : cited };
-    const file = /^(?:.*\/)?(s-[0-9a-f]+)\.(?:txt|md)$/.exec(s)?.[1];
-    if (file) {
-      const row = byId(file);
-      return row
-        ? { row, from: cited }
-        : {
-            problem: `no archived source ${said}: the research folder has no sources/${file}.txt; cite the s-… id that fetch returned`,
-          };
-    }
-    const url = /^https?:\/\//i.test(s) ? archiveUrl(s) : undefined;
-    if (url) {
-      const ids = this.ledger.sources.idsAt(run, url);
-      if (ids.length === 1) return { row: byId(ids[0] as string) as SourceRow, from: cited };
-      if (ids.length > 1)
-        return {
-          problem: `no archived source ${said}: that URL is archived as ${ids.length} sources (${ids.join(", ")}); cite the id of the one the quote is from`,
-        };
-    }
-    // Not archived as written. A URL archived in another form (http for https, without its
-    // scheme or "www.", with an end slash) is named, never taken.
-    const loose = looseUrl(s);
-    const near: { id: string; at: string }[] = [];
-    for (const r of this.ledger.sources.list(run)) {
-      const at = [r.url, r.final_url].find((u) => looseUrl(u) === loose);
-      if (at !== undefined) near.push({ id: r.id, at });
-      if (near.length === 3) break;
-    }
-    if (near.length)
-      return {
-        problem: `no archived source ${said}: that URL is not archived as written, but ${near.map((r) => `${r.id} is archived from ${clip(r.at, 200)}`).join(", and ")}; cite ${near.length === 1 ? "that id" : "the id of the page the quote is from"} if it is the same page`,
-      };
-    return {
-      problem: url
-        ? `no archived source ${said}: no source was archived from that URL; fetch it first, then cite the s-… id that fetch returns`
-        : `no archived source ${said}: a quote's source is the s-… id that fetch returned`,
-    };
-  }
-
+  /** A worker's claim, verified or kept as a draft: research/claims.ts. */
   addClaim(run: string, lane: string | null, input: unknown) {
-    const c = ClaimInput.parse(input);
-    // A claim counts toward its question's answer: with one question, that one. A run of another
-    // mode has no questions.
-    const research = this.ledger.runs.get(run)?.mode === "research";
-    const n = research ? this.contract(run).questions.length : 0;
-    if (c.question === undefined && n > 1) throw new LedgerError("invalid", noQuestion(n));
-    const question = research ? this.questionOf(run, c.question ?? 0) : null;
-    const key = claimKey(c.text);
-    const same = this.ledger.claims.verifiedFirst(run).find((r) => claimKey(r.text) === key);
-    if (same?.verified) {
-      return {
-        claim: same.id,
-        verified: true,
-        problems: [],
-        note: "this claim is already recorded and verified",
-      };
-    }
-    const problems: string[] = [];
-    const quotes: ClaimQuote[] = [];
-    const resolved: { cited: string; source: string }[] = [];
-    for (const q of c.quotes) {
-      const s = this.resolveSource(run, q.source);
-      if ("problem" in s) {
-        problems.push(s.problem);
-        quotes.push({ source: q.source, quote: q.quote });
-        continue;
-      }
-      const id = s.row.id;
-      quotes.push({
-        source: id,
-        quote: q.quote,
-        ...(s.from === undefined ? {} : { resolved_from: s.from }),
-      });
-      if (s.from !== undefined) resolved.push({ cited: s.from, source: id });
-      if (!normalizeQuote(this.text(s.row)).includes(normalizeQuote(q.quote))) {
-        problems.push(`quote not found verbatim in ${id}: "${q.quote.slice(0, 80)}"`);
-      }
-    }
-    // A claim may not state numbers its own quotes do not contain. One from a heading or a label
-    // ("Question 0:", "# Claim …") counts the same; the problem says where it comes from.
-    // Whole numbers, not parts of them: a claim's 5 is not in a quote's 2025. A name's digits
-    // (sm_50) are not stated numbers; a heading or label in the claim's text still is.
-    const plain = (n: string) => n.replace(/,/g, "");
-    const quoted = new Set(c.quotes.flatMap((q) => numbersIn(normalizeQuote(q.quote))).map(plain));
-    for (const num of numbersIn(withoutNames(c.text))) {
-      if (quoted.has(plain(num))) continue;
-      const head = headingWith(c.text, num);
-      problems.push(
-        head
-          ? `the number ${num} is not in the claim's quotes: it comes from the heading "${clip(head, 80)}". Give a question's number in "question", not in the claim's text, and leave headings and labels out of the text`
-          : `the number ${num} is not in the claim's quotes`,
-      );
-    }
-    const verified = problems.length === 0;
-    // Each URL or file name taken as a source's id, so the worker cites the id next time.
-    const how = resolved.length ? { resolved } : {};
-    // The same claim with the same quotes, refused before: answered again, not recorded again, so
-    // a worker that resubmits it in a loop learns what to change and fills no records.
-    if (!verified) {
-      const same = canonicalJson(quotes);
-      const before = this.ledger.claims
-        .drafts(run)
-        .find((r) => claimKey(r.text) === key && r.quotes === same);
-      if (before)
-        return {
-          claim: before.id,
-          verified: false,
-          problems,
-          ...how,
-          note: "this same claim, with the same quotes, was refused before for the same reasons: read_source the passage and copy its words exactly into the quote, or record what you learned as a note (add_note) instead",
-        };
-    }
-    const id = `c-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
-    this.ledger.tx(() => {
-      this.ledger.claims.add({
-        id,
-        run,
-        lane,
-        question,
-        text: c.text,
-        quotes,
-        verified,
-        problems,
-        confidence: c.confidence ?? null,
-      });
-      // The claim's words and its first quote, bounded: the record of what the source says. Its
-      // quotes' sources, and why a draft is one, so the owner sees it as the worker did.
-      this.ledger.appendEvent(lane ?? "research", "claim_added", run, {
-        claim: id,
-        verified,
-        question: c.question ?? null,
-        text: clip(c.text, 500),
-        quote: clip(c.quotes[0]?.quote ?? "", 500),
-        sources: quotes.map((q) => clip(q.source, 200)),
-        problems: problems.slice(0, EVENT_PROBLEMS).map((p) => clip(p, 300)),
-        ...(problems.length > EVENT_PROBLEMS
-          ? { more_problems: problems.length - EVENT_PROBLEMS }
-          : {}),
-      });
-    });
-    this.changed(run);
-    return { claim: id, verified, problems, ...how };
+    return addClaim(this.ctx, run, lane, input);
   }
 
-  /**
-   * A research note, with the sources it relies on. It is its own record (the research folder's
-   * notes/ and the report read it) and one `research_note` event with its text, so the knowledge
-   * base has it too. Field notes are another record (journal.ts).
-   *
-   * A note that repeats one of the run's last NOTE_REPEATS notes word for word, once folded
-   * (foldText), is refused in words (goal 117): one trial once wrote the same two words thousands
-   * of times.
-   */
+  /** A research note, with the sources it relies on: research/notes.ts. */
   addNote(
     run: string,
     lane: string | null,
     text: string,
-    sources: string[] = [],
+    sources?: string[],
     trial?: string | undefined,
   ) {
-    const body = text.trim().slice(0, 4000);
-    if (!body) throw new LedgerError("invalid", "a note needs its text");
-    const key = foldText(body);
-    const same = this.ledger.claims
-      .newestNotes(run, NOTE_REPEATS)
-      .find((n) => foldText(n.text) === key);
-    if (same)
-      throw new LedgerError(
-        "invalid",
-        `this note repeats note ${same.id} (by ${same.lane ?? "research"}, ${same.created_at}) word for word: it is not recorded again. Record what is new, or go on with the work`,
-      );
-    const cited = sources.slice(0, 20);
-    const first = cited.length ? this.ledger.sources.get(run, cited[0] as string) : undefined;
-    const id = this.ledger.tx(() => {
-      const id = this.ledger.claims.addNote({ run, lane, text: body, sources: cited });
-      this.ledger.appendEvent(lane ?? "research", "research_note", run, {
-        note: id,
-        by: lane ?? "research",
-        text: body,
-        sources: cited,
-        ...(first ? { url: first.url } : {}),
-        ...(trial ? { trial } : {}),
-      });
-      return id;
-    });
-    this.changed(run);
-    return { note: id };
+    return addNote(this.ctx, run, lane, text, sources, trial);
   }
 
-  /** A question's index as a claim or a hypothesis takes it: one of the contract's, or a refusal. */
-  private questionOf(run: string, q: number | null | undefined): number | null {
-    if (q === undefined || q === null) return null;
-    const n = this.contract(run).questions.length;
-    if (!Number.isInteger(q) || q < 0 || q >= n)
-      throw new LedgerError(
-        "invalid",
-        `no question ${q}: "question" is the index of one of the campaign's ${n} questions, from 0 to ${n - 1}`,
-      );
-    return q;
-  }
-
-  /** The run's live hypothesis (the author's, the pool's or promoted) whose words these repeat. */
-  private twinOf(
-    run: string,
-    text: string,
-    except?: string | undefined,
-  ): HypothesisRow | undefined {
-    const key = foldText(text);
-    return this.ledger.hypotheses
-      .withStatus(run, LIVE_HYPOTHESES)
-      .find((h) => h.id !== except && foldText(h.text) === key);
-  }
-
-  /** The verified claims of the run among these ids, and the rest. */
-  private verifiedAmong(run: string, ids: string[]): { ok: string[]; ignored: string[] } {
-    const known = new Set(this.ledger.claims.verified(run).map((r) => r.id));
-    const unique = [...new Set(ids)];
-    return { ok: unique.filter((c) => known.has(c)), ignored: unique.filter((c) => !known.has(c)) };
-  }
-
-  /**
-   * A worker's hypothesis for the run's pool (goal 117): its text, the question it is about (an
-   * index of the contract's questions, or none: the whole run) and the verified claims behind it
-   * (others are ignored, and said). Refused in words: an empty text, a question the run does not
-   * have, and words that repeat a live hypothesis of the run once folded (the author's, the
-   * pool's or a promoted one), naming it, so the worker revises it instead. Only the author's and
-   * promoted hypotheses need a verdict from the review panel; the report lists the pool's.
-   */
+  /** A worker's hypothesis for the run's pool: research/hypotheses.ts. */
   proposeHypothesis(run: string, lane: string | null, input: unknown) {
-    const p = HypothesisInput.safeParse(input);
-    if (!p.success)
-      throw new LedgerError(
-        "invalid",
-        `a hypothesis is {"text", "question"?: the index of a campaign question, from 0, "supporting"?: verified claim ids}: ${p.error.issues[0]?.path.join(".") || "it"} ${p.error.issues[0]?.message ?? "is not valid"}`,
-      );
-    const text = p.data.text.trim().slice(0, HYPOTHESIS_MAX);
-    if (!text) throw new LedgerError("invalid", "a hypothesis needs its text");
-    const question = this.questionOf(run, p.data.question);
-    const twin = this.twinOf(run, text);
-    if (twin) throw new LedgerError("invalid", repeatsWords(twin));
-    const { ok, ignored } = this.verifiedAmong(run, p.data.supporting);
-    const id = `h-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
-    this.ledger.tx(() => {
-      this.ledger.hypotheses.add({
-        id,
-        run,
-        lane,
-        question,
-        text,
-        supporting: ok,
-        status: "pool",
-      });
-      // So the campaign's folder in the knowledge base holds the run's hypotheses too.
-      this.ledger.appendEvent(lane ?? "research", "hypothesis_added", run, {
-        hypothesis: id,
-        lane: lane ?? null,
-        text,
-        supporting: ok,
-        question,
-        status: "pool",
-      });
-    });
-    this.changed(run);
-    return {
-      hypothesis: id,
-      status: "pool",
-      question,
-      supporting: ok,
-      ignored,
-      note: "in the run's pool: only the author's hypotheses and promoted ones need a verdict from the review panel; change this one with revise_hypothesis",
-    };
+    return proposeHypothesis(this.ctx, run, lane, input);
   }
 
-  /**
-   * A worker changes a pool hypothesis (goal 117): its text, its question (null: the whole run)
-   * or its supporting claims (verified claims of the run; the list replaces the old one). The
-   * author's hypotheses change only with the brief, and a merged or retired one not at all: each
-   * is refused in words. A revision whose words repeat another live hypothesis merges this one
-   * into it: status `merged`, `merged_into` the other, and the work goes on there.
-   */
+  /** A worker changes a pool hypothesis: research/hypotheses.ts. */
   reviseHypothesis(run: string, lane: string | null, input: unknown) {
-    const p = HypothesisRevision.safeParse(input);
-    if (!p.success)
-      throw new LedgerError(
-        "invalid",
-        `a revision is {"id", "text"?, "question"?: the index of a campaign question from 0, or null, "supporting"?: verified claim ids}: ${p.error.issues[0]?.path.join(".") || "it"} ${p.error.issues[0]?.message ?? "is not valid"}`,
-      );
-    const r = p.data;
-    const h = this.ledger.hypotheses.get(run, r.id.trim());
-    if (!h) throw new LedgerError("not_found", `no hypothesis ${r.id} in this run`);
-    const id = h.id;
-    const status = h.status;
-    if (status === "author")
-      throw new LedgerError(
-        "invalid",
-        `hypothesis ${id} is one of the author's: only the campaign's brief changes it. Record claims for or against it, or propose a hypothesis of your own`,
-      );
-    if (status === "merged")
-      throw new LedgerError(
-        "invalid",
-        `hypothesis ${id} was merged into ${String(h.merged_into)}: revise ${String(h.merged_into)} instead`,
-      );
-    if (status === "retired") throw new LedgerError("invalid", `hypothesis ${id} is retired`);
-    if (r.text === undefined && r.question === undefined && r.supporting === undefined)
-      throw new LedgerError(
-        "invalid",
-        "a revision needs what changes: text, question or supporting (or more than one)",
-      );
-    const text = r.text === undefined ? h.text : r.text.trim().slice(0, HYPOTHESIS_MAX);
-    if (!text) throw new LedgerError("invalid", "a hypothesis needs its text");
-    const question = r.question === undefined ? h.question : this.questionOf(run, r.question);
-    let supporting = JSON.parse(h.supporting) as string[];
-    let ignored: string[] = [];
-    if (r.supporting !== undefined) {
-      const v = this.verifiedAmong(run, r.supporting);
-      if (r.supporting.length && !v.ok.length)
-        throw new LedgerError(
-          "invalid",
-          `none of ${v.ignored.join(", ")} is a verified claim of this run: the supporting claims stay as they were`,
-        );
-      supporting = v.ok;
-      ignored = v.ignored;
-    }
-    const twin = r.text === undefined ? undefined : this.twinOf(run, text, id);
-    const by = lane ?? "research";
-    if (twin) {
-      const into = twin.id;
-      this.ledger.tx(() => {
-        this.ledger.hypotheses.merge(id, { text, question, supporting }, into);
-        this.ledger.appendEvent(by, "hypothesis_merged", run, {
-          hypothesis: id,
-          into,
-          lane: lane ?? null,
-          text,
-          question,
-          supporting,
-        });
-      });
-      this.changed(run);
-      return {
-        hypothesis: id,
-        status: "merged",
-        merged_into: into,
-        note: `its new words repeat ${into}, so it is merged into ${into}: work on ${into} from now on`,
-      };
-    }
-    const same =
-      text === h.text && question === h.question && canonicalJson(supporting) === h.supporting;
-    if (same)
-      return { hypothesis: id, status, question, supporting, ignored, note: "nothing changed" };
-    this.ledger.tx(() => {
-      this.ledger.hypotheses.revise(id, { text, question, supporting });
-      this.ledger.appendEvent(by, "hypothesis_revised", run, {
-        hypothesis: id,
-        lane: lane ?? null,
-        text,
-        question,
-        supporting,
-        status,
-      });
-    });
-    this.changed(run);
-    return { hypothesis: id, status, text, question, supporting, ignored };
+    return reviseHypothesis(this.ctx, run, lane, input);
   }
 
   /**
@@ -950,502 +154,52 @@ export class Research {
    * follows. The planner's promotions and retirements come here, as the owner's command does.
    */
   hypothesisStatus(run: string, input: unknown, by: string) {
-    const r = setHypothesisStatus(this.ledger, run, input, by);
+    const r = setHypothesisStatus(this.ctx.ledger, run, input, by);
     if (r.changed) this.changed(run);
     return r;
   }
 
-  /**
-   * A finding: a worker's conclusion, with a summary and why it matters, citing verified claims.
-   * Code checks it: every cited claim must be a verified claim of this run, and every number in
-   * its text, summary and why must appear in those claims (their text or quotes). Otherwise it
-   * is kept as a draft finding, with the problems.
-   */
+  /** A finding, citing verified claims, checked by code: research/findings.ts. */
   addFinding(run: string, lane: string | null, input: unknown) {
-    const f = FindingInput.parse(input);
-    const cited = [...new Set(f.supporting)];
-    // The check a review panel's answer shares (checks.ts).
-    const { problems } = checkCited(this.ledger, run, cited, [f.text, f.summary, f.why_it_matters]);
-    const supported = problems.length === 0;
-    // The same statement again (goal 117): a supported one is kept once; a draft is refused in
-    // words, whatever its problems, with the finding it repeats, so a worker that resends it in
-    // a loop learns what to change and fills no records. Only a supported one is recorded again.
-    const before = this.ledger.claims
-      .findings(run)
-      .filter((r) => claimKey(r.text) === claimKey(f.text));
-    const kept = before.find((r) => r.supported);
-    if (kept) return { finding: kept.id, supported: true, problems: [], note: KEPT_FINDING };
-    const draft = before[0];
-    if (draft && !supported)
-      throw new LedgerError(
-        "invalid",
-        `this finding repeats draft finding ${draft.id} and is not recorded again. It is still a draft: ${problems.join("; ")}. Cite only verified claims and use only numbers they contain, then send it again; or record what you learned as a note (add_note)`,
-      );
-    const id = `f-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
-    this.ledger.tx(() => {
-      this.ledger.claims.addFinding({
-        id,
-        run,
-        lane,
-        text: f.text,
-        summary: f.summary,
-        whyItMatters: f.why_it_matters,
-        supporting: cited,
-        supported,
-        problems,
-      });
-      // The finding's statement, summary and why it matters, bounded.
-      this.ledger.appendEvent(lane ?? "research", "finding_added", run, {
-        finding: id,
-        supported,
-        claims: cited.length,
-        statement: clip(f.text, 1000),
-        summary: clip(f.summary, 1000),
-        why: clip(f.why_it_matters, 500),
-      });
-    });
-    this.changed(run);
-    const note = supported ? undefined : DRAFT_FINDING;
-    return note ? { finding: id, supported, problems, note } : { finding: id, supported, problems };
+    return addFinding(this.ctx, run, lane, input);
   }
 
-  /**
-   * The hypotheses as a research worker's brief shows them (goal 117): what needs a verdict and
-   * what does not, those that need one (the author's first, then promoted ones) each with its
-   * question, and the newest of the pool; the folder lists them all.
-   */
+  /** The hypotheses as a research worker's brief shows them: research/hypotheses.ts. */
   hypothesesBrief(run: string): string {
-    const rows = this.ledger.hypotheses.list(run);
-    const where = (h: HypothesisRow) =>
-      h.question === null ? "the whole run" : questionLabel(h.question);
-    const line = (h: HypothesisRow, n: number) =>
-      `- ${h.id} (${hypothesisStatusWords(h.status)}; ${where(h)}): ${clip(h.text.replace(/\s+/g, " ").trim(), n)}`;
-    const required = [
-      ...rows.filter((h) => h.status === "author"),
-      ...rows.filter((h) => h.status === "promoted"),
-    ];
-    const pool = rows.filter((h) => h.status === "pool");
-    return [
-      "# Hypotheses",
-      HYPOTHESES_RULE,
-      ...(required.length
-        ? [
-            "They need a verdict:",
-            ...required.slice(0, BRIEF_REQUIRED).map((h) => line(h, 400)),
-            ...(required.length > BRIEF_REQUIRED
-              ? [`… and ${required.length - BRIEF_REQUIRED} more in INDEX.md`]
-              : []),
-          ]
-        : ["None needs a verdict: the brief has no hypotheses, and none was promoted."]),
-      ...(pool.length
-        ? [
-            `The pool has ${pool.length}${pool.length > BRIEF_POOL ? `; the newest ${BRIEF_POOL}` : ""}:`,
-            ...pool.slice(-BRIEF_POOL).map((h) => line(h, 200)),
-          ]
-        : ["The pool is empty."]),
-      "Every hypothesis, with its status and question: INDEX.md and hypotheses/ in the research folder.",
-    ].join("\n");
+    return hypothesesBrief(this.ctx, run);
   }
 
-  /**
-   * What a research trial added (goal 117), from the records its lane wrote between the trial's
-   * start and now (a lane runs one trial at a time): its verified claims, by question, and how
-   * many brought a registrable domain its question's claims had not cited before; the registrable
-   * domains new to the run among the pages it fetched; its supported findings. Cards come later in
-   * goal 117: their changes are 0 for now. Undefined for a trial the ledger does not have.
-   */
-  trialYield(run: string, trial: string, until = new Date().toISOString()): TaskYield | undefined {
-    const t = this.ledger.trials.get(trial);
-    if (t?.run !== run) return undefined;
-    const lane = t.lane;
-    const since = t.started_at;
-    const domainOf = new Map(
-      this.ledger.sources.ofRun(run).map((s) => [s.id, registrableDomain(s.domain)]),
-    );
-    const domainsOf = (quotes: string) =>
-      new Set(
-        (JSON.parse(quotes) as { source: string }[]).flatMap((q) => {
-          const d = domainOf.get(q.source);
-          return d ? [d] : [];
-        }),
-      );
-    // What each question's verified claims cited before the trial started.
-    const seen = new Map<number, Set<string>>();
-    for (const c of this.ledger.claims.verifiedBefore(run, since)) {
-      const q = Number(c.question);
-      seen.set(q, new Set([...(seen.get(q) ?? []), ...domainsOf(c.quotes)]));
-    }
-    const by = new Map<number, { verified_claims: number; new_domain_claims: number }>();
-    let total = 0;
-    for (const c of this.ledger.claims.verifiedOfLane(run, lane, since, until)) {
-      total++;
-      // A claim from before claims named their question counts in the total only.
-      if (c.question === null) continue;
-      const q = c.question;
-      const had = seen.get(q) ?? new Set<string>();
-      const ds = domainsOf(c.quotes);
-      const fresh = [...ds].some((d) => !had.has(d));
-      seen.set(q, new Set([...had, ...ds]));
-      const row = by.get(q) ?? { verified_claims: 0, new_domain_claims: 0 };
-      row.verified_claims++;
-      if (fresh) row.new_domain_claims++;
-      by.set(q, row);
-    }
-    const before = new Set(
-      this.ledger.sources.domainsBefore(run, since).map((d) => registrableDomain(d)),
-    );
-    const fresh = [
-      ...new Set(
-        this.ledger.sources
-          .domainsFetchedBy(run, lane, since, until)
-          .map((d) => registrableDomain(d))
-          .filter((d) => !before.has(d)),
-      ),
-    ];
-    const findings = this.ledger.claims.countFindingsOfLane(run, lane, since, until);
-    return {
-      verified_claims: total,
-      by_question: [...by.entries()]
-        .sort((a, b) => a[0] - b[0])
-        .map(([question, r]) => ({ question, ...r })),
-      new_domains: fresh.length,
-      domains: fresh.slice(0, 20),
-      findings,
-      card_changes: 0,
-    };
+  /** What a research trial added: research/yield.ts. */
+  trialYield(run: string, trial: string, until?: string): TaskYield | undefined {
+    return trialYield(this.ctx, run, trial, until);
   }
 
+  /** A worker's section of the run's report: research/report.ts. */
   updateSection(run: string, by: string | null, name: string, body: string) {
-    if (!/^[a-z0-9][a-z0-9 _-]{0,59}$/i.test(name))
-      throw new LedgerError("invalid", "section names are short words");
-    this.ledger.reports.setSection(run, name, body.slice(0, 20_000), by ?? "worker");
-    this.changed(run);
-    return { section: name };
+    return updateSection(this.ctx, run, by, name, body);
   }
 
-  /**
-   * Running time against the contract's durations. Paused time does not count, and neither does
-   * time the agents could not run (goal 079): while they were stopped (no credits, a refused key,
-   * a failing model check), waited for the provider's rate limit or for the run's MCP servers, or
-   * the rig drained (goal 136): `blockedSpans`. The minimum is a floor, never
-   * a stop: after it, a run ends when the review panel finds every question answered (goal 112),
-   * at its maximum, or when the owner closes it.
-   */
-  /** The run's clock; with `now`, as it stood then (running time up to that moment). */
-  clock(run: string, now = Date.now()) {
-    const c = this.contract(run);
-    const created = String(this.ledger.runs.createdAt(run));
-    const running: [number, number][] = [];
-    let since: number | null = Date.parse(created);
-    for (const e of statusEvents(this.ledger, run)) {
-      const status = e.status;
-      const at = Date.parse(e.at);
-      if (at > now) break;
-      if (status === "running") since ??= at;
-      else if (since !== null) {
-        running.push([since, at]);
-        since = null;
-      }
-    }
-    if (since !== null) running.push([since, now]);
-    const blocked = blockedSpans(this.ledger, run, now);
-    let elapsedMs = 0;
-    let waitedMs = 0;
-    for (const [a, b] of running) {
-      let lost = 0;
-      for (const [x, y] of blocked) lost += Math.max(0, Math.min(b, y) - Math.max(a, x));
-      elapsedMs += b - a - lost;
-      waitedMs += lost;
-    }
-    const minMs = parseDuration(c.min_duration as string);
-    const maxMs = c.max_duration ? parseDuration(c.max_duration) : null;
-    return {
-      started_at: created,
-      elapsed_ms: elapsedMs,
-      /** Running time the agents could not work: not counted (goal 079). */
-      waited_ms: waitedMs,
-      min_ms: minMs,
-      max_ms: maxMs,
-      done: maxMs !== null && elapsedMs >= maxMs,
-    };
+  /** The run's clock; with `now`, as it stood then: research/clock.ts. */
+  clock(run: string, now?: number) {
+    return clockOf(this.ctx, run, now);
   }
 
-  /**
-   * Distinct registrable domains a verified claim's quotes come from (goal 117): a source keeps
-   * the host it was fetched from, and docs.example.com and blog.example.com count as one.
-   */
-  private claimDomains(run: string, quotesJson: string): number {
-    const ids = (JSON.parse(quotesJson) as { source: string }[]).map((q) => q.source);
-    const domains = new Set<string>();
-    for (const id of ids) {
-      const d = this.ledger.sources.get(run, id)?.domain;
-      if (d !== undefined) domains.add(registrableDomain(d));
-    }
-    return domains.size;
-  }
-
-  /** The run's distinct registrable domains (goal 117). */
-  private domains(run: string): number {
-    return new Set(this.ledger.sources.domains(run).map((d) => registrableDomain(d))).size;
-  }
-
+  /** The run's figures: research/stats.ts. */
   stats(run: string) {
-    const c = this.contract(run);
-    const { claims, sources } = this.ledger;
-    const hourAgo = new Date(Date.now() - 3_600_000).toISOString();
-    const corroborated = claims
-      .verified(run)
-      .filter((r) => this.claimDomains(run, r.quotes) >= c.quality.min_independent_sources).length;
-    return {
-      sources: sources.count(run),
-      domains: this.domains(run),
-      verified: claims.count(run, { verified: true }),
-      corroborated,
-      drafts: claims.count(run, { verified: false }),
-      hypotheses: this.ledger.hypotheses.count(run),
-      findings: claims.countFindings(run, true),
-      draft_findings: claims.countFindings(run, false),
-      questions: c.questions.map((q, i) => ({
-        question: q,
-        verified: claims.count(run, { question: i, verified: true }),
-      })),
-      // Novelty in the last hour: new sources, newly verified claims, newly covered questions.
-      last_hour: {
-        sources: sources.countSince(run, hourAgo),
-        verified: claims.countVerifiedSince(run, hourAgo),
-        questions_covered: c.questions.filter((_, i) => {
-          const t = claims.firstVerified(run, i);
-          return t !== undefined && t > hourAgo;
-        }).length,
-      },
-    };
+    return statsOf(this.ctx, run);
   }
 
-  /**
-   * A report version from the ledger: each question's answer card first (goal 117), then
-   * sections, the verified claims with their sources, the hypotheses with their support, the
-   * open questions, and numbers in the sections that appear in no archived source and no verified
-   * claim (flagged, not hidden).
-   *
-   * A final report of a run that ended (goals 112 and 117: its questions answered, or stopped by
-   * the progress rule) starts with its research paper, when code accepted one; the review panel's
-   * decisions and the corpus follow it, as an appendix. Without a paper it says why: `noPaper`,
-   * or what the records show.
-   */
-  report(run: string, kind: "digest" | "final", opts: { noPaper?: string | undefined } = {}) {
-    const c = this.contract(run);
-    const papers = new Papers(this.ledger, () => c);
-    const paper = kind === "final" ? papers.accepted(run) : undefined;
-    const noPaper =
-      kind === "final" && !paper && researchEnd(this.ledger, run)
-        ? (opts.noPaper ??
-          (papers.requested(run)
-            ? "the run ended before the final writer's paper passed the harness's checks"
-            : "the run ended before a final writer was asked for one"))
-        : undefined;
-    const stats = this.stats(run);
-    const clock = this.clock(run);
-    const sources = new Map(this.ledger.sources.ofRun(run).map((s) => [s.id, s]));
-    const claims = this.ledger.claims.verified(run);
-    const sections = this.ledger.reports.sections(run);
-    // A number in a section is supported only by a verified claim (its text or its quotes).
-    const supported = claimNumbers(claims);
-    const unsupported: string[] = [];
-    for (const s of sections) {
-      for (const num of numbersIn(s.body)) {
-        if (!supported.has(num) && !unsupported.includes(num)) unsupported.push(num);
-      }
-    }
-    const min = c.quality.min_independent_sources;
-    const corroborated = claims.filter((cl) => this.claimDomains(run, cl.quotes) >= min);
-    const single = claims.filter((cl) => this.claimDomains(run, cl.quotes) < min);
-    const cite = (cl: ClaimRow) => {
-      const quotes = JSON.parse(cl.quotes) as { source: string; quote: string }[];
-      return `- ${cl.text} ${[...new Set(quotes.map((q) => sources.get(q.source)?.url).filter(Boolean))].map((u) => `[${u}]`).join(" ")}`;
-    };
-    // Worker-written text cannot make its own headings: a line starting with # is shown as text.
-    const fence = (body: string) => body.replace(/^(\s*)#/gm, "$1\\#");
-    const byId = new Map(claims.map((cl) => [cl.id, cl]));
-    const findings = this.ledger.claims.findings(run);
-    const supportedFindings = findings.filter((f) => f.supported);
-    const supportedWords = new Set(supportedFindings.map((f) => claimKey(f.text)));
-    const finding = (f: FindingRow) => {
-      const cited = (JSON.parse(f.supporting) as string[])
-        .map((id) => byId.get(id))
-        .filter((cl): cl is ClaimRow => cl !== undefined);
-      const strong = cited.filter((cl) => corroborated.includes(cl)).length;
-      return [
-        `### ${fence(f.text).replace(/\n+/g, " ")}`,
-        "",
-        fence(f.summary),
-        "",
-        `Why it matters: ${fence(f.why_it_matters)}`,
-        "",
-        `Supported by ${cited.length} verified claims (${strong} from at least ${min} independent domains):`,
-        ...cited.map(cite),
-        "",
-      ];
-    };
-    const lines = [
-      `# ${c.title}`,
-      "",
-      `Topic: ${c.topic}`,
-      `Report: ${kind}, ${new Date().toISOString()}. Elapsed ${(clock.elapsed_ms / 3_600_000).toFixed(2)} h of at least ${(clock.min_ms / 3_600_000).toFixed(2)} h.`,
-      `Corpus: ${stats.sources} sources from ${stats.domains} domains; ${stats.verified} verified claims (${stats.corroborated} from at least ${min} independent domains), ${stats.drafts} drafts; ${stats.findings} findings, ${stats.draft_findings} draft findings.`,
-      `Last hour: ${stats.last_hour.sources} new sources, ${stats.last_hour.verified} newly verified claims, ${stats.last_hour.questions_covered} questions newly covered.`,
-      // Where the check that every question is answered stands (goal 112).
-      ...(kind === "digest" ? [checkLine(this.ledger, run, c, clock)] : []),
-      "",
-      // Why an answered run has no research paper (goal 112).
-      ...(noPaper ? [`Research paper: none, ${noPaper}.`, ""] : []),
-      // Each question's answer card first (goal 117), for people: "Question 1".
-      ...answersSection(this.ledger, run, c, fence),
-      // The review panel's answers and verdicts (goal 112): one block, after the paper.
-      ...(kind === "final" ? answerSections(this.ledger, run, c, fence) : []),
-      "## Questions",
-      // A question may have several lines (goal 078): its further lines stay under it.
-      // Numbered from 1, with the index a claim's `question` takes: workers read REPORT.md too.
-      ...stats.questions.map(
-        (q, i) =>
-          `- ${questionLabel(i)}: ${q.question.replace(/\n/g, "\n  ")} (${q.verified} verified claims)`,
-      ),
-      "",
-      "## Findings",
-      ...supportedFindings.flatMap(finding),
-      "",
-      `## Verified claims from at least ${min} independent domains`,
-      ...corroborated.map(cite),
-      "",
-      "## Verified claims from a single domain",
-      ...single.map(cite),
-      "",
-      "## Draft findings (not supported by verified claims)",
-      ...findings
-        .filter((f) => !f.supported && !supportedWords.has(claimKey(f.text)))
-        .map(
-          (f) =>
-            `- ${fence(f.text).replace(/\n+/g, " ")} (${(JSON.parse(f.problems) as string[]).join("; ")})`,
-        ),
-      "",
-      // Those that need a verdict first: the author's, then promoted ones; then the pool and the
-      // rest, each with its status and question (goal 117).
-      "## Hypotheses",
-      ...this.ledger.hypotheses
-        .byStatus(run)
-        .map(
-          (h) =>
-            `- ${fence(h.text).replace(/\n+/g, " ")} (${h.id}, ${hypothesisStatusWords(h.status, h.merged_into)}; ${h.question === null ? "the whole run" : questionLabel(h.question)}; supported by ${(JSON.parse(h.supporting) as string[]).length} verified claims)`,
-        ),
-      "",
-      "## Open questions",
-      ...stats.questions.flatMap((q, i) =>
-        q.verified === 0 ? [`- ${questionLabel(i)}: ${q.question.replace(/\n/g, "\n  ")}`] : [],
-      ),
-      "",
-      "## Worker sections (not verified; only the findings and claims above are checked)",
-      ...sections.flatMap((s) => [`### ${s.name}`, fence(s.body), ""]),
-      ...(unsupported.length
-        ? [
-            "",
-            "## Numbers without a source",
-            `These appear in the sections but in no archived source or verified claim: ${unsupported.join(", ")}`,
-          ]
-        : []),
-    ];
-    // The paper first, whole, with its appendices; then the rest as supplementary material.
-    const body = paper
-      ? [
-          String(paper.paper).replace(/\s+$/, ""),
-          "",
-          "---",
-          "",
-          `# Supplementary material: the review panel's decisions and the corpus of ${c.title}`,
-          ...lines.slice(1),
-        ].join("\n")
-      : lines.join("\n");
-    this.ledger.tx(() => {
-      this.ledger.reports.add(run, kind, body);
-      this.ledger.appendEvent(
-        "research",
-        kind === "final" ? "research_final" : "research_digest",
-        run,
-        {
-          ...stats,
-          elapsed_ms: clock.elapsed_ms,
-          // So the run's page can say when the answer check starts (goal 112).
-          min_ms: clock.min_ms,
-          max_ms: clock.max_ms,
-          min_verified_claims: c.min_verified_claims ?? null,
-          // A final report: whether it starts with a research paper, or why not (goal 112).
-          ...(kind === "final" ? { paper: paper !== undefined } : {}),
-          ...(noPaper ? { no_paper: noPaper } : {}),
-          unsupported_numbers: unsupported.length,
-          report: cutSaid(body, 60_000, "report"),
-        },
-      );
-    });
-    this.changed(run);
-    return { kind, body };
+  /** A report version from the ledger, digest or final: research/report.ts. */
+  report(run: string, kind: "digest" | "final", opts?: { noPaper?: string | undefined }) {
+    return report(this.ctx, run, kind, opts);
   }
 
   lastReportAt(run: string): string | undefined {
-    return this.ledger.reports.newest(run)?.created_at;
+    return this.ctx.ledger.reports.newest(run)?.created_at;
   }
 
-  /**
-   * Links from archived sources that are not archived yet: where to go next without search.
-   * Site boilerplate (a link found on two or more archived pages of the same site, such as
-   * navigation) is left out, links are taken in turn from each source rather than all from one,
-   * and links with query strings come last (they are usually actions, not documents).
-   */
-  frontier(run: string, limit = 40): string[] {
-    const have = new Set(this.ledger.sources.ofRun(run).map((r) => r.url));
-    const perSource: { domain: string; links: string[] }[] = [];
-    for (const s of this.ledger.sources.newest(run, 30)) {
-      let hrefs: string[] = [];
-      try {
-        // Links were saved at fetch time; older archives are parsed once more (linear time).
-        const saved = join(s.raw_path, "..", `${s.sha256}.links.json`);
-        hrefs = existsSync(saved)
-          ? (JSON.parse(readFileSync(saved, "utf8")) as string[])
-          : htmlToText(readFileSync(s.raw_path, "utf8")).links;
-      } catch {
-        continue;
-      }
-      const links: string[] = [];
-      for (const href of hrefs) {
-        try {
-          const x = new URL(href, s.final_url);
-          x.hash = "";
-          if (x.protocol.startsWith("http") && !links.includes(x.toString()))
-            links.push(x.toString());
-        } catch {
-          // not a URL
-        }
-      }
-      perSource.push({ domain: s.domain, links });
-    }
-    // Boilerplate: links that more than one archived page of the same site carries.
-    const seen = new Map<string, number>();
-    for (const p of perSource)
-      for (const l of p.links)
-        seen.set(`${p.domain} ${l}`, (seen.get(`${p.domain} ${l}`) ?? 0) + 1);
-    const candidates = perSource.map((p) =>
-      p.links.filter((l) => !have.has(l) && (seen.get(`${p.domain} ${l}`) ?? 0) < 2),
-    );
-    const plain: string[] = [];
-    const query: string[] = [];
-    for (let i = 0; plain.length + query.length < limit * 4; i++) {
-      let any = false;
-      for (const list of candidates) {
-        const l = list[i];
-        if (l === undefined) continue;
-        any = true;
-        const bucket = new URL(l).search ? query : plain;
-        if (!plain.includes(l) && !query.includes(l)) bucket.push(l);
-      }
-      if (!any) break;
-    }
-    return [...plain, ...query].slice(0, limit);
+  /** Links from archived sources that are not archived yet: research/sources.ts. */
+  frontier(run: string, limit?: number): string[] {
+    return frontier(this.ctx, run, limit);
   }
 }

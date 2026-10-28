@@ -33,15 +33,6 @@
     "src/harness/judge/judge.ts": {
       "lines": 2002
     },
-    "src/harness/research/paper.ts": {
-      "lines": 1075
-    },
-    "src/harness/research/research.ts": {
-      "lines": 1451
-    },
-    "src/harness/research/review.ts": {
-      "lines": 1114
-    },
     "src/harness/schema.ts": {
       "lines": 875
     },
