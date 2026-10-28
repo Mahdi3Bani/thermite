@@ -1,14 +1,5 @@
 {
   "files": {
-    "scripts/dashboard-demo.ts": {
-      "lines": 1424
-    },
-    "scripts/quick-start-acceptance.mjs": {
-      "lines": 952
-    },
-    "src/cli/thermite.ts": {
-      "lines": 1298
-    },
     "src/control/store.ts": {
       "lines": 3672
     },
@@ -20,9 +11,6 @@
     },
     "src/harness/judge/judge.ts": {
       "lines": 2002
-    },
-    "src/harness/schema.ts": {
-      "lines": 875
     },
     "src/harness/selftest.ts": {
       "lines": 1023

@@ -2,12 +2,12 @@
   "src/cli/machine.ts": ["src/control/machines/deploy.ts"],
   "src/cli/rig.ts": ["src/control/credential.ts"],
   "src/cli/runpod.ts": ["src/control/runpod-rig-view.ts"],
-  "src/cli/thermite.ts": [
+  "src/cli/thermite/local.ts": [
     "src/control/credential.ts",
-    "src/control/runpod-rig-view.ts",
     "src/harness/broker/devices.ts",
     "src/harness/selftest.ts"
   ],
+  "src/cli/thermite/runpod.ts": ["src/control/runpod-rig-view.ts"],
   "src/control/agent-view.ts": ["src/harness/goal-checks.ts"],
   "src/control/api.ts": ["src/control/dashboard.ts"],
   "src/control/campaign-builder.ts": ["src/harness/kit.ts"],

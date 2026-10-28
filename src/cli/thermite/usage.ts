@@ -1,0 +1,191 @@
+/**
+ * The command line's usage text: `thermite help` prints it, and so does a command given wrongly
+ * (which exits 2). The docs check (scripts/docs-check.mjs) reads every command and option from it.
+ */
+export const USAGE = `usage: thermite <command> [options]
+
+  doctor [--control URL] [--model-url URL] [--port N] [--json]
+                                      check this machine: the container engine and its compose
+                                      tool, control's port, disk, the clock, the GPU driver and
+                                      container toolkit where there is a GPU, and whether control
+                                      and the model server answer. It says how to fix each
+                                      problem, and exits 1 when a check fails
+  contract validate <file>            validate a contract and print its sha256
+  keys generate <dir>                 write a new Ed25519 control signing key pair
+  token new --out F                   make a control token: write it to F (mode 0600; keep it,
+                                      for example in a password manager) and print its SHA-256,
+                                      the only part control's deployment needs
+  assign --contract F --run ID [--seed GIT_URL[@COMMIT] | --seed-commit C]
+         [--kit GIT_URL | --kit control:NAME]
+         [--model NAME=URL ...] [--note TEXT] [--agents off] [--promotion auto|owner]
+         [--ask gain:PERCENT|flaws|reviews|not-possible ...]
+         [--queue-from [RIG/]RUN] [--mcp-servers JSON|@file]
+         [--context-window TOKENS] [--compact-at PERCENT]
+         [--info-file F] [--link URL ...] [--idea TEXT ...] [--hypothesis TEXT ...]
+         (--control URL --token-file F --rig R [--ttl MIN] | --print)
+                                      start a run. The rig's supervisor fetches the project and
+                                      kit commits from their repositories, and models from their
+                                      URLs, before the harness checks them. --seed-commit names a
+                                      commit already on the rig (an earlier run's result); a kit
+                                      already there needs no --kit. --kit control:NAME fetches
+                                      the kit NAME that control keeps (kit add, or one the New
+                                      campaign page wrote). --queue-from starts the new
+                                      run's queue with a past run's untried experiments, read
+                                      from control (on --rig unless RIG/ is given; it needs
+                                      --control and --token-file, with --print too).
+                                      --mcp-servers gives the MCP servers the kit's kit.json
+                                      names, as in kit.json; the rig refuses a run whose list
+                                      differs. --note keeps a text with the run (--direction,
+                                      its old name, still works and says so). --context-window
+                                      and --compact-at set the campaign's own context settings
+                                      in the contract sent (its agents_context, over the file's):
+                                      every agent's window is the lower of it and its own, and
+                                      the point replaces the rig's; the contract's hash changes
+                                      with them. --info-file, --link, --idea and --hypothesis
+                                      give the campaign's brief in the contract sent, each in
+                                      place of the file's: its additional information (Markdown,
+                                      from file F), its starting links (a research campaign's
+                                      seeds), its ideas to try (hill climb and goal) and its
+                                      hypotheses, one per option. --print shows the payload (for
+                                      issue_command over MCP) instead of issuing it
+  assign-payload --contract F --run ID --seed-repo R --seed-commit C --bundle PATH
+                 [--bundle-sha256 H] [--kit-repo R --kit-commit C --kit-bundle PATH
+                 [--kit-bundle-sha256 H]] [--model NAME=SHA256:PATH ...] [--note TEXT] [--agents off]
+                                      print an assign_campaign payload (bundle and model
+                                      paths are relative to the rig's inbox)
+  rig add RIG --control URL --token-file F --out DIR
+                                      enroll a rig with control (owner's token): control makes
+                                      its token, and DIR gets the files the rig's host needs
+  rig token RIG --control URL --token-file F --out FILE
+                                      give an enrolled rig a new token (the old one stops working)
+  rig retire RIG --control URL --token-file F
+                                      shut an enrolled rig out of control; its history stays
+  rig list --control URL --token-file F [--json]
+                                      list the rigs (owner's token): reporting, stale or
+                                      offline, and each one's Thermite version against
+                                      control's, with what to do when it is behind or refused
+  runpod launch CLOUD --gpu G [--gpus N] [--cloud-type SECURE|COMMUNITY] [--datacenter DC]
+         [--image I] [--disk GB] [--volume GB] [--rig NAME] [--enroll-within MIN]
+         [--setting NAME=VALUE ...] [--spend-limit USD] [--idle-stop MIN|off]
+         --control URL --token-file F
+                                      spends money: launch a rig on the GPU cloud CLOUD from
+                                      Providers (owner's token), a pod of the one-container rig
+                                      image in pull mode. Defaults: 1 GPU, SECURE, any data
+                                      center, control's rig image, a 40 GB disk, a 100 GB
+                                      volume, no spend limit, no idle stop. --idle-stop MIN
+                                      stops the pod after MIN minutes with no run at work;
+                                      off: no idle stop
+  runpod list [CLOUD] --control URL --token-file F [--json]
+                                      list the rigs launched on GPU clouds (owner's token):
+                                      each pod's status, price per hour, spend so far and limits
+  runpod limits RIG [--spend-limit USD|off] [--idle-stop MIN|off] --control URL --token-file F
+                                      set or clear a RunPod rig's spend limit and idle stop
+                                      (owner's token)
+  runpod stop RIG --control URL --token-file F
+                                      stop a RunPod rig's pod (owner's token): its runs paused
+                                      and its results sent out first; its volume stays
+  runpod start RIG --control URL --token-file F
+                                      start a stopped pod again, and resume the runs its stop
+                                      paused; refused when RunPod has no GPU free (owner's token)
+  runpod restart RIG --control URL --token-file F
+                                      stop the pod and start it again (owner's token)
+  runpod terminate RIG --control URL --token-file F
+                                      remove the pod for good, once every result has left it;
+                                      refused, with the pod kept running, when one can't leave
+                                      (owner's token)
+  runpod reset RIG --control URL --token-file F
+                                      start a full reset of a RunPod rig: every result out,
+                                      then the wipe after your confirmation (owner's token)
+  runpod confirm-wipe RIG --control URL --token-file F
+                                      confirm the wipe of the rig's full reset (owner's token)
+  runpod cancel-reset RIG --control URL --token-file F
+                                      cancel the rig's full reset before its wipe (owner's token)
+  run start CAMPAIGN --rig R [--agents off] [--provider P --model M] [--promotion auto|owner]
+         [--ask gain:PERCENT|flaws|reviews|not-possible ...]
+         [--judge-gpus N] [--queue-from [RIG/]RUN] [--past ID ...] --control URL --token-file F
+                                      start a run of a campaign control keeps (owner's token), as
+                                      Start a run on the campaign's page does, with its checks and
+                                      refusals: a campaign saved on the New campaign page or
+                                      assigned before. --provider and --model give the rig's
+                                      agents that model first: the run does not start, and the
+                                      command exits 1; run it again once the rig has the model.
+                                      --queue-from starts the queue with a run's untried
+                                      experiments (on --rig unless RIG/ is given); --past adds
+                                      items of Thermite's knowledge base by id. It prints the new
+                                      run and its command id; a stopped RunPod pod starts first
+  campaign copy FROM NAME [--mcp-servers-json FILE] [--context-window TOKENS]
+         [--compact-at PERCENT] [--info-file F] [--link URL ...] [--idea TEXT ...]
+         [--hypothesis TEXT ...] --control URL --token-file F
+                                      copy a campaign control keeps (owner's token): a new
+                                      campaign NAME with FROM's contract and kit, its own empty
+                                      folder in Thermite's knowledge base and no runs. Start a
+                                      run of it with run start. It prints the copy.
+                                      --mcp-servers-json: for a research campaign, the MCP
+                                      servers the copy's agents use instead, as a JSON list
+                                      ([] for none). --context-window and --compact-at give the
+                                      copy its own context settings, in place of FROM's. The copy
+                                      keeps FROM's brief; --info-file (Markdown; an empty file
+                                      for none), --link, --idea and --hypothesis give its own,
+                                      each in place of FROM's
+  campaign context CAMPAIGN [--context-window TOKENS] [--compact-at PERCENT]
+         --control URL --token-file F
+                                      set a campaign's own context settings for all its runs'
+                                      agents (owner's token): every agent's window is the lower
+                                      of TOKENS and its own model's, and PERCENT replaces the
+                                      rig's compaction point. Control saves a new version of the
+                                      campaign; runs started from then take it. Without either
+                                      option, the settings are removed. It prints the version
+  kit add NAME BUNDLE [--ref REF] [--force] --control URL --token-file F
+                                      give control a kit repository written elsewhere, as a git
+                                      bundle file (owner's token; at most 64 MiB): control keeps
+                                      every commit with its id, and the kit's head is the
+                                      bundle's HEAD, its only branch, or --ref (a branch, a tag or
+                                      a commit). The head needs a valid kit.json at its top.
+                                      --force replaces a head the new one does not descend from;
+                                      the old head's commits stay. Rigs fetch it from control:
+                                      assign --kit control:NAME. It prints the kit's head
+  kit list --control URL --token-file F [--json]
+                                      the kits control keeps (owner's or reader's token): each
+                                      one's head, commits and kit.json's name and target
+  mcp list --control URL --token-file F [--json]
+                                      the MCP servers in Settings (owner's token): each one's
+                                      sign-in, state, last error, tools and the kits that name
+                                      it. No secret, only its last four characters
+  mcp add NAME --url URL --auth oauth|key|client|none [--header H] [--secret-file F]
+          [--client-id ID] [--client-secret-file F] [--scope S] --control URL --token-file F
+                                      add an MCP server (owner's token). key: --secret-file
+                                      holds the header's whole value (Bearer and the token);
+                                      client: --client-id and --client-secret-file. Control
+                                      seals each secret and reads the server's tools. oauth:
+                                      prints the sign-in page's address: open it and allow
+                                      Thermite
+  mcp change NAME [--url URL] [--auth oauth|key|client|none] [--header H] [--secret-file F]
+          [--client-id ID] [--client-secret-file F] [--scope S] --control URL --token-file F
+                                      change a server; a secret left out is kept, except for
+                                      another address or another --auth, which needs it again
+  mcp check NAME --control URL --token-file F
+                                      read the server's tools again (it calls none)
+  mcp sign-in NAME --control URL --token-file F
+                                      print the address of an OAuth server's sign-in page
+  mcp delete NAME --control URL --token-file F
+                                      forget a server and its secrets; refused while a kit
+                                      names it
+  command --control URL --token-file F --rig U --kind K --payload JSON|@file [--ttl MIN]
+                                      issue a signed command through control (admin token).
+                                      assign_campaign and resume_run on a RunPod rig whose pod
+                                      is stopped start the pod first, and say so
+  submit --harness URL --token-file F --run ID --patch-file P --hypothesis TEXT
+         [--known-flaw TEXT ...]      submit a patch as a proposer
+  status --harness URL --token-file F --attempt ID
+                                      show an attempt's lifecycle and verdict
+  local init DIR [--engine docker|podman]
+                                      make DIR, the local compose stack's .dev folder: random
+                                      tokens in DIR/secrets, the inbox, the outbox and the
+                                      advisors' folder. Files that exist are kept. Run as root,
+                                      it gives what it makes to the owner of DIR's parent folder.
+                                      It says what the local rig gets (CPUs, memory, GPUs), and
+                                      with NVIDIA GPUs the rig can have, writes compose.gpu.yaml
+                                      next to DIR for the engine named, or the one it finds
+  selftest isolation [--force]        inside the harness container, as root, with the rig idle: check that role
+                                      users cannot reach the ledger, kits, builds or secrets
+`;

@@ -239,7 +239,7 @@ function inlineCode(text) {
 }
 
 // The command line: its usage text names every command, subcommand and option.
-const cliSource = readFileSync(join(root, "src/cli/thermite.ts"), "utf8");
+const cliSource = readFileSync(join(root, "src/cli/thermite/usage.ts"), "utf8");
 const usage = /const USAGE = `([\s\S]*?)`;/.exec(cliSource)?.[1] ?? "";
 const commands = new Map(); // "rig add" or "submit" -> Set of options
 let current = null;

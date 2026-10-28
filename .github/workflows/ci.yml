@@ -242,7 +242,7 @@ jobs:
             ^docs/_site/src/content/docs/how-to/operate/troubleshoot\.md$
             ^examples/
             ^kits/smoke-cpu/
-            ^scripts/quick-start-acceptance\.mjs$
+            ^scripts/quick-start-acceptance(\.mjs$|/)
             ^scripts/lib/
             ^tests/helpers/quick-start\.ts$
             ^tests/docs/quick-start\.test\.ts$
