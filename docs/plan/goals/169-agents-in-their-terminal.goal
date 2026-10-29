@@ -10,7 +10,7 @@ updated: 2026-10-26
 
 # 169 · Agents in their own terminal: each agent program runs its TUI, the live view shows it, steering types into it, session logs become events
 
-**Status:** `READY` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [166](166-agent-definitions.goal)
+**Status:** `READY` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [166](_completed/166-agent-definitions.goal)
 
 ## What
 
@@ -59,7 +59,7 @@ The audit's lane 12 (`.internal/reviews/v0.1.1-audit/12-native-tui.md`) reviewed
 - **The live view:** the terminal's frames, sent only for trials someone is watching and kept in memory; the transcript stays beside it. A byte stream waits for goal [168](168-message-bus.goal)'s decision.
 - **Steering:** Thermite's own messages go in through the hooks or the program's API; typing is for the owner's console (text, slash commands, skills, MCP reconnects), each input a signed command, recorded with its outcome.
 - **Which roles** (the owner, 2026-10-26): every role the owner's messages can reach runs in its program's TUI: the workers, the planner, the teachers, the auditor and the review panel's reviewers. The advisors run in the supervisor, so their terminals are held there. The roles that take no message (the model check, the teachers' merged-by model, the synthesizer, the final writer and compaction) stay headless, with a view-only live feed. Pi is studied for a minimal TUI (question 1).
-- **The steps:** goal [166](166-agent-definitions.goal) and the table of agent programs first; a spike of each program's TUI in the harness image, with recorded session logs; the session-log adapters, beside today's stream readers; hook signals and steering inside a turn, in headless mode; the terminal host; the terminal mode in the one trial loop; the steering command; the live view; usage from the TUI; stand-ins, acceptance checks and a version check; the docs and credits. About 55 to 65 files, a third of them tests.
+- **The steps:** goal [166](_completed/166-agent-definitions.goal) and the table of agent programs first; a spike of each program's TUI in the harness image, with recorded session logs; the session-log adapters, beside today's stream readers; hook signals and steering inside a turn, in headless mode; the terminal host; the terminal mode in the one trial loop; the steering command; the live view; usage from the TUI; stand-ins, acceptance checks and a version check; the docs and credits. About 55 to 65 files, a third of them tests.
 
 ## Decisions
 

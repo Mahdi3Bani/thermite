@@ -464,7 +464,7 @@ After the owner answered section 7, they asked for four more things, and then fo
 
 | Goal | What | What it changes in this guide |
 | --- | --- | --- |
-| [166](goals/166-agent-definitions.goal) | One definition for each agent role in `src/agents/roles/`, with a pure `render` for a run's prompt, a table of tools, and every prompt sent recorded | T7 grows: the table of agent programs sits beside the roles and the tools. T1 gains the role names. |
+| [166](goals/_completed/166-agent-definitions.goal) | One definition for each agent role in `src/agents/roles/`, with a pure `render` for a run's prompt, a table of tools, and every prompt sent recorded | T7 grows: the table of agent programs sits beside the roles and the tools. T1 gains the role names. |
 | [167](goals/_completed/167-how-the-parts-talk.goal) | A review of every channel: 45 channels, 35 polling loops, the delay each adds | Its explanation page, [How the parts talk](../_site/src/content/docs/explanation/how-the-parts-talk.md), is written. Its findings feed T2 and goal 168. |
 | [168](goals/168-message-bus.goal) | The message bus: NATS JetStream as the event log, the delivery and the queues between control, the rigs' supervisors and the dashboard, chosen by the owner on 2026-10-26; the harness and the agents stay off it, bridged by the supervisor | T2 becomes the link's contract in `core/link/` (subjects, schemas, limits, signers). T12's views kept up to date are JetStream consumers. |
 | [169](goals/169-agents-in-their-terminal.goal) | Workers in their program's own terminal UI, session logs as events, steering inside a turn | Comes after goal 166 and T7's one trial loop; its terminal mode is a field of each program's entry. |
