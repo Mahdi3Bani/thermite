@@ -10,7 +10,15 @@ import {
   NOTE_USAGE,
   researchCommands,
 } from "../tools/index.ts";
-import { fitToWindow, limitsNote, ownerAdditionSection } from "./shared.ts";
+import {
+  fitToWindow,
+  limitsNote,
+  ownerAdditionSection,
+  ownerLineSections,
+  type TrialTurn,
+  timeLeftWords,
+  trialTurnSections,
+} from "./shared.ts";
 
 /**
  * The worker (goal 166): one trial on one experiment in a hill-climb or goal run. It changes the
@@ -339,4 +347,65 @@ export function trialBudget(
   if (!time && !turns) return "Submit once your change works.";
   const parts = [time + end, turns].filter(Boolean);
   return `This trial lasts ${parts.join(end && turns ? ", and " : " and ")}. Submit before it ends.`;
+}
+
+/** Told to a worker in Pi that stopped without calling submit (goal 079), for as long as it works. */
+export const WORKER_PI_NUDGE =
+  "You have not called submit yet. Keep working with your tools: make your change, build and test it, then call submit once. If you find no change worth judging, say why in one sentence.";
+
+/** The same, to a worker in a program, which submits with the thermite-trial command. */
+export const WORKER_PROGRAM_NUDGE =
+  'You have not submitted yet. Keep working: make your change, build and test it, then run `thermite-trial submit --hypothesis "..."` once. If you find no change worth judging, say why in one sentence.';
+
+/**
+ * Told once to a worker in Pi when the turns or the time its trial was given are nearly spent: how
+ * many are left comes before it.
+ */
+export const WORKER_SUBMIT_NOW =
+  "Build and test what you have, then submit your best working change now, listing anything unfinished in known_flaws. A trial that ends without a submission is lost. If this trial measures rather than changes the code, record what you measured now as notes, with the numbers, before you start another measurement: what a trial does not record is lost when it ends.";
+
+/** A later turn of a code trial (goal 166): the trial's own, or one every trial's worker gets. */
+export type WorkerTurn =
+  | TrialTurn
+  /** It stopped without submitting: told to go on. */
+  | { kind: "nudge" }
+  /** In Pi, once: the turns or the time its trial was given are nearly spent. */
+  | { kind: "nearly-spent"; turnsLeft: number }
+  | { kind: "nearly-spent"; msLeft: number };
+
+/** What a later turn of a code trial takes: what it is, and where in the call it is sent. */
+export type WorkerTurnInput = WorkerTurn & {
+  /** pi, or the program the trial runs in. */
+  program: string;
+  /** Its place among the messages the trial sends: 1 for the first later turn. */
+  turn: number;
+  /** In a program: the owner's messages its continuation carries, each after a blank line. */
+  owner?: readonly string[] | undefined;
+};
+
+/**
+ * A later turn of a code trial (goal 166): what Thermite tells the worker after its first message,
+ * inside the same trial. In Pi each is a message of its own; a program gets one message to go on
+ * from, with the owner's messages that wait for it.
+ */
+export function renderWorkerTurn(i: WorkerTurnInput): Prompt {
+  return prompt("worker", i.program, {
+    turn: i.turn,
+    message: [...workerTurnSections(i), ...ownerLineSections(i.owner ?? [])],
+  });
+}
+
+function workerTurnSections(t: WorkerTurnInput): Section[] {
+  if (t.kind === "nudge")
+    return [section("nudge", "role", t.program === "pi" ? WORKER_PI_NUDGE : WORKER_PROGRAM_NUDGE)];
+  if (t.kind === "nearly-spent")
+    return [
+      section(
+        "left",
+        "rig",
+        "turnsLeft" in t ? `${t.turnsLeft} turns are left in this trial.` : timeLeftWords(t.msLeft),
+      ),
+      section("submit-now", "role", WORKER_SUBMIT_NOW, " "),
+    ];
+  return trialTurnSections(t);
 }

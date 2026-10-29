@@ -11,7 +11,8 @@ import { runClaudeCode, runCli, runCliHarness, runPi } from "./runtimes/index.ts
 export async function runAdvisor<S extends z.ZodType>(
   call: AdvisorCall<S>,
 ): Promise<AdvisorResult<z.infer<S>>> {
-  // Each prompt its runtime renders and sends, for the harness to keep (goal 166).
+  // Each prompt its runtime renders and sends, its later turns too, for the harness to keep
+  // (goal 166).
   const sent: Prompt[] = [];
   const input: AdvisorCall<S> = {
     ...call,
@@ -20,6 +21,7 @@ export async function runAdvisor<S extends z.ZodType>(
       sent.push(p);
       return p;
     },
+    later: (p) => sent.push(p),
   };
   const r = await dispatch(input);
   return sent.length ? { ...r, sent } : r;

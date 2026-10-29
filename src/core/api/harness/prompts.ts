@@ -1,13 +1,29 @@
 import { z } from "zod";
-import { PROMPT_RECORD_MAX_CHARS, PromptRecord, PromptSection } from "../../prompts.ts";
+import {
+  PROMPT_RECORD_MAX_CHARS,
+  PROMPT_TURN_MAX,
+  PromptRecord,
+  PromptSection,
+} from "../../prompts.ts";
 import type { Route } from "../route.ts";
 
 /**
  * The harness's API for the prompts its run's agents were sent (goal 166; src/harness/api/
  * prompts.ts answers it): the supervisor keeps its advisors' prompts there, and reads a run's
- * prompts, one prompt whole, and a preview of the next one, on the rig. Every route takes the
- * supervisor's token.
+ * prompts, one prompt whole, and a preview of the next one, on the rig. Those routes take the
+ * supervisor's token; a Pi worker keeps its later turns with its trial's (src/harness/api/
+ * trials.ts).
  */
+
+/** A prompt's sections as a sender hands them over to keep: at most PROMPT_RECORD_MAX_CHARS. */
+const KeptSections = z
+  .array(PromptSection)
+  .min(1)
+  .max(200)
+  .refine(
+    (ss) => ss.reduce((n, s) => n + s.text.length, 0) <= PROMPT_RECORD_MAX_CHARS,
+    `a prompt kept has at most ${PROMPT_RECORD_MAX_CHARS.toLocaleString("en-US")} characters`,
+  );
 
 /** The roles whose prompts the supervisor sends: its advisors. The harness keeps the rest. */
 export const ADVISOR_PROMPT_ROLES = [
@@ -29,14 +45,25 @@ export const KEEP_PROMPT = {
   body: PromptRecord.extend({
     run: z.string().min(1).max(100),
     role: z.enum(ADVISOR_PROMPT_ROLES),
-    sections: z
-      .array(PromptSection)
-      .min(1)
-      .max(200)
-      .refine(
-        (ss) => ss.reduce((n, s) => n + s.text.length, 0) <= PROMPT_RECORD_MAX_CHARS,
-        `a prompt kept has at most ${PROMPT_RECORD_MAX_CHARS.toLocaleString("en-US")} characters`,
-      ),
+    sections: KeptSections,
+  }),
+  answer: z.looseObject({ id: z.number() }),
+  maxBytes: 16 * 1024 * 1024,
+} as const satisfies Route;
+
+/**
+ * A later turn a worker in Pi sent inside its trial (a nudge, a warning, a continuation), as its
+ * own code rendered it, for the harness to keep as it keeps the trial's first prompt: the trial's
+ * token decides the run, the lane and the trial.
+ */
+export const KEEP_TRIAL_PROMPT = {
+  method: "POST",
+  path: "/v1/trial/prompt",
+  body: z.strictObject({
+    role: z.enum(["worker", "research-worker"]),
+    program: z.literal("pi"),
+    turn: z.number().int().min(1).max(PROMPT_TURN_MAX),
+    sections: KeptSections,
   }),
   answer: z.looseObject({ id: z.number() }),
   maxBytes: 16 * 1024 * 1024,
@@ -48,6 +75,7 @@ export const PromptInfo = z.looseObject({
   run: z.string(),
   role: z.string(),
   program: z.string(),
+  turn: z.number(),
   lane: z.string().nullable(),
   trial: z.string().nullable(),
   call: z.string().nullable(),

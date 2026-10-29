@@ -6,6 +6,7 @@ import { Compactor, summarizer } from "../../../agents/compaction/index.ts";
 import { mcpAgentTools } from "../../../agents/mcp/index.ts";
 import { buildModel, type ModelConfig, PiMeter } from "../../../agents/model/index.ts";
 import { messageText, systemText } from "../../../agents/prompt.ts";
+import { renderCompacted } from "../../../agents/roles/index.ts";
 import { PAST_SEARCH_DESCRIPTION, PAST_SEARCH_TOOL } from "../../../agents/tools/index.ts";
 import { errorText } from "../../../common/errors.ts";
 import { PAGE_MAX, SEARCH_MAX } from "../../../core/api/harness/research.ts";
@@ -267,6 +268,8 @@ export async function runPi<S extends z.ZodType>(
   const call = new Date().toISOString().replace(/[:.]/g, "-");
   const compactions: AdvisorCompaction[] = [];
   let tooBig: string | undefined;
+  // Its later turns (goal 166), numbered after its first message.
+  let said = 0;
   const compactor = new Compactor({
     window: rt.context_window,
     at: rt.compact_at,
@@ -281,10 +284,7 @@ export async function runPi<S extends z.ZodType>(
     summarize: summarizer(cfg, meter),
     keep: async (n, markdown) => {
       if (!input.keeper) throw new Error("this advisor's call has no place to keep it");
-      return {
-        path: input.keeper.keep(rt.name, call, n, markdown),
-        read: "You have no tool to read it: rely on this summary",
-      };
+      return { path: input.keeper.keep(rt.name, call, n, markdown) };
     },
     done: async (r) => {
       const c: AdvisorCompaction = {
@@ -304,7 +304,9 @@ export async function runPi<S extends z.ZodType>(
       agent.abort();
     },
     title: `Advisor ${rt.name}`,
-    goesOn: "Your work goes on: call answer when your answer is ready.",
+    // What it goes on from, in its role's words (goal 166).
+    after: (c) => renderCompacted({ role: sent.role, turn: ++said, ...c }),
+    sent: input.later,
   });
   agent.prepareRequest = compactor.hook(agent);
   let turns = 0;

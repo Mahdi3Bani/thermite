@@ -14,6 +14,7 @@ import type { ModelConfig } from "../../../agents/model/index.ts";
 import {
   codexBin,
   codexExe,
+  OPENCODE_BASE_ENV,
   OPENCODE_PLUGIN,
   OPENCODE_PLUGIN_LINK,
   opencodeBin,
@@ -93,12 +94,14 @@ export async function runCliHarness<S extends z.ZodType>(
       });
     if (!native) proxy = await serveAdvisorModel({ api: model.api, baseUrl: model.baseUrl, key });
     const servers = tools?.servers ?? [];
-    const secrets = {
+    const opencode = rt.runtime === "opencode";
+    const env = {
+      // OpenCode reads no project configuration or instruction files (goal 166, decision 7).
+      ...(opencode ? OPENCODE_BASE_ENV : {}),
       ...(proxy ? { THERMITE_PROXY_AUTH: proxy.token } : {}),
       ...(tools ? { THERMITE_MCP_AUTH: tools.token } : {}),
     };
     const root = proxy?.root ?? "";
-    const opencode = rt.runtime === "opencode";
     const exe = opencode ? (opencodeExe() ?? opencodeBin()) : (codexExe() ?? codexBin());
     const title = `Advisor ${rt.name}`;
     return await runCli(
@@ -110,7 +113,7 @@ export async function runCliHarness<S extends z.ZodType>(
             : codexAdvisorArgs(model, { keep: keeper !== undefined })),
         ],
         timeout_s: rt.timeout_s,
-        env: secrets,
+        env,
         // Its configuration in its own folder, written by the supervisor; no credential in it.
         prepare: (home): Record<string, string> => {
           if (opencode) {

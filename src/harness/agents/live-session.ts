@@ -1,4 +1,6 @@
 import type { Agent } from "@earendil-works/pi-agent-core";
+import { type Prompt, userMessage } from "../../agents/prompt.ts";
+import { renderWorkerTurn } from "../../agents/roles/index.ts";
 import { log } from "../../common/env.ts";
 import { type LiveKind, liveText, summarizeArgs } from "../../core/live.ts";
 
@@ -21,6 +23,13 @@ export interface SessionLink {
   progress?: ((p: TrialProgress) => Promise<unknown>) | undefined;
   /** Its open model call, every REPLY_REPORT_MS while one is open; null once it ends (goal 143). */
   reply?: ((r: ReplyNow | null) => Promise<unknown>) | undefined;
+  /**
+   * An owner's message as the agent's role puts it to the agent, a later turn of its call (goal
+   * 166); by default, a worker's.
+   */
+  ownerTurn?: ((text: string) => Prompt) | undefined;
+  /** Keeps a later turn once it enters the conversation (goal 166). */
+  sent?: ((p: Prompt) => void) | undefined;
 }
 
 /**
@@ -47,10 +56,6 @@ export interface MessageInbox {
   given(ids: number[]): void;
 }
 
-/** How an owner's message is put to an agent as a user turn. */
-export const ownerTurn = (text: string) =>
-  `A message from the campaign's owner, who is watching this session:\n\n${text}`;
-
 export interface TrialProgress {
   turns: number;
   tool_calls: number;
@@ -76,6 +81,20 @@ function resultText(result: unknown): string {
   return t || summarizeArgs(result, 600);
 }
 
+/**
+ * Steers a later turn into a running session, for its next model call (goal 166). `entered`: once
+ * it enters the conversation; a turn that a stop overtakes never does, and was never sent.
+ */
+export function steerTurn(agent: Agent, p: Prompt, entered: () => void): void {
+  const message = userMessage(p);
+  const off = agent.subscribe((event, signal) => {
+    if (event.type !== "message_end" || event.message !== message) return;
+    off();
+    if (!signal.aborted) entered();
+  });
+  agent.steer(message);
+}
+
 export function linkSession(agent: Agent, link: SessionLink): void {
   // A long line is cut and marked, as the harness's own are; a refusal is logged, the first of
   // a streak (goal 171).
@@ -95,9 +114,11 @@ export function linkSession(agent: Agent, link: SessionLink): void {
   };
   const counted: TrialProgress = { turns: 0, tool_calls: 0, tokens_in: 0, tokens_out: 0 };
   const reply = replyReports(link);
-  /** Owner messages steered into the session, by the turn that carries them. */
-  const steered = new Map<object, number>();
   const offered = new Set<number>();
+  let owned = 0;
+  const ownerTurn =
+    link.ownerTurn ??
+    ((text: string) => renderWorkerTurn({ program: "pi", turn: ++owned, kind: "owner", text }));
   agent.subscribe(async (event, signal) => {
     switch (event.type) {
       case "turn_start":
@@ -110,14 +131,6 @@ export function linkSession(agent: Agent, link: SessionLink): void {
         reply.close();
         break;
       case "message_end": {
-        // A steered owner message enters the conversation for the next model call: it is read
-        // now, unless the session is being stopped (then that call never happens).
-        const id = steered.get(event.message);
-        if (id !== undefined) {
-          steered.delete(event.message);
-          if (!signal.aborted) link.read?.([id]).catch(() => undefined);
-          break;
-        }
         const m = event.message as {
           role?: string;
           content?: unknown;
@@ -168,13 +181,13 @@ export function linkSession(agent: Agent, link: SessionLink): void {
         for (const msg of msgs) {
           if (offered.has(msg.id)) continue;
           offered.add(msg.id);
-          const turn = {
-            role: "user" as const,
-            content: ownerTurn(msg.text),
-            timestamp: Date.now(),
-          };
-          steered.set(turn, msg.id);
-          agent.steer(turn);
+          // It enters the conversation for the next model call: it is read and kept then, unless
+          // the session is being stopped (then that call never happens).
+          const p = ownerTurn(msg.text);
+          steerTurn(agent, p, () => {
+            link.read?.([msg.id]).catch(() => undefined);
+            link.sent?.(p);
+          });
         }
         break;
       }

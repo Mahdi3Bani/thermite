@@ -25,7 +25,7 @@ const NOTE =
 
 const INTRO = `Thermite runs 15 agent roles. Each role's fixed instructions are in its own module in \`src/agents/roles/\`, and \`src/agents/roles/index.ts\` lists every role in one table. This page is written from that table, so the texts below are the ones the code sends, word for word.
 
-A run adds to these texts each time it calls a role: the campaign's brief, the run's rules and queue, field notes, past research and your messages. One function in the role's module puts them together for a run, named under each role below; the harness and the supervisor gather what the run adds and send what that function renders, and no prompt is built anywhere else. Every prompt sent is kept with its run: a run's **Prompts** tab on the dashboard shows each one, with where each part came from, and so do \`GET /v1/runs/{run}/prompts\`, the \`agent_prompts\` MCP tool and \`thermite agents show ROLE --run RUN\` (see [What a run's agents were sent](#what-a-runs-agents-were-sent)). Every role advises or proposes; none of them measures, judges or promotes (see [Why agents never judge](../explanation/why-agents-never-judge.md)).
+A run adds to these texts each time it calls a role: the campaign's brief, the run's rules and queue, field notes, past research and your messages. One function in the role's module puts them together for a run, named under each role below, and the role's turn functions put together what it is told later in the same call (see [Later turns in a call](#later-turns-in-a-call)); the harness and the supervisor gather what the run adds and send what those functions render, and no prompt is built anywhere else. Every prompt sent is kept with its run: a run's **Prompts** tab on the dashboard shows each one, with where each part came from, and so do \`GET /v1/runs/{run}/prompts\`, the \`agent_prompts\` MCP tool and \`thermite agents show ROLE --run RUN\` (see [What a run's agents were sent](#what-a-runs-agents-were-sent)). Every role advises or proposes; none of them measures, judges or promotes (see [Why agents never judge](../explanation/why-agents-never-judge.md)).
 
 | Role | What it does | Runs in | Model | Programs | Your messages reach it | Takes your additions |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -33,13 +33,25 @@ A run adds to these texts each time it calls a role: the campaign's brief, the r
 
 const SENT = `## What a run's agents were sent
 
-Each prompt is kept whole, compressed, in the rig's ledger and in the run's export (\`prompts.jsonl.gz\`), never in the run's research folder, which the workers read. Control gets an \`agent_prompt\` event for each one: its role, agent program, lane and trial or call, the version of the role's text, and each section with its source and size. The event carries the text of each section up to 8,000 characters of the prompt in all; a section past that says it is cut. A fixed text of a role, listed below, is named by its SHA-256, and control shows it from its own copy of the definitions.
+Each prompt is kept whole, compressed, in the rig's ledger and in the run's export (\`prompts.jsonl.gz\`), never in the run's research folder, which the workers read: a call's first message and each later turn in it (below). Control gets an \`agent_prompt\` event for each one: its role, agent program, lane and trial or call, which turn of the call it was (\`turn\`: 0 for the first message, 1 for the first later turn, and so on), the version of the role's text, and each section with its source and size. The event carries the text of each section up to 8,000 characters of the prompt in all; a section past that says it is cut. A fixed text of a role, listed below, is named by its SHA-256, and control shows it from its own copy of the definitions.
 
-Each section's source says where it comes from: \`role\` (the role's own text), \`assignment\`, \`contract\`, \`campaign brief\`, \`queue\`, \`planner\`, \`judge\`, \`ledger\` (the run's record), \`field notes and past research\`, \`owner\` (your messages), \`owner's addition\` (your addition to the role for the campaign, below), \`kit\` (its MCP servers), \`rig\` (the rig's and the lane's limits), \`package\` (what an advisor reads), \`check\` (what code found wrong with a planner's last answer) and \`left out\`.
+Each section's source says where it comes from: \`role\` (the role's own text), \`assignment\`, \`contract\`, \`campaign brief\`, \`queue\`, \`planner\`, \`judge\`, \`ledger\` (the run's record), \`field notes and past research\`, \`owner\` (your messages), \`owner's addition\` (your addition to the role for the campaign, below), \`kit\` (its MCP servers), \`rig\` (the rig's and the lane's limits), \`package\` (what an advisor reads), \`check\` (what code found wrong with a planner's last answer), \`provider\` (a model provider's words when a call failed), \`compaction\` (the summary an agent's own model wrote of its conversation) and \`left out\`.
 
 A worker's or a planner's first message is cut to fit its model's window, by the advisors' rule: the window at its compaction point less 30%. Your messages and the role's own text stay whole; the largest of the run's parts are cut first, and the message says what was cut and where the rest is. Without a known window, nothing is cut.
 
-The agent programs read no instructions of their own from the project: Claude Code reads no \`CLAUDE.md\`, and Codex no \`AGENTS.md\`. OpenCode's pinned version has no such switch that Thermite has checked yet.
+The agent programs read no instructions of their own from the project: Claude Code reads no \`CLAUDE.md\`, Codex no \`AGENTS.md\`, and OpenCode no \`AGENTS.md\` and no configuration of the project's (Thermite starts it with \`OPENCODE_DISABLE_PROJECT_CONFIG=1\`). One thing OpenCode does that no setting turns off: when its agent reads a file with OpenCode's own read tool in a folder below the workspace's top, OpenCode adds an \`AGENTS.md\` it finds in that folder, or in one between it and the top, to the conversation.
+
+## Later turns in a call
+
+After its first message, an agent may be told more in the same call, and each of those texts comes from its role too:
+
+- a worker that stops without submitting is told to go on, for as long as it keeps working (in Pi, and in OpenCode, Claude Code or Codex, where the program's session is continued); a research worker in OpenCode whose run made progress and ended while your messages wait is told to continue its research;
+- a worker in Pi is told once that its trial's turns or time are nearly spent, when a limit on them is set;
+- in Pi, a reply cut off at the output limit, a full context the harness compacted, and a failed model call (in a program too) each get a line, and the trial goes on;
+- your message to a running trial: in Pi as a turn of its own, in a program with the run's continuation;
+- in Pi, after a compaction, every agent goes on from one message that says where the conversation is kept and gives the summary, in its own role's words: a worker's, a planner's or an advisor's.
+
+Each one is kept as the first message is, as a later turn of its call: \`renderWorkerTurn\`, \`renderResearchWorkerTurn\` and \`renderCompacted\` put them together, and the roles below list their fixed texts.
 
 ## Your additions to a role
 
@@ -70,7 +82,10 @@ export async function agentsPage() {
         return `### ${r.name}: ${x.what}\n\n\`\`\`text\n${x.text}\n\`\`\``;
       })
       .join("\n\n");
-    return `## ${r.name}\n\n${r.what} Its module: \`src/agents/roles/\`, role \`${r.id}\`. Its prompt for a run is put together by \`${r.render.name}\`.\n\n${texts}`;
+    const turns = r.turns.length
+      ? ` Its later turns in a call are put together by ${r.turns.map((f) => `\`${f.name}\``).join(" and ")}.`
+      : "";
+    return `## ${r.name}\n\n${r.what} Its module: \`src/agents/roles/\`, role \`${r.id}\`. Its prompt for a run is put together by \`${r.render.name}\`.${turns}\n\n${texts}`;
   }).join("\n\n");
   return `${FRONT}\n${NOTE}\n${INTRO}${rows}\n\n${SENT}\n\n${sections}\n`;
 }

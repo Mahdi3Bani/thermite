@@ -114,10 +114,23 @@ export function opencodeConfig(
   return config;
 }
 
+/**
+ * What every OpenCode run gets in its environment, a worker's and an advisor's (goal 166,
+ * decision 7): no project configuration and no project instruction files. OpenCode 2.1.4 reads
+ * the variable when it starts its server (packages/cli/src/server-process.ts) and then reads no
+ * `opencode.json`, `.opencode/` or `AGENTS.md` of the project's; its own settings, in its home,
+ * stay. Its read tool still adds an `AGENTS.md` it finds in a folder below the workspace's top
+ * when the agent reads a file there: no setting turns that off.
+ */
+export const OPENCODE_BASE_ENV: Readonly<Record<string, string>> = {
+  OPENCODE_DISABLE_PROJECT_CONFIG: "1",
+};
+
 /** The environment of an OpenCode run: its home, Thermite's command and how to reach the API. */
 export function runEnv(home: string, apiUrl: string, auth: string, extra: Record<string, string>) {
   return {
     ...extra,
+    ...OPENCODE_BASE_ENV,
     HOME: home,
     PATH: agentPath(),
     THERMITE_HARNESS_URL: apiUrl,

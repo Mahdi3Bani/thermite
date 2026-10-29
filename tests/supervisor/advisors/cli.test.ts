@@ -108,6 +108,7 @@ const out = (e) => process.stdout.write(JSON.stringify(e) + "\\n");
     mcp_with_token: await mcp(env.THERMITE_MCP_AUTH),
     prompt_has_shape: /Answer with exactly one JSON object, of this shape/.test(prompt),
     prompt_has_package: prompt.includes("the package to read"),
+    project_config: env.OPENCODE_DISABLE_PROJECT_CONFIG || "read",
   };
   const text = JSON.stringify(facts);
   if (kind === "codex") {
@@ -141,6 +142,7 @@ const Facts = z.object({
   mcp_with_token: z.string(),
   prompt_has_shape: z.boolean(),
   prompt_has_package: z.boolean(),
+  project_config: z.string(),
 });
 
 /** Runs one advisor call with the stand-in on the PATH Thermite reads, and the past research. */
@@ -296,6 +298,8 @@ describe("advisors in OpenCode and the Codex CLI", () => {
     assert.equal(f.mcp_without_token, "401");
     assert.match(f.mcp_with_token, /found for tiling/);
     assert.equal(f.prompt_has_shape, true);
+    // No project configuration or AGENTS.md of the project's (goal 166, decision 7).
+    assert.equal(f.project_config, "1");
     assert.deepEqual([r.tokensIn, r.tokensOut], [900, 35]);
     // Its model usage, from its step: the output with its reasoning; no cache figure named.
     assert.equal(r.usage?.harness, "opencode");

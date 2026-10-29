@@ -1,4 +1,5 @@
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
+import { timeLeftWords } from "../../agents/roles/index.ts";
 
 /**
  * A trial's clock (goal 144). Only a trial with a length, which the campaign or the rig sets
@@ -37,10 +38,9 @@ export class TrialClock {
     return this.wallMs === undefined ? undefined : this.wallMs - (this.now() - this.started);
   }
 
-  /** About 18 minutes are left in this trial. */
+  /** About 18 minutes are left in this trial: in the worker's own words (goal 166). */
   leftWords(): string {
-    const n = Math.max(1, Math.round((this.leftMs() ?? 0) / 60_000));
-    return `About ${n} minute${n === 1 ? " is" : "s are"} left in this trial.`;
+    return timeLeftWords(this.leftMs() ?? 0);
   }
 
   /** From LEFT_FROM of the trial's length on. */

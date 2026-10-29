@@ -8,8 +8,9 @@ import type { TrialResult } from "../worker/index.ts";
 /**
  * What the trial loops of the agent programs that run as command-line programs (OpenCode,
  * Claude Code, Codex) share (goal 125, T7): the limits as the agent reads them, why a limit
- * stopped the program, the nudge and the owner's messages, and the usage hand-over (the PATH their
- * agent's shell gets is in src/agents/programs/path.ts).
+ * stopped the program, the owner's messages a continued session carries, and the usage hand-over
+ * (the PATH their agent's shell gets is in src/agents/programs/path.ts). What a continued session
+ * is told comes from its role's definition (src/agents/roles/, goal 166).
  */
 
 /** Why the broker stopped the program, when a memory or disk limit did. */
@@ -50,13 +51,6 @@ export function trialEnd(
  * which would keep the lane busy (a slow model's took about 40 s) for nothing.
  */
 export const AFTER_SUBMIT_MS = 5_000;
-
-export const NUDGE =
-  'You have not submitted yet. Keep working: make your change, build and test it, then run `thermite-trial submit --hypothesis "..."` once. If you find no change worth judging, say why in one sentence.';
-
-/** The owner's messages as they are put to an agent in a continued session. */
-export const ownerLines = (msgs: { text: string }[]) =>
-  msgs.map((m) => `A message from the campaign's owner: ${m.text}`);
 
 /**
  * The owner's messages carried by the prompt of a continued session (OpenCode or Claude Code):

@@ -353,7 +353,10 @@ export function nextStep(
   };
 }
 
-/** What a trial in a program of its own does after a provider's error (afterProgramFailure). */
+/**
+ * What a trial in a program of its own does after a provider's error (afterProgramFailure); to go
+ * on, with the provider's words, which its role's later turn gives the agent (goal 166).
+ */
 export type ProgramStep =
   | { end: { error: string; kind: ProviderErrorKind } }
   | { goOn: string }
@@ -365,7 +368,7 @@ export type ProgramStep =
  * 079): its kind, from the program's words and the error answer the harness's model proxy saw.
  * A stop kind or the campaign's limit ends the trial. Otherwise the trial waits (the provider's
  * time, or a growing pause, never past its own end) and goes on in the program's same session:
- * `goOn` holds the words to tell the agent.
+ * `goOn` holds the provider's words, for the agent's turn that goes on.
  */
 export async function afterProgramFailure(input: {
   error: string;
@@ -395,9 +398,7 @@ export async function afterProgramFailure(input: {
     await new Promise((r) => setTimeout(r, Math.min(500, Math.max(1, until - Date.now()))));
   if (input.signal?.aborted) return { interrupted: true };
   if (Date.now() >= input.deadline) return { wall: true };
-  return {
-    goOn: `The model call failed (${e.words.slice(0, 200)}). Continue where you left off.`,
-  };
+  return { goOn: e.words };
 }
 
 /** What a trial in a program of its own learns of its provider through the harness (goal 079). */

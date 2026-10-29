@@ -10,7 +10,14 @@ import {
   researchCommands,
   researchFolderNote,
 } from "../tools/index.ts";
-import { fitToWindow, limitsNote, ownerAdditionSection } from "./shared.ts";
+import {
+  fitToWindow,
+  limitsNote,
+  ownerAdditionSection,
+  ownerLineSections,
+  type TrialTurn,
+  trialTurnSections,
+} from "./shared.ts";
 import { briefSections, TRIAL_CUT_WHERE, type TrialProgram } from "./worker.ts";
 
 /**
@@ -141,4 +148,33 @@ Only pages fetched with "thermite-trial research fetch" are archived, and only a
 To propose another research task for the run's queue (the planner or the campaign's owner decides whether it is queued; your trial goes on): thermite-trial idea TITLE [--why TEXT] [--family TEXT] [--question N] (N: the index of the question it is about, from 0). A task that only a measurement could settle is refused: record it as a next experiment instead.
 
 ${notesInstruction(`with "${NOTE_USAGE}" (KIND: observation, decision, surprise, question, lesson or note; TYPE: run, experiment, attempt, source, claim, finding, round, trial or message; no --about: the run)`)} Field notes are not research notes (add_note), which record what sources say for the report.`;
+}
+
+/** Told to a research worker in a program whose run ended while the owner's messages wait for it. */
+export const RESEARCH_WORKER_GO_ON = "Continue your research.";
+
+/** What a later turn of a research trial takes: what it is, and where in the call it is sent. */
+export type ResearchWorkerTurnInput = (TrialTurn | { kind: "go-on" }) & {
+  /** pi, or the program the trial runs in. */
+  program: string;
+  /** Its place among the messages the trial sends: 1 for the first later turn. */
+  turn: number;
+  /** In a program: the owner's messages its continuation carries, each after a blank line. */
+  owner?: readonly string[] | undefined;
+};
+
+/**
+ * A later turn of a research trial (goal 166): what Thermite tells the research worker after its
+ * first message, inside the same trial, as renderWorkerTurn does for a code trial's worker.
+ */
+export function renderResearchWorkerTurn(i: ResearchWorkerTurnInput): Prompt {
+  return prompt("research-worker", i.program, {
+    turn: i.turn,
+    message: [
+      ...(i.kind === "go-on"
+        ? [section("go-on", "role", RESEARCH_WORKER_GO_ON)]
+        : trialTurnSections(i)),
+      ...ownerLineSections(i.owner ?? []),
+    ],
+  });
 }

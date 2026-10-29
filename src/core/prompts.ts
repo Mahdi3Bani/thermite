@@ -3,7 +3,8 @@ import { z } from "zod";
 
 /**
  * The record of every prompt sent (goal 166, the owner's decision 3): the whole text of each
- * prompt a run's agents are sent, with its sections and where each comes from. The harness keeps
+ * prompt a run's agents are sent, a call's first message and each later turn in it (a nudge, a
+ * warning, a continuation), with its sections and where each comes from. The harness keeps
  * it, compressed, in its ledger and puts it in the run's exports, never in the run's research
  * folder, which the workers read. Control gets one `agent_prompt` event for each prompt: its
  * sections, their sources and sizes, and their text up to PROMPT_EVENT_TEXT_CHARS, apart from a
@@ -20,8 +21,11 @@ export const OWN_SOURCES: readonly string[] = ["role", "program"];
 /** The most text of a prompt that one event carries to control, in characters. */
 export const PROMPT_EVENT_TEXT_CHARS = 8_000;
 
-/** The most characters of one prompt the supervisor sends the harness to keep. */
+/** The most characters of one prompt the supervisor or a Pi worker sends the harness to keep. */
 export const PROMPT_RECORD_MAX_CHARS = 4_000_000;
+
+/** The most messages in one call that a record numbers. */
+export const PROMPT_TURN_MAX = 1_000_000;
 
 /** One section of a prompt sent, with its text. */
 export const PromptSection = z.strictObject({
@@ -38,6 +42,8 @@ export type PromptSection = z.infer<typeof PromptSection>;
 export const PromptRecord = z.strictObject({
   role: z.string().min(1).max(64),
   program: z.string().min(1).max(32),
+  /** Its place among the messages its call was sent: 0 for the first, 1 for the first later turn. */
+  turn: z.number().int().min(0).max(PROMPT_TURN_MAX).default(0),
   lane: z.string().min(1).max(64).nullable(),
   trial: z.string().min(1).max(100).nullable(),
   /** The call it started outside a trial: a round, an audit, a review, a paper. */
@@ -45,6 +51,8 @@ export const PromptRecord = z.strictObject({
   sections: z.array(PromptSection).min(1).max(200),
 });
 export type PromptRecord = z.infer<typeof PromptRecord>;
+/** A record as a sender gives it: with no turn, the call's first message. */
+export type PromptRecordInput = z.input<typeof PromptRecord>;
 
 /** A section as the `agent_prompt` event gives it: its text only for what the run added. */
 export interface PromptSectionInfo {
@@ -64,6 +72,8 @@ export interface AgentPromptBody {
   id: number;
   role: string;
   program: string;
+  /** Its place among the messages its call was sent: 0 for the first, 1 for the first later turn. */
+  turn: number;
   lane: string | null;
   trial: string | null;
   call: string | null;
@@ -118,6 +128,7 @@ export function promptEventBody(
     id,
     role: r.role,
     program: r.program,
+    turn: r.turn,
     lane: r.lane,
     trial: r.trial,
     call: r.call,

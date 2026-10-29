@@ -323,6 +323,8 @@ describe("the OpenCode harness", () => {
     assert.ok(run.argv.includes("--auto") && run.argv.includes("thermite/m-1"));
     assert.equal(run.env?.THERMITE_TRIAL_AUTH, "trial.tok");
     assert.equal(run.env?.HOME, join(area, "opencode-home"));
+    // No project configuration or AGENTS.md of the project's joins the prompt (goal 166).
+    assert.equal(run.env?.OPENCODE_DISABLE_PROJECT_CONFIG, "1");
     assert.equal(
       run.env?.PATH,
       agentPath(),

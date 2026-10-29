@@ -62,7 +62,7 @@ export async function plannerTries<T>(o: {
   mcp?: PlannerMcp | undefined;
   compaction?: PlannerCompaction | undefined;
   usage?: ((u: CallUsage) => void) | undefined;
-  /** Keeps each try's prompt, as it is sent (goal 166). */
+  /** Keeps each try's prompt, and each later turn in it, as it is sent (goal 166). */
   sent?: ((p: Prompt) => void) | undefined;
 }): Promise<PlannerTries<T>> {
   const rawViolations: string[] = [];
@@ -101,6 +101,7 @@ export async function plannerTries<T>(o: {
             o.compaction,
             o.usage,
             o.spec,
+            o.sent,
           );
     } catch (err) {
       const why = err instanceof PlannerCallError ? err : causeOf(err);

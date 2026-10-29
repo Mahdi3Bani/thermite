@@ -4,9 +4,10 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { gunzipSync } from "node:zlib";
 import { messageText, promptRecord, systemText } from "../../../src/agents/prompt.ts";
-import { renderAuditor, renderWorker } from "../../../src/agents/roles/index.ts";
+import { renderAuditor, renderWorker, renderWorkerTurn } from "../../../src/agents/roles/index.ts";
 import { laneLimits } from "../../../src/core/contract.ts";
 import { PROMPT_EVENT_TEXT_CHARS, partText } from "../../../src/core/prompts.ts";
+import { Registry } from "../../../src/harness/agents/registry.ts";
 import { createHarnessApi } from "../../../src/harness/api/index.ts";
 import { PROMPTS_FILE } from "../../../src/harness/outbox.ts";
 import { exportForSupervisor } from "../../../src/harness/service/reports.ts";
@@ -132,6 +133,42 @@ describe("the prompts a run's agents were sent (goal 166)", () => {
       (await api.request(`/v1/runs/other/prompts/${id}`, { headers: auth("sup") })).status,
       404,
     );
+  });
+
+  test("a Pi worker keeps a later turn with its trial's token: the trial decides the run, the lane and the trial", async () => {
+    const { env, api } = await setup();
+    new Registry(env.service.ledger).startTrial({
+      id: "t-later",
+      run: RUN,
+      lane: "lane-2",
+      epoch: 1,
+      family: "f",
+      parent: env.seedCommit,
+      token: "tok-later",
+    });
+    const nudge = renderWorkerTurn({ program: "pi", turn: 2, kind: "nudge" });
+    const { role, program, turn, sections } = promptRecord(nudge, {});
+    const post = (body: unknown, token = "tok-later") =>
+      api.request("/v1/trial/prompt", {
+        method: "POST",
+        headers: auth(`trial.${token}`),
+        body: JSON.stringify(body),
+      });
+    const kept = await post({ role, program, turn, sections });
+    assert.equal(kept.status, 201, await kept.clone().text());
+    const { id } = (await kept.json()) as { id: number };
+    const p = env.service.ledger.prompts.get(id);
+    assert.deepEqual(
+      [p?.role, p?.program, p?.turn, p?.lane, p?.trial, p?.call],
+      ["worker", "pi", 2, "lane-2", "t-later", null],
+    );
+    assert.equal(partText(p?.sections ?? [], "message"), messageText(nudge));
+    assert.equal(env.service.ledger.events.newest("agent_prompt", { subject: RUN })?.body.turn, 2);
+    // Only a later turn of a worker's, and only with a trial's own token.
+    assert.equal((await post({ role, program, turn: 0, sections })).status, 400);
+    assert.equal((await post({ role: "planner", program, turn, sections })).status, 400);
+    assert.equal((await post({ role, program, turn, sections, run: "other" })).status, 400);
+    assert.equal((await post({ role, program, turn, sections }, "nope")).status, 401);
   });
 
   test("a run's export holds the prompts its agents were sent, whole", async () => {

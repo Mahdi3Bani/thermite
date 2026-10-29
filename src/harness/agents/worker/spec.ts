@@ -95,6 +95,11 @@ export interface TrialDeps {
   modelUsage?: ((u: CallUsage) => void) | undefined;
   /** Told of each wait for the provider (a rate limit, a failed call) before it (goal 079). */
   waiting?: ((w: ProviderWait) => void) | undefined;
+  /**
+   * Keeps each later turn the trial sends its worker (goal 166): a nudge, a warning, a
+   * continuation. The harness keeps the trial's first prompt itself.
+   */
+  sent?: ((p: Prompt) => void) | undefined;
 }
 
 /** A trial waits for its provider and then goes on in the same conversation (goal 079). */

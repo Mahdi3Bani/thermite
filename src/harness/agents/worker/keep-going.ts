@@ -1,5 +1,7 @@
 import type { Agent } from "@earendil-works/pi-agent-core";
 import type { Compactor } from "../../../agents/compaction/index.ts";
+import { messageText, type Prompt } from "../../../agents/prompt.ts";
+import { renderWorkerTurn, type TrialTurn } from "../../../agents/roles/index.ts";
 import {
   classifyProviderError,
   type FailureCount,
@@ -12,7 +14,8 @@ import type { ProviderWait } from "./spec.ts";
 /**
  * A trial goes on until it submits or stops of its own accord (goal 079): a cut-off reply, a
  * failed model call or a full context is answered and the trial continues, and a worker that
- * stops without a submission is told to go on.
+ * stops without a submission is told to go on. What it is told comes from its role's definition
+ * (goal 166).
  */
 
 /**
@@ -33,12 +36,6 @@ export function stopNudging(
   if (nudges > 0 && !worked) return true;
   return limit !== undefined && nudges >= limit;
 }
-
-export const NUDGE =
-  "You have not called submit yet. Keep working with your tools: make your change, build and test it, then call submit once. If you find no change worth judging, say why in one sentence.";
-
-const CUT_OFF =
-  "Your last reply was cut off at the output limit before it made a tool call. Think briefly, then make one tool call; keep each reply short.";
 
 /** Why keepGoing ended a trial early: its context is full even compacted, or the provider refuses. */
 export interface TrialEnd {
@@ -67,11 +64,12 @@ export interface KeepGoingOptions {
   count?: FailureCount | undefined;
   /** The clock (tests give their own). */
   now?: (() => number) | undefined;
+  /**
+   * A later turn, as the trial's role renders it and its trial keeps it (goal 166); by default a
+   * worker's in Pi, not kept.
+   */
+  say?: ((t: TrialTurn) => Prompt) | undefined;
 }
-
-/** Said to the agent after the harness compacted a full conversation. */
-const COMPACTED =
-  "The model's context was full, so the harness compacted the conversation. Continue where you left off.";
 
 /**
  * Until `done()`, a reply cut off at the output limit is told to think less and act, and a
@@ -95,6 +93,8 @@ export async function keepGoing(
 ): Promise<TrialEnd | undefined> {
   const count: FailureCount = o.count ?? { failures: 0, rateWaits: 0 };
   const now = o.now ?? Date.now;
+  const say = (t: TrialTurn): Prompt =>
+    o.say?.(t) ?? renderWorkerTurn({ program: "pi", turn: 1, ...t });
   let cutoffs = 0;
   // Compactions forced in a row by a full context, with no finished reply between them.
   let forced = 0;
@@ -120,7 +120,7 @@ export async function keepGoing(
     forced++;
     repliesAtForce = replies;
     compactor.force();
-    await agent.prompt(COMPACTED);
+    await agent.prompt(messageText(say({ kind: "context-full" })));
     return undefined;
   };
   try {
@@ -141,7 +141,7 @@ export async function keepGoing(
             error: `the model's replies were cut off ${cutoffs} times in a row without a tool call (the campaign's cutoffs_in_a_row)`,
           };
         }
-        await agent.prompt(CUT_OFF);
+        await agent.prompt(messageText(say({ kind: "cut-off" })));
       } else if (last?.stopReason === "error") {
         cutoffs = 0;
         // A reply that came through since the last failure: the failures are not in a row.
@@ -162,9 +162,7 @@ export async function keepGoing(
         o.onWait?.({ until: step.until, kind: e.kind, words: e.words });
         await (o.sleep ?? sleepUnlessDone)(step.waitMs, done);
         if (done()) return undefined;
-        await agent.prompt(
-          `The model call failed (${e.words.slice(0, 200)}). Continue where you left off.`,
-        );
+        await agent.prompt(messageText(say({ kind: "failed", words: e.words })));
       } else {
         return undefined;
       }

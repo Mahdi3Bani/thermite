@@ -2,7 +2,20 @@ import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { test } from "node:test";
 import { AUDITOR_SYSTEM } from "../../../src/agents/roles/auditor.ts";
-import { COMPACTION_SYSTEM } from "../../../src/agents/roles/compaction.ts";
+import {
+  ADVICE_GOES_ON,
+  ADVISOR_CANNOT_READ,
+  BODIES_LEFT_OUT,
+  COMPACTION_SYSTEM,
+  NO_TAIL,
+  PLANNER_CANNOT_READ,
+  PLANNING_GOES_ON,
+  researchWorkerReadsKept,
+  SUMMARY_HEAD,
+  TAIL_FOLLOWS,
+  TRIAL_GOES_ON,
+  workerReadsKept,
+} from "../../../src/agents/roles/compaction.ts";
 import { FINAL_WRITER_SYSTEM, STE_SHORT_RULES } from "../../../src/agents/roles/final-writer.ts";
 import {
   MERGED_BY_SYSTEM,
@@ -26,6 +39,7 @@ import {
   RESEARCH_PLANNER_TASK,
 } from "../../../src/agents/roles/research-planner.ts";
 import {
+  RESEARCH_WORKER_GO_ON,
   RESEARCH_WORKER_NOTES,
   RESEARCH_WORKER_SYSTEM,
 } from "../../../src/agents/roles/research-worker.ts";
@@ -34,8 +48,14 @@ import {
   ADVISOR_NOTES,
   AT_WORK_GUIDE,
   BRIEF_GUIDE,
+  CONTEXT_FULL_TURN,
+  CUT_OFF_TURN,
+  FAILED_GO_ON,
+  OWNER_LINE_HEAD,
+  OWNER_TURN_HEAD,
   PAST_GUIDE,
   RESEARCH_GUIDE,
+  timeLeftWords,
 } from "../../../src/agents/roles/shared.ts";
 import { SYNTHESIZER_SYSTEM } from "../../../src/agents/roles/synthesizer.ts";
 import { RESEARCH_TEACHER_SYSTEM, TEACHER_SYSTEM } from "../../../src/agents/roles/teacher.ts";
@@ -46,7 +66,10 @@ import {
   WORKER_HOW_TO_WORK,
   WORKER_OPENCODE_SYSTEM,
   WORKER_PI_NOTES,
+  WORKER_PI_NUDGE,
   WORKER_PI_SYSTEM,
+  WORKER_PROGRAM_NUDGE,
+  WORKER_SUBMIT_NOW,
 } from "../../../src/agents/roles/worker.ts";
 
 /**
@@ -93,6 +116,28 @@ const TEXTS: Record<string, string> = {
   "model-check.pi.prompt": modelCheckPiPrompt("WORD"),
   "model-check.program.prompt": modelCheckProgramPrompt("WORD"),
   "model-check.claude-code.prompt": modelCheckProgramPrompt("WORD", "Bash tool"),
+  // The later turns inside a call (goal 166).
+  "worker.nudge-pi": WORKER_PI_NUDGE,
+  "worker.nudge-program": WORKER_PROGRAM_NUDGE,
+  "worker.submit-now": WORKER_SUBMIT_NOW,
+  "research-worker.go-on": RESEARCH_WORKER_GO_ON,
+  "trials.cut-off": CUT_OFF_TURN,
+  "trials.context-full": CONTEXT_FULL_TURN,
+  "trials.failed": FAILED_GO_ON,
+  "trials.owner-pi": OWNER_TURN_HEAD,
+  "trials.owner-program": OWNER_LINE_HEAD,
+  "trials.time-left": [1, 18].map((n) => timeLeftWords(n * 60_000)).join("\n"),
+  "compaction.goes-on-trial": TRIAL_GOES_ON,
+  "compaction.goes-on-planner": PLANNING_GOES_ON,
+  "compaction.goes-on-advisor": ADVICE_GOES_ON,
+  "compaction.read-worker": workerReadsKept("PATH"),
+  "compaction.read-research-worker": researchWorkerReadsKept("PATH"),
+  "compaction.read-planner": PLANNER_CANNOT_READ,
+  "compaction.read-advisor": ADVISOR_CANNOT_READ,
+  "compaction.summary": SUMMARY_HEAD,
+  "compaction.tail": TAIL_FOLLOWS,
+  "compaction.no-tail": NO_TAIL,
+  "compaction.left-out": BODIES_LEFT_OUT,
 };
 
 const golden = (name: string) => new URL(`../golden/${name}.txt`, import.meta.url);

@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { MIGRATIONS } from "../schema/index.ts";
-import { PROMPT_TABLE } from "./prompts.ts";
+import { PROMPT_TABLE, PROMPT_TURN_COLUMN } from "./prompts.ts";
 import { eventRunColumn } from "./runs.ts";
 
 /**
@@ -21,4 +21,6 @@ export const LEDGER_MIGRATIONS: readonly (string | ((db: DatabaseSync) => void))
   eventRunColumn,
   // 24: the whole text of every prompt a run's agents were sent (goal 166).
   PROMPT_TABLE,
+  // 25: which turn of its call each prompt was: the later turns are kept too (goal 166).
+  PROMPT_TURN_COLUMN,
 ];

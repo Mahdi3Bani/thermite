@@ -13,6 +13,7 @@ import {
   sectionsText,
 } from "../prompt.ts";
 import { PAST_SEARCH_TOOL, RUN_RESEARCH_TOOLS } from "../tools/index.ts";
+import type { RoleText } from "./index.ts";
 
 /**
  * Text that every advisor's instructions share (goal 166): how field notes, the campaign's brief, the lanes at work,
@@ -65,6 +66,102 @@ export function renderOwnerMessages(
         ]
       : []),
   ];
+}
+
+/**
+ * The later turns a trial's worker can get inside its call, whatever its role (goal 166): the
+ * worker's and the research worker's. Each role's turn function (renderWorkerTurn,
+ * renderResearchWorkerTurn) renders them; renderCompacted renders the message after a compaction.
+ */
+export type TrialTurn =
+  /** In Pi: its reply was cut off at the output limit before it made a tool call. */
+  | { kind: "cut-off" }
+  /** In Pi: the model's context was full, and the harness compacted the conversation. */
+  | { kind: "context-full" }
+  /** A model call failed and the trial waited; `words`: the provider's. */
+  | { kind: "failed"; words: string }
+  /** In Pi: a message from the campaign's owner, as a turn of its own. */
+  | { kind: "owner"; text: string };
+
+/** Told to a worker in Pi whose reply was cut off before it made a tool call. */
+export const CUT_OFF_TURN =
+  "Your last reply was cut off at the output limit before it made a tool call. Think briefly, then make one tool call; keep each reply short.";
+
+/** Told to a worker in Pi after the harness compacted a conversation that filled the context. */
+export const CONTEXT_FULL_TURN =
+  "The model's context was full, so the harness compacted the conversation. Continue where you left off.";
+
+/** Told to a worker after a failed model call, once the trial has waited: the failure comes first. */
+export const FAILED_GO_ON = "Continue where you left off.";
+
+/** The most characters of the provider's words a failed call's turn gives. */
+const FAILED_WORDS_MAX = 200;
+
+/** An owner's message put to an agent in Pi, as a turn of its own: the message follows it. */
+export const OWNER_TURN_HEAD = "A message from the campaign's owner, who is watching this session:";
+
+/** An owner's message put to an agent in a program, in its run's continuation: the message follows. */
+export const OWNER_LINE_HEAD = "A message from the campaign's owner:";
+
+/** A trial's later turn, as sections. */
+export function trialTurnSections(t: TrialTurn): Section[] {
+  if (t.kind === "cut-off") return [section("cut-off", "role", CUT_OFF_TURN)];
+  if (t.kind === "context-full") return [section("context-full", "role", CONTEXT_FULL_TURN)];
+  if (t.kind === "failed")
+    return [
+      section(
+        "failed",
+        "provider",
+        `The model call failed (${t.words.slice(0, FAILED_WORDS_MAX)}).`,
+      ),
+      section("go-on", "role", FAILED_GO_ON, " "),
+    ];
+  return [section("owner", "owner", `${OWNER_TURN_HEAD}\n\n${t.text}`)];
+}
+
+/** The owner's messages a program's continuation carries after its first part, each after a blank line. */
+export function ownerLineSections(texts: readonly string[]): Section[] {
+  return texts.map((text, k) =>
+    section(`owner-${k + 1}`, "owner", `${OWNER_LINE_HEAD} ${text}`, "\n\n"),
+  );
+}
+
+/** The fixed texts of the later turns every trial's worker can get, as the table lists them. */
+export const TRIAL_TURN_TEXTS: readonly RoleText[] = [
+  {
+    id: "cut-off",
+    what: "a later turn in Pi: its reply was cut off before it made a tool call",
+    text: CUT_OFF_TURN,
+  },
+  {
+    id: "context-full",
+    what: "a later turn in Pi: the harness compacted a conversation that filled the model's context",
+    text: CONTEXT_FULL_TURN,
+  },
+  {
+    id: "failed",
+    what: "a later turn: after a failed model call, once the trial waited, following the provider's words",
+    text: FAILED_GO_ON,
+  },
+  {
+    id: "owner-pi",
+    what: "a later turn in Pi: your message, after this line and a blank one",
+    text: OWNER_TURN_HEAD,
+  },
+  {
+    id: "owner-program",
+    what: "in another program, each of your messages in the run's continuation, after this",
+    text: OWNER_LINE_HEAD,
+  },
+];
+
+/**
+ * How a trial's time left is said: in the worker's warning near the end, and at the end of each
+ * tool's result from three quarters of the trial on (the trial's clock).
+ */
+export function timeLeftWords(ms: number): string {
+  const n = Math.max(1, Math.round(ms / 60_000));
+  return `About ${n} minute${n === 1 ? " is" : "s are"} left in this trial.`;
 }
 
 /**

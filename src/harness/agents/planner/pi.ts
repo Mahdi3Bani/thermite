@@ -3,6 +3,7 @@ import { type Message, Type } from "@earendil-works/pi-ai";
 import { type CompactionReport, Compactor, summarizer } from "../../../agents/compaction/index.ts";
 import { buildModel, type ModelConfig, PiMeter } from "../../../agents/model/index.ts";
 import { messageText, type Prompt, systemText } from "../../../agents/prompt.ts";
+import { renderCompacted } from "../../../agents/roles/index.ts";
 import { PAST_SEARCH_DESCRIPTION, PAST_SEARCH_TOOL } from "../../../agents/tools/index.ts";
 import { routeRefusal } from "../../../core/agents.ts";
 import { canonicalJson } from "../../../core/canonical.ts";
@@ -76,6 +77,8 @@ export async function callPlanner(
   compaction?: PlannerCompaction,
   usage?: (u: CallUsage) => void,
   spec: PlannerCallSpec = PLAN_SPEC,
+  /** Keeps each later turn the call sends, as its first prompt is kept (goal 166). */
+  kept?: (p: Prompt) => void,
 ): Promise<unknown> {
   if (routeRefusal(cfg.api, "pi") === "claude-code")
     throw new Error(
@@ -113,6 +116,8 @@ export async function callPlanner(
     streamFn: meter ? meter.streamFn(models) : models.streamSimple.bind(models),
   });
   meter?.watch(agent);
+  // Its later turns (goal 166), numbered after its first message.
+  let said = 0;
   // Near the window its conversation is compacted and the call goes on (goal 070). The planner
   // has no file tool: the run keeps the conversation, and the summary says where.
   let tooBig: string | undefined;
@@ -131,10 +136,7 @@ export async function callPlanner(
     keep: async (n, markdown) => {
       if (!compaction) throw new Error("this planner has no place to keep it");
       const { rel } = compaction.keep(n, markdown);
-      return {
-        path: `the run's research folder, ${rel}`,
-        read: "You have no tool to read it here: rely on this summary",
-      };
+      return { path: `the run's research folder, ${rel}` };
     },
     done: async (r) => compaction?.done(r),
     stop: (reason) => {
@@ -142,7 +144,9 @@ export async function callPlanner(
       agent.abort();
     },
     title: "The planner",
-    goesOn: "Your planning goes on: call submit_plan when your plan is ready.",
+    // What it goes on from, in its own role's words (the planner's or the research planner's).
+    after: (c) => renderCompacted({ role: sent.role, turn: ++said, ...c }),
+    sent: kept,
   });
   agent.prepareRequest = compactor.hook(agent);
   // A submit_plan its schema refuses goes back to the planner with the reason. The same refused

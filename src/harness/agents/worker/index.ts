@@ -2,11 +2,18 @@ import { Agent } from "@earendil-works/pi-agent-core";
 import { Compactor, summarizer } from "../../../agents/compaction/index.ts";
 import { buildModel, PiMeter } from "../../../agents/model/index.ts";
 import { messageText, type Prompt, systemText } from "../../../agents/prompt.ts";
-import { renderWorker, type TrialProgram, windowFit } from "../../../agents/roles/index.ts";
+import {
+  renderCompacted,
+  renderWorker,
+  renderWorkerTurn,
+  type TrialProgram,
+  type WorkerTurn,
+  windowFit,
+} from "../../../agents/roles/index.ts";
 import { NoteLimit } from "../../../agents/tools/index.ts";
 import { errorText } from "../../../common/errors.ts";
 import { laneLimits } from "../../../core/contract.ts";
-import { linkSession } from "../live-session.ts";
+import { linkSession, steerTurn } from "../live-session.ts";
 import {
   classifyProviderError,
   type FailureCount,
@@ -15,7 +22,7 @@ import {
 } from "../provider-errors.ts";
 import { guardRepeats } from "../repeats.ts";
 import { TrialClock } from "../trial-clock.ts";
-import { keepGoing, lastAssistant, NUDGE } from "./keep-going.ts";
+import { keepGoing, lastAssistant } from "./keep-going.ts";
 import type { TrialDeps, TrialResult, TrialSpec } from "./spec.ts";
 import { watchedStream, withoutPastThinking } from "./stream.ts";
 import { trialTools } from "./tools.ts";
@@ -100,6 +107,15 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
   const notes = new NoteLimit(limits.notesPerTurn); // the notes of one reply (goal 147)
   const tools = trialTools(spec, deps, result, { limits, clock, notes });
 
+  // The later turns of this trial (goal 166), numbered after its first message.
+  let said = 0;
+  /** A later turn of this trial: from the worker's definition, kept, then sent. */
+  const later = (t: WorkerTurn): Prompt => {
+    const p = renderWorkerTurn({ program: "pi", turn: ++said, ...t });
+    deps.sent?.(p);
+    return p;
+  };
+
   const { models, model, thinkingLevel } = buildModel(deps.model);
   // Each model call's usage, the compaction summaries' included (goal 075).
   const meter = deps.modelUsage ? new PiMeter(deps.modelUsage) : undefined;
@@ -129,12 +145,11 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
     keep: async (n, markdown) => {
       if (!deps.compaction) throw new Error("this trial has no place to keep it");
       const { path } = await deps.compaction.keep(n, markdown);
-      return {
-        path,
-        read: `Read it with the run tool when you need a detail, for example grep -n 'a word' ${path} or sed -n '1,200p' ${path}`,
-      };
+      return { path };
     },
     done: async (r) => deps.compaction?.done(r),
+    after: (c) => renderCompacted({ role: "worker", turn: ++said, ...c }),
+    sent: deps.sent,
     stop: (reason) => {
       if (result.submitted) return;
       result.stopped = "context";
@@ -150,14 +165,16 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
   const { started, wallMs } = clock;
   const minutes = wallMs !== undefined ? Math.round(wallMs / 60_000) : undefined;
   let warned = false;
-  const warn = (why: string) => {
+  const warn = (left: { turnsLeft: number } | { msLeft: number }) => {
     if (warned || result.submitted) return;
     warned = true;
-    agent.steer({
-      role: "user",
-      content: `${why} Build and test what you have, then submit your best working change now, listing anything unfinished in known_flaws. A trial that ends without a submission is lost. If this trial measures rather than changes the code, record what you measured now as notes, with the numbers, before you start another measurement: what a trial does not record is lost when it ends.`,
-      timestamp: Date.now(),
+    const p = renderWorkerTurn({
+      program: "pi",
+      turn: ++said,
+      kind: "nearly-spent",
+      ...left,
     });
+    steerTurn(agent, p, () => deps.sent?.(p));
   };
   const maxTurns = spec.maxTurns;
   const warnTurns = maxTurns === undefined ? undefined : Math.max(1, maxTurns - 10);
@@ -172,9 +189,9 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
         result.stopped = "turns";
         agent.abort();
       } else if (maxTurns !== undefined && warnTurns !== undefined && result.turns >= warnTurns) {
-        warn(`${maxTurns - result.turns} turns are left in this trial.`);
+        warn({ turnsLeft: maxTurns - result.turns });
       } else if (wallMs !== undefined && Date.now() - started >= wallMs * 0.85) {
-        warn(clock.leftWords());
+        warn({ msLeft: clock.leftMs() ?? 0 });
       }
     }
   });
@@ -187,6 +204,8 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
     linkSession(agent, {
       ...link,
       messages: waiting ? async () => (result.submitted ? [] : waiting()) : undefined,
+      ownerTurn: (text) => renderWorkerTurn({ program: "pi", turn: ++said, kind: "owner", text }),
+      sent: deps.sent,
     });
   const wall =
     wallMs !== undefined
@@ -218,6 +237,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
           watch,
           onWait: deps.waiting,
           count: failures,
+          say: later,
         },
       );
       if (end && !result.submitted) {
@@ -231,7 +251,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
       if (spec.limits?.nudges !== undefined && nudges >= spec.limits.nudges) break;
       nudges++;
       callsAtNudge = result.toolCalls;
-      await agent.prompt(NUDGE);
+      await agent.prompt(messageText(later({ kind: "nudge" })));
     }
   } catch (err) {
     if (result.stopped === "no_submission") {

@@ -5,7 +5,8 @@ import type { PromptRecord, PromptSection } from "../core/prompts.ts";
  * from, so the owner can see what a run added to the role's own text. A role's render function
  * (src/agents/roles/) is the only maker of a Prompt: `prompt` and the section makers are for the
  * roles' modules alone, and a test fails when another file imports them. A send site takes a
- * Prompt and sends systemText and messageText, which are the exact texts sent.
+ * Prompt and sends systemText and messageText (or userMessage, in Pi), which are the exact texts
+ * sent. A later turn inside a call (a nudge, a warning, a continuation) is a Prompt too.
  */
 
 /** Where a section comes from. */
@@ -26,6 +27,8 @@ export type Source =
   | "rig"
   | "package"
   | "check"
+  | "provider"
+  | "compaction"
   | "left out";
 
 export interface Section {
@@ -41,7 +44,8 @@ declare const RENDERED: unique symbol;
 
 /**
  * A role's prompt for one call: its system text (Pi's system prompt; empty where a program takes
- * one message) and its first message, each in sections.
+ * one message) and its first message, each in sections. A later turn in the call is one message,
+ * with no system text.
  */
 export interface Prompt {
   readonly [RENDERED]: true;
@@ -49,6 +53,11 @@ export interface Prompt {
   role: string;
   /** The agent program it is sent to: pi, opencode, claude-code, codex, or cli for a command. */
   program: string;
+  /**
+   * Its place among the messages Thermite sends in its call: 0 for the first message, 1 for the
+   * first later turn, and so on.
+   */
+  turn: number;
   system: Section[];
   message: Section[];
 }
@@ -68,14 +77,23 @@ export function linesSection(
   return section(id, source, lines.filter((l) => l !== "").join("\n"), sep);
 }
 
-/** A role's prompt from its sections; an empty section is left out. For the roles' modules only. */
+/**
+ * A role's prompt from its sections; an empty section is left out. `turn`: a later turn's place
+ * in its call (none: the call's first message). For the roles' modules only.
+ */
 export function prompt(
   role: string,
   program: string,
-  parts: { system?: readonly Section[]; message: readonly Section[] },
+  parts: { system?: readonly Section[]; message: readonly Section[]; turn?: number },
 ): Prompt {
   const kept = (ss: readonly Section[] | undefined) => (ss ?? []).filter((s) => s.text !== "");
-  return { role, program, system: kept(parts.system), message: kept(parts.message) } as Prompt;
+  return {
+    role,
+    program,
+    turn: parts.turn ?? 0,
+    system: kept(parts.system),
+    message: kept(parts.message),
+  } as Prompt;
 }
 
 /** Sections as the text sent: in order, each after its separator. */
@@ -86,8 +104,15 @@ export function sectionsText(ss: readonly Section[]): string {
 /** The system text sent ("" where the program takes one message). */
 export const systemText = (p: Prompt): string => sectionsText(p.system);
 
-/** The first message sent. */
+/** The message sent: the first one, or a later turn. */
 export const messageText = (p: Prompt): string => sectionsText(p.message);
+
+/** The message as Pi takes a user's turn, for a send that steers it into a running call. */
+export const userMessage = (p: Prompt) => ({
+  role: "user" as const,
+  content: messageText(p),
+  timestamp: Date.now(),
+});
 
 /**
  * A prompt as it is kept (core/prompts.ts): its sections whole, each with the part it went in,
@@ -109,6 +134,7 @@ export function promptRecord(
   return {
     role: p.role,
     program: p.program,
+    turn: p.turn,
     lane: at.lane ?? null,
     trial: at.trial ?? null,
     call: at.call ?? null,

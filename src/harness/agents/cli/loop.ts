@@ -1,8 +1,14 @@
 import { dirname, join } from "node:path";
 import { CliCompactions } from "../../../agents/compaction/index.ts";
 import { readNew } from "../../../agents/programs/index.ts";
-import { messageText } from "../../../agents/prompt.ts";
-import { renderResearchWorker, renderWorker, windowFit } from "../../../agents/roles/index.ts";
+import { messageText, type Prompt } from "../../../agents/prompt.ts";
+import {
+  renderResearchWorker,
+  renderResearchWorkerTurn,
+  renderWorker,
+  renderWorkerTurn,
+  windowFit,
+} from "../../../agents/roles/index.ts";
 import { type LaneLimitValues, laneLimits } from "../../../core/contract.ts";
 import type { Role, Runner, RunOutcome } from "../../broker/index.ts";
 import { afterProgramFailure, type FailureCount, failingOf } from "../provider-errors.ts";
@@ -11,8 +17,6 @@ import {
   AFTER_SUBMIT_MS,
   breachError,
   CarriedMessages,
-  NUDGE,
-  ownerLines,
   takeUsage,
   trialEnd,
   turnsUp,
@@ -52,7 +56,8 @@ function startRun<T extends CliTally>(
   o: {
     cwd: string;
     env: Record<string, string>;
-    prompt: string;
+    /** What the program is sent: the trial's first message, or a later turn (goal 166). */
+    prompt: Prompt;
     session: string | undefined;
     remaining: number;
     limits: LaneLimitValues;
@@ -69,7 +74,7 @@ function startRun<T extends CliTally>(
     env: o.env,
     // The prompt on stdin: one argument holds at most 128 KiB on Linux, and a brief has no such
     // limit (goal 171).
-    stdin: p.stdin ? p.stdin(o.prompt, run) : o.prompt,
+    stdin: p.stdin ? p.stdin(messageText(o.prompt), run) : messageText(o.prompt),
     // No time limit unless the trial has one (goal 079).
     ...(Number.isFinite(o.remaining) ? { timeoutMs: o.remaining } : {}),
     rssLimitBytes: o.limits.runRssMib * 1024 * 1024,
@@ -189,10 +194,25 @@ export async function runCliTrial<T extends CliTally>(
         fit,
         addition: spec.addition,
       });
-  deps.sent?.(sent);
-  let message = messageText(sent);
+  let message = sent;
   let offset = 0;
   const carried = new CarriedMessages(deps.messages);
+  // The later turns of this trial (goal 166), numbered after its first message.
+  let said = 0;
+  /**
+   * What a continued run goes on from: its role's later turn after a provider's error (`failed`:
+   * its words), or else the one that tells it to go on, with the owner's messages that wait for it.
+   */
+  const goOn = (failed?: string): Prompt => {
+    const at = { program: p.id, turn: ++said, owner: carried.take(tally).map((m) => m.text) };
+    if (code)
+      return renderWorkerTurn(
+        failed !== undefined ? { ...at, kind: "failed", words: failed } : { ...at, kind: "nudge" },
+      );
+    return renderResearchWorkerTurn(
+      failed !== undefined ? { ...at, kind: "failed", words: failed } : { ...at, kind: "go-on" },
+    );
+  };
   const pump = () => {
     const r = readNew(events, offset);
     offset = r.next;
@@ -222,12 +242,14 @@ export async function runCliTrial<T extends CliTally>(
     const progressBefore = tally.turns + tally.toolCalls;
     const callsBefore = tally.toolCalls;
     const runStarted = Date.now();
-    const unready = await p.beforeRun?.(message, run, deps.runner);
+    const unready = await p.beforeRun?.(messageText(message), run, deps.runner);
     if (unready) {
       result.stopped = "error";
       result.error = unready;
       break;
     }
+    // Kept whole as it is sent, the first message and each later turn (goal 166).
+    deps.sent?.(message);
     const running = startRun(p, deps.runner, run, {
       cwd: code ? trial.spec.workspace : trial.folder.work,
       env,
@@ -317,7 +339,7 @@ export async function runCliTrial<T extends CliTally>(
         break;
       }
       nudges--;
-      message = [step.goOn, ...ownerLines(carried.take(tally))].join("\n\n");
+      message = goOn(step.goOn);
       continue;
     }
     if (outcome.exitCode !== 0 && !tally.session) {
@@ -338,9 +360,7 @@ export async function runCliTrial<T extends CliTally>(
       ? stopNudging(nudges, tally.toolCalls > callsBefore, progressed, limits.nudges, deps.messages)
       : !(progressed && deps.messages?.waiting().length);
     if (ends) break;
-    message = [code ? NUDGE : "Continue your research.", ...ownerLines(carried.take(tally))].join(
-      "\n\n",
-    );
+    message = goOn();
   }
   const sub = submitted();
   if (sub) {

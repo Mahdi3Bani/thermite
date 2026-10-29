@@ -2,6 +2,7 @@ import { gunzipSync, gzipSync } from "node:zlib";
 import { ROLES } from "../../agents/roles/index.ts";
 import {
   PromptRecord,
+  type PromptRecordInput,
   type PromptSection,
   promptEventBody,
   roleVersion,
@@ -15,6 +16,8 @@ export interface PromptRow {
   run: string;
   role: string;
   program: string;
+  /** Its place among the messages its call was sent: 0 for the first, 1 for the first later turn. */
+  turn: number;
   lane: string | null;
   trial: string | null;
   call: string | null;
@@ -29,13 +32,14 @@ export interface PromptRow {
 const FIXED = new Set(ROLES.flatMap((r) => r.texts.map((t) => sha256(t.text))));
 
 const COLS =
-  "id, run, role, program, lane, trial, call, version, at, chars, length(text_gz) as bytes";
+  "id, run, role, program, turn, lane, trial, call, version, at, chars, length(text_gz) as bytes";
 
 const toRow = (r: Row): PromptRow => ({
   id: Number(r.id),
   run: String(r.run),
   role: String(r.role),
   program: String(r.program),
+  turn: Number(r.turn),
   lane: r.lane === null ? null : String(r.lane),
   trial: r.trial === null ? null : String(r.trial),
   call: r.call === null ? null : String(r.call),
@@ -67,22 +71,30 @@ create index prompt_run on prompt (run, id);
 `;
 
 /**
- * The `prompt` table (goal 166): each prompt a run's agents were sent, kept whole and compressed,
- * with an `agent_prompt` event about its run, which reaches control with its sections and
- * sources. Nothing reads a kept prompt back into another prompt.
+ * Migration 25: which turn of its call each prompt was (goal 166), its place among the messages
+ * the call was sent: 0 for the first, as every prompt kept before was; 1 for the first later turn.
+ */
+export const PROMPT_TURN_COLUMN = "alter table prompt add column turn integer not null default 0;";
+
+/**
+ * The `prompt` table (goal 166): each prompt a run's agents were sent, a call's first message or
+ * a later turn in it, kept whole and compressed, with an `agent_prompt` event about its run, which
+ * reaches control with its sections and sources. Nothing reads a kept prompt back into another
+ * prompt.
  */
 export class LedgerPrompts extends LedgerPart {
   /** Keeps a prompt sent in `run`; returns its number. */
-  record(actor: string, run: string, r: PromptRecord): number {
+  record(actor: string, run: string, r: PromptRecordInput): number {
     const prompt = PromptRecord.parse(r);
     return this.tx(() => {
       const body = promptEventBody(0, prompt, FIXED);
       const id = this.execute(
-        `insert into prompt (run, role, program, lane, trial, call, version, at, chars, text_gz)
-         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `insert into prompt (run, role, program, turn, lane, trial, call, version, at, chars, text_gz)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         run,
         prompt.role,
         prompt.program,
+        prompt.turn,
         prompt.lane,
         prompt.trial,
         prompt.call,

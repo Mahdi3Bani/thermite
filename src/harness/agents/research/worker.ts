@@ -4,7 +4,12 @@ import { Compactor, summarizer } from "../../../agents/compaction/index.ts";
 import { mcpAgentTools } from "../../../agents/mcp/index.ts";
 import { buildModel, type ModelConfig, PiMeter } from "../../../agents/model/index.ts";
 import { messageText, type Prompt, type Section, systemText } from "../../../agents/prompt.ts";
-import { renderResearchWorker, windowFit } from "../../../agents/roles/index.ts";
+import {
+  renderCompacted,
+  renderResearchWorker,
+  renderResearchWorkerTurn,
+  windowFit,
+} from "../../../agents/roles/index.ts";
 import {
   NOTE_TOOL,
   NoteLimit,
@@ -85,6 +90,8 @@ export interface ResearchDeps {
   modelUsage?: ((u: CallUsage) => void) | undefined;
   /** Told of each wait for the provider (a rate limit, a failed call) before it (goal 079). */
   waiting?: ((w: ProviderWait) => void) | undefined;
+  /** Keeps each later turn the trial sends its worker (goal 166; see TrialDeps). */
+  sent?: ((p: Prompt) => void) | undefined;
 }
 
 const out = (value: unknown) => ({
@@ -203,6 +210,8 @@ export async function runResearchTrial(
     toolExecution: "sequential",
   });
   meter?.watch(agent);
+  // The later turns of this trial (goal 166), numbered after its first message.
+  let said = 0;
   // Near the model's window the conversation is compacted and the trial goes on (goal 070).
   const compactor = new Compactor({
     window: deps.model.contextWindow,
@@ -212,12 +221,11 @@ export async function runResearchTrial(
     keep: async (n, markdown) => {
       if (!deps.compaction) throw new Error("this trial has no place to keep it");
       const { rel } = await deps.compaction.keep(n, markdown);
-      return {
-        path: rel,
-        read: `It is in your research folder: read it with read_file (path ${rel}), or search it with search_files, when you need a detail`,
-      };
+      return { path: rel };
     },
     done: async (r) => deps.compaction?.done(r),
+    after: (c) => renderCompacted({ role: "research-worker", turn: ++said, ...c }),
+    sent: deps.sent,
     stop: (reason) => {
       result.stopped = "context";
       result.error = reason;
@@ -240,7 +248,13 @@ export async function runResearchTrial(
     }
   });
   // After the turn cap above: the owner's messages are not fetched on the turn it stops.
-  if (deps.link) linkSession(agent, deps.link);
+  if (deps.link)
+    linkSession(agent, {
+      ...deps.link,
+      ownerTurn: (text) =>
+        renderResearchWorkerTurn({ program: "pi", turn: ++said, kind: "owner", text }),
+      sent: deps.sent,
+    });
   // A trial's length only when the campaign or the rig sets one (goal 079).
   const wall =
     spec.wallMs !== undefined
@@ -269,6 +283,12 @@ export async function runResearchTrial(
         watch,
         onWait: deps.waiting,
         count: failures,
+        // What it is told comes from its role's definition, kept as it is sent (goal 166).
+        say: (t) => {
+          const p = renderResearchWorkerTurn({ program: "pi", turn: ++said, ...t });
+          deps.sent?.(p);
+          return p;
+        },
       },
     );
     if (end) {

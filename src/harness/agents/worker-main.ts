@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { modelConfigFromEnv, UsageSender } from "../../agents/model/index.ts";
+import { type Prompt, promptRecord } from "../../agents/prompt.ts";
 import type { McpCallResult } from "../../common/mcp-client.ts";
+import { KEEP_TRIAL_PROMPT } from "../../core/api/harness/prompts.ts";
 import type { McpToolInfo } from "../../core/mcp.ts";
 import type { Runner, RunOutcome, RunRequest } from "../broker/index.ts";
 import { KEPT_MAX } from "../compactions.ts";
@@ -82,6 +84,18 @@ async function main(): Promise<void> {
   const waiting = (w: ProviderWait) => {
     void call("POST", "/v1/trial/live", { entries: [], wait: w }).catch(() => undefined);
   };
+  // Each later turn the trial sends its worker, kept by the harness as the trial's first prompt
+  // is (goal 166); the trial's token decides the run, the lane and the trial. Best effort, as the
+  // live view: the record is provenance, never a gate, and the trial goes on either way.
+  const sent = (p: Prompt) => {
+    const { role, program, turn, sections } = promptRecord(p, {});
+    void call(KEEP_TRIAL_PROMPT.method, KEEP_TRIAL_PROMPT.path, {
+      role,
+      program,
+      turn,
+      sections,
+    }).catch(() => undefined);
+  };
   // Each model call's usage, handed to the harness as it is made (goal 075); the trial's token
   // decides the run, the trial and the route.
   const usage = new UsageSender((calls) => call("POST", "/v1/trial/usage", { calls }));
@@ -143,6 +157,7 @@ async function main(): Promise<void> {
       note: (req) => call("POST", "/v1/trial/note", req),
       modelUsage: usage.add,
       waiting,
+      sent,
     });
     process.stdout.write(`\n${JSON.stringify(await withUsage(result, usage))}\n`);
     return;
@@ -179,6 +194,7 @@ async function main(): Promise<void> {
     compaction,
     modelUsage: usage.add,
     waiting,
+    sent,
   });
   process.stdout.write(`\n${JSON.stringify(await withUsage(result, usage))}\n`);
 }

@@ -1,13 +1,14 @@
 import type { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
+import { KEEP_TRIAL_PROMPT } from "../../core/api/harness/prompts.ts";
 import { compactionOf, KEPT_MAX } from "../compactions.ts";
-import type { ApiContext } from "./context.ts";
+import { type ApiContext, limitOf } from "./context.ts";
 
 /**
  * A running trial's own routes, each bound to the trial by its token: its session's lines for the
  * live log, the owner's messages waiting for it and its receipt for them, its ideas and field
- * notes, and the compactions of its conversation.
+ * notes, the compactions of its conversation, and the later turns its worker sent in it.
  */
 export function trialRoutes(app: Hono, { service, trialOf }: ApiContext): void {
   // A worker's own lines for the live log: its trial decides the source, lane and run.
@@ -91,6 +92,20 @@ export function trialRoutes(app: Hono, { service, trialOf }: ApiContext): void {
   app.post("/v1/trial/note", bodyLimit({ maxSize: 64 * 1024 }), async (c) => {
     const { token } = trialOf(c.req.header("authorization"));
     return c.json(service.writeTrialNote(token, await c.req.json()), 201);
+  });
+
+  // A later turn a Pi worker sent inside its trial (goal 166), from its role's definition: kept as
+  // the trial's first prompt is, its trial deciding the run, the lane and the trial.
+  app.post(KEEP_TRIAL_PROMPT.path, limitOf(KEEP_TRIAL_PROMPT), async (c) => {
+    const { trial } = trialOf(c.req.header("authorization"));
+    const body = KEEP_TRIAL_PROMPT.body.parse(await c.req.json());
+    const id = service.ledger.prompts.record("harness", trial.run, {
+      ...body,
+      lane: trial.lane,
+      trial: trial.id,
+      call: null,
+    });
+    return c.json({ id }, 201);
   });
 
   // A Pi worker compacts its conversation (goal 070): first the whole conversation, kept in the

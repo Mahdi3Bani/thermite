@@ -1,6 +1,11 @@
 import type { Prompt } from "../prompt.ts";
 import { AUDITOR_SYSTEM, renderAuditor } from "./auditor.ts";
-import { COMPACTION_SYSTEM, renderCompaction } from "./compaction.ts";
+import {
+  COMPACTED_TEXTS,
+  COMPACTION_SYSTEM,
+  renderCompacted,
+  renderCompaction,
+} from "./compaction.ts";
 import { FINAL_WRITER_SYSTEM, renderFinalWriter, STE_SHORT_RULES } from "./final-writer.ts";
 import { MERGED_BY_SYSTEM, RESEARCH_MERGED_BY_SYSTEM, renderMergedBy } from "./merged-by.ts";
 import {
@@ -22,9 +27,11 @@ import {
   renderResearchPlanner,
 } from "./research-planner.ts";
 import {
+  RESEARCH_WORKER_GO_ON,
   RESEARCH_WORKER_NOTES,
   RESEARCH_WORKER_SYSTEM,
   renderResearchWorker,
+  renderResearchWorkerTurn,
 } from "./research-worker.ts";
 import {
   RESEARCH_REVIEWER_SYSTEM,
@@ -32,23 +39,30 @@ import {
   renderResearchReviewer,
   renderReviewer,
 } from "./reviewer.ts";
+import { TRIAL_TURN_TEXTS } from "./shared.ts";
 import { renderSynthesizer, SYNTHESIZER_SYSTEM } from "./synthesizer.ts";
 import { RESEARCH_TEACHER_SYSTEM, renderTeacher, TEACHER_SYSTEM } from "./teacher.ts";
 import {
   renderWorker,
+  renderWorkerTurn,
   TRIAL_CUT_WHERE,
   WORKER_CLAUDE_CODE_SYSTEM,
   WORKER_CODEX_SYSTEM,
   WORKER_HOW_TO_WORK,
   WORKER_OPENCODE_SYSTEM,
   WORKER_PI_NOTES,
+  WORKER_PI_NUDGE,
   WORKER_PI_SYSTEM,
+  WORKER_PROGRAM_NUDGE,
+  WORKER_SUBMIT_NOW,
 } from "./worker.ts";
 
 export { AUDITOR_SYSTEM, renderAuditor } from "./auditor.ts";
 export {
   COMPACTION_SYSTEM,
+  type Compacted,
   type KeptAt,
+  renderCompacted,
   renderCompaction,
 } from "./compaction.ts";
 export { FINAL_WRITER_SYSTEM, renderFinalWriter, STE_SHORT_RULES } from "./final-writer.ts";
@@ -77,7 +91,9 @@ export {
   RESEARCH_WORKER_NOTES,
   RESEARCH_WORKER_SYSTEM,
   type ResearchWorkerInput,
+  type ResearchWorkerTurnInput,
   renderResearchWorker,
+  renderResearchWorkerTurn,
 } from "./research-worker.ts";
 export {
   type LeftOut,
@@ -92,6 +108,8 @@ export {
   limitsNote,
   orderedPackage,
   renderOwnerMessages,
+  type TrialTurn,
+  timeLeftWords,
   windowFit,
 } from "./shared.ts";
 export { renderSynthesizer, SYNTHESIZER_SYSTEM } from "./synthesizer.ts";
@@ -99,6 +117,7 @@ export { RESEARCH_TEACHER_SYSTEM, renderTeacher, TEACHER_SYSTEM } from "./teache
 export {
   renderWorker,
   renderWorkerBrief,
+  renderWorkerTurn,
   type TrialBudget,
   type TrialProgram,
   trialBudget,
@@ -109,14 +128,17 @@ export {
   WORKER_PI_SYSTEM,
   type WorkerBriefInput,
   type WorkerInput,
+  type WorkerTurn,
+  type WorkerTurnInput,
 } from "./worker.ts";
 
 /**
  * Every agent role Thermite runs (goal 166), in one table: what each does, where it runs, which
  * model and agent programs it uses, whether the owner's messages reach it, its fixed texts, and
- * the one function that puts its prompt together for a run. A role's texts and that function live
- * in its own module in this folder: the harness and the supervisor gather what a run adds (the
- * brief, the rules, the queue, the owner's messages) and send what the function renders.
+ * the one function that puts its prompt together for a run, and those that put together its later
+ * turns inside a call. A role's texts and those functions live in its own module in this folder
+ * (shared.ts holds what several roles share): the harness and the supervisor gather what a run
+ * adds (the brief, the rules, the queue, the owner's messages) and send what the functions render.
  */
 
 /** One fixed text of a role, by its place in the role's instructions. */
@@ -145,7 +167,15 @@ export interface RoleDefinition {
   texts: readonly RoleText[];
   /** The one function that puts its prompt together for a run (goal 166). */
   render: (...input: never[]) => Prompt;
+  /**
+   * The functions that put together its later turns inside a call: a nudge, a warning, a
+   * continuation, the message after a compaction (goal 166). None for a role sent one message.
+   */
+  turns: readonly ((...input: never[]) => Prompt)[];
 }
+
+/** Every role that runs in Pi with compaction goes on from renderCompacted's message after one. */
+const PI_TURNS = [renderCompacted] as const;
 
 const WORKER_PROGRAMS = ["Pi", "OpenCode", "Claude Code", "Codex"] as const;
 const ADVISOR_PROGRAMS = ["Pi", "Claude Code", "OpenCode", "Codex", "a command (cli)"] as const;
@@ -160,6 +190,7 @@ export const ROLES: readonly RoleDefinition[] = [
     programs: WORKER_PROGRAMS,
     messages: true,
     render: renderWorker,
+    turns: [renderWorkerTurn, renderCompacted],
     texts: [
       { id: "pi", what: "its instructions in Pi", text: WORKER_PI_SYSTEM },
       { id: "pi-notes", what: "field notes and sources, after them in Pi", text: WORKER_PI_NOTES },
@@ -180,6 +211,22 @@ export const ROLES: readonly RoleDefinition[] = [
         what: "where the rest is, when its first message is cut to fit the model's window (a research worker's too)",
         text: TRIAL_CUT_WHERE,
       },
+      {
+        id: "nudge-pi",
+        what: "a later turn in Pi: it stopped without calling submit",
+        text: WORKER_PI_NUDGE,
+      },
+      {
+        id: "nudge-program",
+        what: "a later turn in another program: its run ended without a submission",
+        text: WORKER_PROGRAM_NUDGE,
+      },
+      {
+        id: "submit-now",
+        what: "a later turn in Pi, once, when its turns or its time are nearly spent, after how many are left",
+        text: WORKER_SUBMIT_NOW,
+      },
+      ...TRIAL_TURN_TEXTS,
     ],
   },
   {
@@ -191,9 +238,16 @@ export const ROLES: readonly RoleDefinition[] = [
     programs: ["Pi", "OpenCode"],
     messages: true,
     render: renderResearchWorker,
+    turns: [renderResearchWorkerTurn, renderCompacted],
     texts: [
       { id: "system", what: "its instructions", text: RESEARCH_WORKER_SYSTEM },
       { id: "notes", what: "field notes, after its brief", text: RESEARCH_WORKER_NOTES },
+      {
+        id: "go-on",
+        what: "a later turn in OpenCode: its run ended while your messages wait for it",
+        text: RESEARCH_WORKER_GO_ON,
+      },
+      ...TRIAL_TURN_TEXTS,
     ],
   },
   {
@@ -205,6 +259,7 @@ export const ROLES: readonly RoleDefinition[] = [
     programs: WORKER_PROGRAMS,
     messages: true,
     render: renderPlanner,
+    turns: PI_TURNS,
     texts: [
       {
         id: "pi",
@@ -228,6 +283,7 @@ export const ROLES: readonly RoleDefinition[] = [
     programs: WORKER_PROGRAMS,
     messages: true,
     render: renderResearchPlanner,
+    turns: PI_TURNS,
     texts: [
       {
         id: "pi",
@@ -251,6 +307,7 @@ export const ROLES: readonly RoleDefinition[] = [
     programs: ADVISOR_PROGRAMS,
     messages: true,
     render: renderTeacher,
+    turns: PI_TURNS,
     texts: [{ id: "system", what: "its instructions", text: TEACHER_SYSTEM }],
   },
   {
@@ -262,6 +319,7 @@ export const ROLES: readonly RoleDefinition[] = [
     programs: ADVISOR_PROGRAMS,
     messages: true,
     render: renderTeacher,
+    turns: PI_TURNS,
     texts: [{ id: "system", what: "its instructions", text: RESEARCH_TEACHER_SYSTEM }],
   },
   {
@@ -273,6 +331,7 @@ export const ROLES: readonly RoleDefinition[] = [
     programs: ADVISOR_PROGRAMS,
     messages: false,
     render: renderMergedBy,
+    turns: PI_TURNS,
     texts: [{ id: "system", what: "its instructions", text: MERGED_BY_SYSTEM }],
   },
   {
@@ -284,6 +343,7 @@ export const ROLES: readonly RoleDefinition[] = [
     programs: ADVISOR_PROGRAMS,
     messages: false,
     render: renderMergedBy,
+    turns: PI_TURNS,
     texts: [{ id: "system", what: "its instructions", text: RESEARCH_MERGED_BY_SYSTEM }],
   },
   {
@@ -295,6 +355,7 @@ export const ROLES: readonly RoleDefinition[] = [
     programs: ADVISOR_PROGRAMS,
     messages: true,
     render: renderAuditor,
+    turns: PI_TURNS,
     texts: [{ id: "system", what: "its instructions", text: AUDITOR_SYSTEM }],
   },
   {
@@ -306,6 +367,7 @@ export const ROLES: readonly RoleDefinition[] = [
     programs: ADVISOR_PROGRAMS,
     messages: true,
     render: renderReviewer,
+    turns: PI_TURNS,
     texts: [{ id: "system", what: "its instructions", text: REVIEWER_SYSTEM }],
   },
   {
@@ -317,6 +379,7 @@ export const ROLES: readonly RoleDefinition[] = [
     programs: ADVISOR_PROGRAMS,
     messages: true,
     render: renderResearchReviewer,
+    turns: PI_TURNS,
     texts: [{ id: "system", what: "its instructions", text: RESEARCH_REVIEWER_SYSTEM }],
   },
   {
@@ -328,6 +391,7 @@ export const ROLES: readonly RoleDefinition[] = [
     programs: ADVISOR_PROGRAMS,
     messages: false,
     render: renderSynthesizer,
+    turns: PI_TURNS,
     texts: [{ id: "system", what: "its instructions", text: SYNTHESIZER_SYSTEM }],
   },
   {
@@ -339,6 +403,7 @@ export const ROLES: readonly RoleDefinition[] = [
     programs: ADVISOR_PROGRAMS,
     messages: false,
     render: renderFinalWriter,
+    turns: PI_TURNS,
     texts: [
       { id: "system", what: "its instructions", text: FINAL_WRITER_SYSTEM },
       { id: "ste", what: "the short STE rules, with no STE checker", text: STE_SHORT_RULES },
@@ -353,6 +418,7 @@ export const ROLES: readonly RoleDefinition[] = [
     programs: WORKER_PROGRAMS,
     messages: false,
     render: renderModelCheck,
+    turns: [],
     texts: [
       { id: "pi", what: "its instructions in Pi", text: MODEL_CHECK_PI_SYSTEM },
       { id: "pi-prompt", what: "what it asks in Pi", text: modelCheckPiPrompt("<word>") },
@@ -372,12 +438,14 @@ export const ROLES: readonly RoleDefinition[] = [
     programs: ["Pi", "Codex"],
     messages: false,
     render: renderCompaction,
+    turns: [],
     texts: [
       {
         id: "system",
         what: "its instructions (Codex's compact prompt starts with them)",
         text: COMPACTION_SYSTEM,
       },
+      ...COMPACTED_TEXTS,
     ],
   },
 ];

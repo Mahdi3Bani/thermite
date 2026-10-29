@@ -26,6 +26,11 @@ export interface AdvisorCall<S extends z.ZodType> {
    * the call runs in: its runtime gives the frame.
    */
   prompt(f: AdvisorFrame): Prompt;
+  /**
+   * Keeps a later turn the call sent inside it (goal 166): in Pi, the message the advisor goes on
+   * from after a compaction. runAdvisor sets it.
+   */
+  later?: ((p: Prompt) => void) | undefined;
   schema: S;
   answerSchema: TSchema;
   tools?: AdvisorTools | undefined;
@@ -49,7 +54,10 @@ export interface AdvisorResult<T> {
   compactions?: AdvisorCompaction[] | undefined;
   /** The call's model usage (goal 075); none for a command-line agent or a call that never ran. */
   usage?: AdvisorUsage | undefined;
-  /** The prompts the call sent, as its role rendered them (goal 166), for the harness to keep. */
+  /**
+   * The prompts the call sent, as its role rendered them (goal 166), for the harness to keep: its
+   * first message, then its later turns.
+   */
   sent?: Prompt[] | undefined;
 }
 

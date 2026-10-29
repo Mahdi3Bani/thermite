@@ -9,8 +9,8 @@ import { estimateContextTokens, estimateMessageTokens } from "@earendil-works/pi
 import { errorText } from "../../common/errors.ts";
 import { COMPACT_AT_DEFAULT } from "../../core/compaction.ts";
 import { buildModel, type ModelConfig, type PiMeter } from "../model/index.ts";
-import { messageText, systemText } from "../prompt.ts";
-import { renderCompaction } from "../roles/index.ts";
+import { messageText, type Prompt, systemText, userMessage } from "../prompt.ts";
+import { type Compacted, renderCompaction } from "../roles/index.ts";
 
 /**
  * Compaction (goal 070), for the harness's agents and the supervisor's advisors: in Pi (this
@@ -53,11 +53,12 @@ export {
  *
  * Each compaction first keeps the whole conversation as a document the agent can read (`keep`),
  * then asks the same model for a summary with a fixed prompt. The conversation becomes the system
- * prompt, the brief, one message with the summary and the document's path, and the most recent
- * turns that fit (a tool call is never parted from its result). If the summary call fails, the
- * oldest tool results' bodies are left out instead, each with a one-line stub. Only when the
- * provider says the context is full and even that cannot fit the window does the trial end, as
- * `context`, with the reason in words: the token counts here are estimates.
+ * prompt, the brief, one message with the summary and the document's path (the agent's role
+ * renders it: renderCompacted), and the most recent turns that fit (a tool call is never parted
+ * from its result). If the summary call fails, the oldest tool results' bodies are left out
+ * instead, each with a one-line stub. Only when the provider says the context is full and even
+ * that cannot fit the window does the trial end, as `context`, with the reason in words: the token
+ * counts here are estimates.
  *
  * It runs in Pi's own hook before each model request (the agent's `prepareRequest`), and sets the
  * agent's transcript to the compacted one, so later prompts build on it too.
@@ -97,19 +98,18 @@ export interface CompactionDeps {
   convert: (messages: AgentMessage[]) => Message[];
   /** The same model's summary of the conversation so far, with the fixed prompt. */
   summarize: (transcript: string, signal?: AbortSignal) => Promise<string>;
-  /**
-   * Keeps the whole conversation as a document. Returns where the agent reads it, and how, as a
-   * sentence for the agent ("Read it with read_file when you need a detail").
-   */
-  keep: (n: number, markdown: string) => Promise<{ path: string; read: string }>;
+  /** Keeps the whole conversation as a document. Returns where it is, as the agent names it. */
+  keep: (n: number, markdown: string) => Promise<{ path: string }>;
   /** A compaction is done: the event and the live view's lines (best effort). */
   done: (c: CompactionReport) => Promise<unknown>;
   /** Even compacted, the conversation does not fit the window: the trial ends, for this reason. */
   stop: (reason: string) => void;
   /** Whose conversation it is, for the document's title: "Trial t-1 (lane-1)". */
   title: string;
-  /** What goes on after it, said to the agent (default: "Your trial goes on."). */
-  goesOn?: string | undefined;
+  /** The message the agent goes on from, as its role renders it (renderCompacted, goal 166). */
+  after: (c: Compacted) => Prompt;
+  /** Keeps that message once the compaction stands, as the call's other prompts are kept. */
+  sent?: ((p: Prompt) => void) | undefined;
 }
 
 /** A conversation, split for compaction. Each turn starts with an assistant message. */
@@ -186,12 +186,11 @@ export class Compactor {
     if (!parts.turns.length) return undefined;
     const n = this.count + 1;
     // The whole conversation first, kept where the agent can read it.
-    let kept: { path: string; read: string } | undefined;
-    let keepError: string | undefined;
+    let kept: Compacted["kept"];
     try {
       kept = await this.o.keep(n, transcriptMarkdown(this.o.title, n, before, messages));
     } catch (err) {
-      keepError = `the conversation was not kept: ${errorText(err)}`;
+      kept = { error: `the conversation was not kept: ${errorText(err)}` };
     }
     // A full context of unknown size: the room it had is what it filled. The compacted one is
     // measured as the whole one is here, by its text.
@@ -208,32 +207,17 @@ export class Compactor {
       summary = undefined;
       summaryError = `the summary failed: ${errorText(err)}`;
     }
-    const where = kept
-      ? `The whole conversation before this point is in ${kept.path}. ${kept.read}.`
-      : `The whole conversation before this point could not be kept (${keepError}).`;
-    const head = `The harness compacted this conversation (compaction ${n}) because it neared the model's context window. ${this.o.goesOn ?? "Your trial goes on."}\n\n${where}`;
-    const stub = kept ? ` It is in ${kept.path}.` : "";
+    const path = "path" in kept ? kept.path : undefined;
+    const stub = path !== undefined ? ` It is in ${path}.` : "";
     let out: AgentMessage[];
+    let said: Prompt;
     if (summary !== undefined) {
       const tail = keepTail(this.o.convert, parts.turns, Math.floor(room * KEEP_SHARE), stub);
-      out = [
-        ...parts.system,
-        ...(parts.brief ? [parts.brief] : []),
-        user(
-          `${head}\n\nA summary of the trial so far:\n\n${summary}\n\n${tail.length ? "Your most recent turns follow. Go on from where they leave off." : "Go on from where you left off."}`,
-        ),
-        ...tail,
-      ];
+      said = this.o.after({ number: n, kept, summary, tail: tail.length > 0 });
+      out = [...parts.system, ...(parts.brief ? [parts.brief] : []), userMessage(said), ...tail];
     } else {
-      out = trim(
-        this.o.convert,
-        parts,
-        user(
-          `${head}\n\nThe bodies of older tool results were left out to save room; each one says so.`,
-        ),
-        Math.floor(room * TRIM_SHARE),
-        stub,
-      );
+      said = this.o.after({ number: n, kept, tail: false });
+      out = trim(this.o.convert, parts, userMessage(said), Math.floor(room * TRIM_SHARE), stub);
     }
     const after = tokensOf(this.o.convert, out);
     if (forced && (window > 0 ? after >= window : after >= whole)) {
@@ -243,6 +227,7 @@ export class Compactor {
       return undefined;
     }
     this.count = n;
+    this.o.sent?.(said);
     // Still above the point: the next compaction waits until the conversation grows halfway to
     // the window (a twentieth of it at least), so it is not compacted again at once.
     const point = this.point;
@@ -250,7 +235,9 @@ export class Compactor {
       point !== undefined && after >= point
         ? after + Math.max(Math.floor((window - after) / 2), Math.floor(window / 20))
         : undefined;
-    const error = [keepError, summaryError].filter(Boolean).join("; ");
+    const error = ["error" in kept ? kept.error : undefined, summaryError]
+      .filter(Boolean)
+      .join("; ");
     await this.o
       .done({
         number: n,
@@ -259,17 +246,12 @@ export class Compactor {
         how: summary !== undefined ? "summary" : "trimmed",
         ...(summary !== undefined ? { summary } : {}),
         ...(error ? { error } : {}),
-        ...(kept ? { path: kept.path } : {}),
+        ...(path !== undefined ? { path } : {}),
       })
       // Best effort, as the live view is: the compaction stands whether or not it was reported.
       .catch(() => undefined);
     return out;
   }
-}
-
-/** A user message the harness adds (newer than every reply, so their usage is not reused). */
-function user(text: string): AgentMessage {
-  return { role: "user", content: text, timestamp: Date.now() };
 }
 
 /** The conversation's parts: system messages, the brief, then turns from each reply on. */

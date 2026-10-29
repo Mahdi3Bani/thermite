@@ -161,7 +161,8 @@ describe("provider errors by kind (goal 079)", () => {
       deadline: Number.POSITIVE_INFINITY,
       waiting: (w) => void told.push(w.kind),
     });
-    assert.ok("goOn" in on && /Continue where you left off/.test(on.goOn));
+    // It goes on with the provider's words, which the agent's role puts to it (goal 166).
+    assert.ok("goOn" in on && /rate limited/.test(on.goOn));
     assert.ok(Date.now() - started >= 900);
     assert.deepEqual(told, ["rate_limit"]);
     // A wait past the trial's own end stops at its end.
