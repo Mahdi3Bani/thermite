@@ -1,12 +1,12 @@
 ---
 title: "Run the message bus"
-description: "Check the message bus beside control, open its port to rigs on other machines and clusters, and turn it off."
+description: "Check the message bus beside control, open its port to rigs on other machines and clusters, give it more memory or disk, and turn it off."
 type: how-to
 sidebar:
   order: 11
 ---
 
-The message bus carries the rigs' reports and live lines to control, and control's commands and each rig's config to the rigs, as soon as each is there. It is a NATS server with JetStream, and it runs beside control: the compose stack's `nats` service. This page says how to tell that it works, what to open so that rigs on other machines and clusters reach it, what control keeps for its certificate, and how to turn it off. [How the parts talk](../../explanation/how-the-parts-talk.md#reports-over-the-message-bus) explains what travels on it and why.
+The message bus carries the rigs' reports and live lines to control, and control's commands and each rig's config to the rigs, as soon as each is there. It is a NATS server with JetStream, and it runs beside control: the compose stack's `nats` service. This page says how to tell that it works, what to open so that rigs on other machines and clusters reach it, what control keeps for its certificate, how to give it more memory or disk, and how to turn it off. [How the parts talk](../../explanation/how-the-parts-talk.md#reports-over-the-message-bus) explains what travels on it and why.
 
 ```sh
 docker compose ps nats                      # or: podman compose ps nats
@@ -75,6 +75,26 @@ Every connection to the bus is over TLS. Control keeps its own certificate autho
 - **The rigs** trust the server through the authority's certificate alone, which control gives each rig it sets up: as a file on a machine and in the compose stack, in the supervisor's environment on a cluster. A connection that does not come from such a rig, or that trusts another authority, is refused, and so is one without TLS.
 
 Keep `bus-ca.key` with control's other state: a backup of the `control-state` volume holds it. If it is lost, delete `bus-ca.pem` too and start control again: it makes a new authority, and every rig on the bus needs its certificate again, by moving onto new images. Until then those rigs can't connect.
+
+## Give it more memory or disk
+
+The bus keeps its messages on disk, on the `nats-data` volume. Its memory holds the index of each stream's subjects and the blocks a read loads. Compose gives it 256 MiB, and tells the server's Go runtime 78% of that, so that it frees what a read loaded before the limit is reached. Its disk is 75% of the volume's free space when it starts.
+
+1. In `.env`, set either or both:
+
+   ```sh title=".env (part)"
+   THERMITE_NATS_MEMORY=512m
+   THERMITE_NATS_STORE=20G
+   ```
+
+   Keep `THERMITE_NATS_STORE` under what the disk has free: at the limit, the bus refuses new messages and keeps the old, but a server whose disk itself is full turns JetStream off.
+2. Start the stack again, with your `-f` options:
+
+   ```sh
+   docker compose up -d     # or: podman compose up -d
+   ```
+
+To tell that it worked: the server's log as it starts, `docker compose logs nats`, says `Max Memory` at 75% of what Go is told (149.76 MB for 256 MiB), and `Max Storage` at the store's size (`20G` shows as 18.63 GB).
 
 ## Turn it off
 

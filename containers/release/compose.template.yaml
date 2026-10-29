@@ -104,17 +104,20 @@ services:
     image: docker.io/library/nats:2.15.1-alpine@sha256:7ae34c25dfd6fe2e01c6483eabef20d796690fdcac6c4d94ca780a6cf9877fde
     # Its settings are written as it starts, beside the files control writes for it: the largest
     # message (REPORT_MAX_BYTES in src/core/link/report.ts), monitoring on its own loopback for the
-    # health check, JetStream's store on its volume, TLS with control's certificate, and the users
-    # (BUS_TLS_FILES and BUS_USERS_FILE in src/control/bus/). It starts once control has written
-    # them, and reads them again when control asks.
+    # health check, JetStream's store on its volume (at most THERMITE_NATS_STORE, when set), TLS
+    # with control's certificate, and the users (BUS_TLS_FILES and BUS_USERS_FILE in
+    # src/control/bus/). It starts once control has written them, and reads them again when control
+    # asks.
     command:
       - sh
       - -c
       - |
-        cat > /etc/nats/thermite.conf <<'EOF'
+        store="store_dir: /data"
+        [ -z "$$THERMITE_NATS_STORE" ] || store="$$store, max_file_store: $$THERMITE_NATS_STORE"
+        cat > /etc/nats/thermite.conf <<EOF
         max_payload: 8388608
         http: 127.0.0.1:8222
-        jetstream { store_dir: /data }
+        jetstream { $$store }
         tls {
           cert_file: "/etc/nats/thermite/server-cert.pem"
           key_file: "/etc/nats/thermite/server-key.pem"
@@ -128,7 +131,15 @@ services:
         chown 10001:10001 /etc/nats/thermite
         [ -s /etc/nats/thermite/users.conf ] || echo "waiting for control to write the bus's users and certificate"
         until [ -s /etc/nats/thermite/users.conf ] && [ -s /etc/nats/thermite/server-cert.pem ] && [ -s /etc/nats/thermite/server-key.pem ]; do sleep 1; done
+        # Go frees the blocks a read loaded only when it collects: told the container's limit, less
+        # a fifth, it collects in time, where without it a read gets the server stopped.
+        limit=$$(cat /sys/fs/cgroup/memory.max 2>/dev/null || cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null)
+        case "$$limit" in ''|max) ;; *) export GOMEMLIMIT=$$((limit / 100 * 78)) ;; esac
         exec nats-server -c /etc/nats/thermite.conf
+    environment:
+      THERMITE_NATS_STORE: "${THERMITE_NATS_STORE:-}"
+    # Its memory: the index of each stream's subjects, and the blocks a read loads.
+    mem_limit: "${THERMITE_NATS_MEMORY:-256m}"
     user: "0:10001"
     volumes:
       - nats-data:/data
