@@ -122,11 +122,16 @@ try {
     /Installing Podman on "test-box", as you allowed/.test(started),
     started,
   );
+  // The install ends, then control reads the machine again: wait for both, since the read can
+  // land a little after the install's "done".
   const done = await until(
-    "the install finishes",
+    "the install finishes and the machine is read again",
     async () => {
       const h = await page();
-      return /Last install: Podman, allowed by owner:ui/.test(h) ? h : undefined;
+      const ended =
+        /Last install: Podman, allowed by owner:ui, <span class="chip [a-z]+">(done|failed)/;
+      const read = /<span class="chip ok">Podman [0-9.]+<\/span>|chip [a-z]+">failed/;
+      return ended.test(h) && read.test(h) ? h : undefined;
     },
     900_000,
     5000,
