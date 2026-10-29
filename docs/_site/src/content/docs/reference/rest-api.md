@@ -70,7 +70,7 @@ All of these take the owner's token, except where the table says otherwise. `<ri
 
 | Route | Token | What it does | Request | Answer |
 | --- | --- | --- | --- | --- |
-| `GET /v1/health` | None | Says control is up, and how it holds the [message bus](../how-to/operate/message-bus.md#check-it), which it needs: `connected` (it holds a connection to the bus's server now) or `away` (it holds none, and tries again). It answers 200 whatever the bus does | None | `{"ok":true,"bus":"connected"}` |
+| `GET /v1/health` | None | Says control is up, and how it holds the [message bus](../how-to/operate/message-bus.md#check-it), which it needs: `connected` (it holds a connection to the bus's server now) or `away` (it holds none, and tries again). Once control serves, it answers 200 whatever the bus does; while it starts, building its views from the bus's events, it answers 503 with `"ok":false` and `"starting":true`, and every other route 503 with `retry-after: 5` | None | `{"ok":true,"bus":"connected"}` |
 
 ### Rigs and their history
 

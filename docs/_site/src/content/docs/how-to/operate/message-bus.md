@@ -33,7 +33,7 @@ curl -fsS http://127.0.0.1:8800/v1/health   # {"ok":true,"bus":"connected"}
    curl -fsS http://127.0.0.1:8800/v1/health
    ```
 
-   `"bus":"connected"` says control holds a connection to the server now; `"away"` says it holds none and tries again every 5 seconds. The answer is 200 in both: control's own pages and routes serve whatever the bus does, though what control writes from the rigs' new events waits for the bus.
+   `"bus":"connected"` says control holds a connection to the server now; `"away"` says it holds none and tries again every 5 seconds. Once control serves, the answer is 200 in both: control's own pages and routes serve whatever the bus does, though what control writes from the rigs' new events waits for the bus. While control starts, it builds its views from the bus's events first: its health then answers 503 with `"starting":true`, and every other route 503, until its log says `control's views built from the events stream`.
 3. For the bus's streams and what each consumer still has to take, ask `GET /v1/bus` with the owner's token, or call the MCP tool `bus_state`: [The message bus](../../reference/rest-api.md#the-message-bus).
 
 A rig on the bus has the step "Its key on the message bus registered" in its history, on its page. A rig that never got that step reports over HTTP.

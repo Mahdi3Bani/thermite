@@ -16,6 +16,7 @@ import {
   BusTls,
   BusUsers,
   busConfigDir,
+  busHealth,
   busPublicUrl,
   CONFIG_WRITE_MS,
   ConfigWriter,
@@ -184,6 +185,51 @@ async function main(): Promise<void> {
   const { runpodTests, tunnels, runpodRigs } = parts;
   // Each rig's config, written to the config bucket when it changes (bus/config.ts).
   const busConfig = new ConfigWriter({ parts, bus, figures: configWritten });
+  // Control's port opens at once, but it answers every request that it is starting until its
+  // views are built (below): its health with 503 and the bus's state, so that a check waits, and
+  // every other route with 503 and the reason.
+  let ready = false;
+  const api = createControlApi(store, tokens, privateKeyPem, {
+    staleAfterMs,
+    offlineAfterMs,
+    driver,
+    requireKeyAcceptance,
+    sessionDays: readNumber(env, CONTROL_NUMBERS.sessionDays),
+    parts,
+    // The dashboard's pages.
+    pages: mountDashboard,
+    // Exports from rigs without a results repository, kept in control's state.
+    exportsDir: join(dir, "exports"),
+    // Who may use the message bus: a rig's new key gets its user there, and a new seal key its
+    // config.
+    busUsers,
+    busConfig,
+  });
+  const starting = (req: Request) =>
+    new URL(req.url).pathname === "/v1/health"
+      ? Response.json({ ok: false, bus: busHealth(parts.bus), starting: true }, { status: 503 })
+      : Response.json(
+          { error: "control is starting: it builds its views from the events stream first" },
+          { status: 503, headers: { "retry-after": "5" } },
+        );
+  const server = serve({
+    fetch: (req, env) => (ready ? api.fetch(req, env) : starting(req)),
+    hostname: host,
+    port,
+  });
+  log("control", "listening", {
+    host,
+    port,
+    build: buildInfo(),
+    rigs: Object.keys(tokens.rigs),
+    enrolled: store.enrollments
+      .rigs()
+      .filter((r) => !r.retired_at)
+      .map((r) => r.rig),
+    lifecycle: driver?.kind ?? null,
+    bus: new URL(natsUrl).host,
+    bus_for_rigs: rigBusUrl ? new URL(rigBusUrl).host : null,
+  });
   // Before control serves a page: the users file, so that the server can start, kept up to date
   // after; the store's place checked against the events stream's end; the events table, mirrored
   // to the stream from the stream's last row to the table's end; and the stream applied to its
@@ -200,43 +246,11 @@ async function main(): Promise<void> {
   }
   await eventsMirror.start();
   await eventsApply.nudge();
+  ready = true;
   log("control", "control's views built from the events stream", {
     place: eventsApply.folds.through,
     rigs: eventsApply.folds.held().length,
     ms: Math.round(performance.now() - started),
-  });
-  const server = serve({
-    fetch: createControlApi(store, tokens, privateKeyPem, {
-      staleAfterMs,
-      offlineAfterMs,
-      driver,
-      requireKeyAcceptance,
-      sessionDays: readNumber(env, CONTROL_NUMBERS.sessionDays),
-      parts,
-      // The dashboard's pages.
-      pages: mountDashboard,
-      // Exports from rigs without a results repository, kept in control's state.
-      exportsDir: join(dir, "exports"),
-      // Who may use the message bus: a rig's new key gets its user there, and a new seal key its
-      // config.
-      busUsers,
-      busConfig,
-    }).fetch,
-    hostname: host,
-    port,
-  });
-  log("control", "listening", {
-    host,
-    port,
-    build: buildInfo(),
-    rigs: Object.keys(tokens.rigs),
-    enrolled: store.enrollments
-      .rigs()
-      .filter((r) => !r.retired_at)
-      .map((r) => r.rig),
-    lifecycle: driver?.kind ?? null,
-    bus: new URL(natsUrl).host,
-    bus_for_rigs: rigBusUrl ? new URL(rigBusUrl).host : null,
   });
   // Reports from the bus, folded through the ingest route's checks as they arrive; the events
   // table, mirrored to the events stream as reports arrive, by HTTP or by the bus, and the stream

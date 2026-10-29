@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
@@ -42,5 +44,50 @@ describe("control and its bus", () => {
     const fatal = lines.find((l) => l.msg === "fatal");
     assert.match(String(fatal?.error), new RegExp(`^Error: ${WORDS.replace(/[.()]/g, "\\$&")}`));
     assert.equal(existsSync(dir), false, "before it makes its state folder");
+  });
+
+  test("while its views wait for the bus, control answers that it is starting", async () => {
+    // A port nothing listens on, for the bus, and a free one for control.
+    const free = () =>
+      new Promise<number>((done) => {
+        const s = createServer().listen(0, "127.0.0.1", () => {
+          const { port } = s.address() as { port: number };
+          s.close(() => done(port));
+        });
+      });
+    const [busPort, port] = [await free(), await free()];
+    const root = mkdtempSync(join(tmpdir(), "thermite-control-"));
+    mkdirSync(join(root, "nats"));
+    const child = spawn(process.execPath, ["src/control/main.ts"], {
+      env: {
+        PATH: process.env.PATH ?? "",
+        THERMITE_CONTROL_DIR: join(root, "state"),
+        // The owner's credential: the hash of a made-up token.
+        THERMITE_CONTROL_ADMIN_TOKEN_SHA256: createHash("sha256").update("made-up").digest("hex"),
+        THERMITE_CONTROL_LISTEN: `127.0.0.1:${port}`,
+        THERMITE_NATS_URL: `nats://127.0.0.1:${busPort}`,
+        THERMITE_NATS_CONFIG_DIR: join(root, "nats"),
+      },
+      stdio: "ignore",
+    });
+    try {
+      const url = `http://127.0.0.1:${port}`;
+      let health: Response | undefined;
+      for (let i = 0; i < 100 && !health; i++) {
+        health = await fetch(`${url}/v1/health`).catch(() => undefined);
+        if (!health) await new Promise((r) => setTimeout(r, 200));
+      }
+      assert.ok(health, "control's port opened");
+      assert.equal(health.status, 503);
+      assert.deepEqual(await health.json(), { ok: false, bus: "away", starting: true });
+      const page = await fetch(`${url}/v1/campaigns`);
+      assert.equal(page.status, 503);
+      assert.equal(page.headers.get("retry-after"), "5");
+      assert.deepEqual(await page.json(), {
+        error: "control is starting: it builds its views from the events stream first",
+      });
+    } finally {
+      child.kill("SIGKILL");
+    }
   });
 });
