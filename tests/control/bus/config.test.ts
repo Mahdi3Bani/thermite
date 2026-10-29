@@ -254,9 +254,10 @@ describe("each rig's config on the message bus", () => {
     await s.writer.start();
     await s.writer.write();
     assert.equal(s.bus.kept.length, 3);
-    // The bus lost its store: its stream and every value with it.
+    // The bus lost its store: its stream, every value and the ids it had seen with it.
     s.bus.made.clear();
     s.bus.kept.length = 0;
+    s.bus.forgetIds();
     s.giveModel("rig-a");
     await s.writer.write();
     assert.equal(s.figures.failed, 1, "the changed route's write");

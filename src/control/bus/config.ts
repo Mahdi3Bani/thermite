@@ -140,11 +140,17 @@ export class ConfigWriter {
   }
 
   private async writeNow(): Promise<void> {
+    // A stream being made again (after a write the bus did not take) is waited for, so this
+    // look writes every key read back, not some of them.
+    if (!this.ready && this.made) await this.made.catch(() => {});
     if (!this.ready) return;
     const { store } = this.o.parts;
     for (const r of busRigs(store)) {
       if (!r.sealKey) continue;
-      for (const key of CONFIG_KEYS) await this.writeKey(r.rig, key, r.sealKey);
+      for (const key of CONFIG_KEYS) {
+        // A write the bus did not take ends this look: the next reads every key back.
+        if (!(await this.writeKey(r.rig, key, r.sealKey))) return;
+      }
     }
   }
 
@@ -178,7 +184,8 @@ export class ConfigWriter {
     return revision;
   }
 
-  private async writeKey(rig: string, key: ConfigKey, sealKey: string): Promise<void> {
+  /** Writes one key if it changed; false when the bus did not take the write. */
+  private async writeKey(rig: string, key: ConfigKey, sealKey: string): Promise<boolean> {
     const { secrets } = this.o.parts;
     const figures = this.o.figures;
     const subject = configSubject(rig, key);
@@ -200,21 +207,21 @@ export class ConfigWriter {
           "warn",
         ),
       );
-      return;
+      return true;
     }
     // Changes with the value and with the key it is sealed to; only control's secrets key makes it.
     const revision = secrets.digest(`${key}\n${sealKey}\n${canonicalJson(value)}`);
     try {
-      if ((await this.revisionOnBus(subject)) === revision) return;
+      if ((await this.revisionOnBus(subject)) === revision) return true;
     } catch (err) {
       figures.failed++;
       const error = errorText(err);
       this.tell(subject, `not read: ${error}`, () =>
         log("control", "a rig's config not read back from the bus", { ...where, error }, "warn"),
       );
-      return;
+      return true;
     }
-    if (this.told.get(subject) === `too large: ${revision}`) return;
+    if (this.told.get(subject) === `too large: ${revision}`) return true;
     const writtenAt = new Date().toISOString();
     const message = {
       v: CONFIG_VERSION,
@@ -236,7 +243,7 @@ export class ConfigWriter {
           "error",
         ),
       );
-      return;
+      return true;
     }
     try {
       const ack = await this.o.bus.publish(subject, data, { id: configMessageId(message) });
@@ -247,6 +254,7 @@ export class ConfigWriter {
       // What a rig gets of the MCP servers is audited when it changes, as over HTTP.
       if (key === "mcp-servers") this.o.parts.mcpServers.handed(rig, value as McpForRig);
       log("control", "a rig's config written to the bus", { ...where, revision, seq: ack.seq });
+      return true;
     } catch (err) {
       // The bus may have lost its store, the stream with it: the stream is made again, and every
       // key read back again before it is written.
@@ -266,6 +274,7 @@ export class ConfigWriter {
           "warn",
         ),
       );
+      return false;
     }
   }
 }
