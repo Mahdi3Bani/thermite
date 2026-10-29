@@ -4,6 +4,7 @@ import { DETAIL_CHARS } from "../../src/control/run-lists.ts";
 import { ControlStore, OPEN_TRIAL_LINES } from "../../src/control/store/index.ts";
 import { SESSION_LINES, trialSession } from "../../src/control/trial-session.ts";
 import type { LiveEntry } from "../../src/core/live.ts";
+import { controlStore, ingestReport } from "../helpers/control-store.ts";
 
 const at = (i: number) => new Date(Date.UTC(2026, 9, 25, 8, 0, i)).toISOString();
 
@@ -153,10 +154,10 @@ test("a long session's answer keeps to the budget and says how to read its lines
   );
 });
 
-test("a trial that writes many lines leaves another open trial's newest lines in control (goal 143)", () => {
-  const store = new ControlStore(":memory:");
+test("a trial that writes many lines leaves another open trial's newest lines in control (goal 143)", async () => {
+  const store = controlStore();
   // The rig's report lists t-quiet as open: it wrote 3 lines, then nothing.
-  store.rigEvents.ingest({
+  await ingestReport(store, {
     rig: "rig-a",
     ledger_id: "l-1",
     cursor: 0,
@@ -197,7 +198,7 @@ test("a trial that writes many lines leaves another open trial's newest lines in
   assert.equal(kept("trial:t-quiet"), 3, "the quiet trial's lines stay");
   assert.equal(kept("trial:t-loop"), OPEN_TRIAL_LINES, "an open trial keeps its newest lines");
   // A trial the report no longer lists is not kept past the window.
-  store.rigEvents.ingest({
+  await ingestReport(store, {
     rig: "rig-a",
     ledger_id: "l-1",
     cursor: 0,

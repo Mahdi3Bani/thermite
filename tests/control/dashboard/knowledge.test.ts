@@ -3,11 +3,12 @@ import { test } from "node:test";
 import { issueCommand } from "../../../src/control/issue/index.ts";
 import type { ControlStore } from "../../../src/control/store/index.ts";
 import { ADMIN, controlOnly, mcpClient, signIn } from "../../helpers/control-stack.ts";
+import { ingestReport } from "../../helpers/control-store.ts";
 
 type Ev = [string, string, string, Record<string, unknown>];
 
-function ingest(store: ControlStore, rig: string, events: Ev[], from = 0) {
-  store.rigEvents.ingest({
+async function ingest(store: ControlStore, rig: string, events: Ev[], from = 0) {
+  await ingestReport(store, {
     rig,
     ledger_id: `ledger-${rig}`,
     cursor: from,
@@ -52,7 +53,7 @@ async function stack() {
     },
     issuedBy: "owner:api",
   });
-  ingest(store, "rig-a", [
+  await ingest(store, "rig-a", [
     ["harness", "run_created", "gs-3", { campaign: "gemv-speed", mode: "goal", agents: true }],
     [
       "supervisor",
@@ -126,7 +127,7 @@ async function stack() {
       { note: 4, by: "lane-1", text: "The GPU has 4 MB of L2.", sources: ["s-1"] },
     ],
   ]);
-  ingest(store, "rig-b", [
+  await ingest(store, "rig-b", [
     ["harness", "run_created", "sv-2", { campaign: "survey-study", mode: "research" }],
     [
       "lane-1",

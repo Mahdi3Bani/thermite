@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, test } from "node:test";
 import { copiesOf } from "../../../src/common/db-copy.ts";
 import { ControlStore } from "../../../src/control/store/index.ts";
+import { keepOldRows, withEventsTable } from "../../helpers/old-store.ts";
 
 const V010 = readFileSync(
   join(import.meta.dirname, "..", "..", "helpers", "data", "control-v0.1.0.sql"),
@@ -23,7 +24,7 @@ describe("control's store migrations", () => {
     old.close();
 
     const store = new ControlStore(path);
-    assert.equal(version(store.db), 11);
+    assert.equal(version(store.db), 12);
     const folder = store.db.prepare("select name from campaign_folder").get() as { name: string };
     assert.equal(folder.name, "speed");
     store.db.close();
@@ -45,7 +46,7 @@ describe("control's store migrations", () => {
   test("a new store is not copied", () => {
     const path = fresh();
     const store = new ControlStore(path);
-    assert.equal(version(store.db), 11);
+    assert.equal(version(store.db), 12);
     store.db.close();
     assert.deepEqual(copiesOf(path), []);
   });
@@ -53,10 +54,11 @@ describe("control's store migrations", () => {
   test("a store at version 1 is copied, then gets the table of updates under way (goal 165)", () => {
     const path = fresh();
     const one = new ControlStore(path);
-    one.db.exec("drop table rig_update; delete from schema_migrations where version >= 2");
+    withEventsTable(one.db, 1);
+    one.db.exec("drop table rig_update");
     one.db.close();
     const store = new ControlStore(path);
-    assert.equal(version(store.db), 11);
+    assert.equal(version(store.db), 12);
     assert.ok(store.db.prepare("select 1 from sqlite_master where name = 'rig_update'").get());
     store.db.close();
     assert.deepEqual(
@@ -68,7 +70,7 @@ describe("control's store migrations", () => {
   test("a store at version 3 gets the agents' public names in its usage records (goal 125)", () => {
     const path = fresh();
     const three = new ControlStore(path);
-    three.db.exec("delete from schema_migrations where version >= 4");
+    withEventsTable(three.db, 3);
     const row = three.db.prepare(
       `insert into model_call (rig, ledger_id, event_id, run, agent, harness, model, at, tokens_in,
          tokens_out) values ('rig-a', 'l-1', ?, 'r-1', ?, 'pi', 'm', '2026-10-27T00:00:00Z', 1, 1)`,
@@ -81,7 +83,7 @@ describe("control's store migrations", () => {
       row.run(id, agent);
     three.db.close();
     const store = new ControlStore(path);
-    assert.equal(version(store.db), 11);
+    assert.equal(version(store.db), 12);
     const agents = store.db.prepare("select agent from model_call order by event_id").all();
     assert.deepEqual(
       agents.map((r) => r.agent),
@@ -117,7 +119,7 @@ describe("control's store migrations", () => {
     );
     nine.db.close();
     const store = new ControlStore(path);
-    assert.equal(version(store.db), 11);
+    assert.equal(version(store.db), 12);
     const roles = store.agentModels.byRole("rig-a");
     assert.deepEqual(roles.teachers, {
       provider: "lab",
@@ -172,7 +174,7 @@ describe("control's store migrations", () => {
       delete from schema_migrations where version >= 11`);
     ten.db.close();
     const store = new ControlStore(path);
-    assert.equal(version(store.db), 11);
+    assert.equal(version(store.db), 12);
     // Nothing applied from the stream yet: the apply goes through it from its first message.
     assert.equal(store.busPositions.of("EVENTS"), 0);
     assert.deepEqual(
@@ -195,21 +197,56 @@ describe("control's store migrations", () => {
     );
   });
 
-  test("a rig's events are read in pages in control's order from an index, with no sort", () => {
-    const store = new ControlStore(":memory:");
-    // The views' paged read (RigEvents.after, lean, on the rig's ledger).
-    const plan = store.db
-      .prepare(
-        "explain query plan select seq from rig_event where rig = ? and ledger_id = ? and kind != 'model_call' and seq > ? order by seq limit ?",
-      )
-      .all("rig-a", "l", 0, 5000)
-      .map((r) => String(r.detail));
-    assert.ok(
-      plan.some((d) => d.includes("rig_event_ledger_seq")),
-      plan.join("; "),
-    );
-    assert.ok(!plan.some((d) => d.includes("TEMP B-TREE")), plan.join("; "));
+  test("the events table's drop waits for the move: the store stays at version 11, and nothing is copied again", () => {
+    const path = fresh();
+    const old = new ControlStore(path);
+    withEventsTable(old.db);
+    keepOldRows(old.db, [
+      { rig: "rig-a", ledger: "l-1", id: 1, kind: "journal_note" },
+      { rig: "rig-a", ledger: "l-1", id: 2, kind: "journal_note" },
+    ]);
+    old.db.close();
+    for (let start = 0; start < 2; start++) {
+      const store = new ControlStore(path);
+      assert.equal(version(store.db), 11, "the drop waits");
+      assert.equal(store.eventsTable.size().rows, 2);
+      store.db.close();
+    }
+    assert.deepEqual(copiesOf(path), [], "a start that migrates nothing copies nothing");
+    // A move that found other than the table holds: the drop still waits.
+    const store = new ControlStore(path);
+    assert.equal(store.migrate({ eventsMoved: { rows: 1, lastSeq: 2 } }), undefined);
+    assert.equal(version(store.db), 11);
+    // The move found the stream to hold the table whole: the table goes, its copy kept outside
+    // the rotation, and the rig's last cursor with it.
+    const kept = store.migrate({ eventsMoved: { rows: 2, lastSeq: 2 } });
+    assert.match(kept ?? "", /control\.db\.v11\..*\.kept$/);
+    assert.equal(version(store.db), 12);
+    assert.equal(store.eventsTable.exists(), false);
+    const rigCols = store.db.prepare("pragma table_info(rig)").all() as { name: string }[];
+    assert.ok(!rigCols.some((c) => c.name === "last_cursor"));
+    assert.deepEqual(copiesOf(path), [], "not one of the copies the rotation removes");
+    const copy = new DatabaseSync(kept ?? "", { readOnly: true });
+    assert.equal((copy.prepare("select count(*) as n from rig_event").get() as { n: number }).n, 2);
+    copy.close();
     store.db.close();
+  });
+
+  test("an events table with no row goes at once, with no copy kept", () => {
+    const path = fresh();
+    const old = new ControlStore(path);
+    withEventsTable(old.db);
+    old.db.close();
+    const store = new ControlStore(path);
+    assert.equal(version(store.db), 12);
+    assert.equal(store.eventsTable.exists(), false);
+    store.db.close();
+    assert.deepEqual(
+      copiesOf(path).map((c) => c.version),
+      [11],
+      "the copy before it is one of the rotation's",
+    );
+    assert.ok(!readdirSync(dirname(path)).some((f) => f.endsWith(".kept")));
   });
 
   test("a store newer than this code is refused, naming the copy to restore", () => {
@@ -218,11 +255,11 @@ describe("control's store migrations", () => {
     old.exec(V010);
     old.close();
     const store = new ControlStore(path);
-    store.db.prepare("insert into schema_migrations (version) values (12)").run();
+    store.db.prepare("insert into schema_migrations (version) values (13)").run();
     store.db.close();
     assert.throws(
       () => new ControlStore(path),
-      /control store is at schema version 12, newer than this code's 11: .*the copy made then: .*control\.db\.v0\..*\.copy/,
+      /control store is at schema version 13, newer than this code's 12: .*the copy made then: .*control\.db\.v0\..*\.copy/,
     );
   });
 });

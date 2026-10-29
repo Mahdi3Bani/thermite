@@ -18,7 +18,7 @@ import { leaderboard } from "../../src/control/views/index.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 import { WIPE_MARKER, wipeIfRequested } from "../../src/harness/service/index.ts";
 import { controlStack } from "../helpers/control-stack.ts";
-import { applied, controlStore } from "../helpers/control-store.ts";
+import { controlStore, ingestReport } from "../helpers/control-store.ts";
 import { FAST_KERNEL, makeJudgeEnv } from "../helpers/judge-env.ts";
 
 function fakeServer(
@@ -244,7 +244,7 @@ describe("leaderboard and propagation", () => {
       subject,
       body,
     });
-    store.rigEvents.ingest({
+    await ingestReport(store, {
       rig: "rig-a",
       ledger_id: "la",
       cursor: 0,
@@ -270,7 +270,7 @@ describe("leaderboard and propagation", () => {
       ],
     });
     // Rig b's own run of the campaign: a run's name is used once on control (goal 170).
-    store.rigEvents.ingest({
+    await ingestReport(store, {
       rig: "rig-b",
       ledger_id: "lb",
       cursor: 0,
@@ -298,7 +298,6 @@ describe("leaderboard and propagation", () => {
         }),
       ],
     });
-    await applied(store);
     const board = leaderboard(store, { staleAfterMs: 180_000 });
     const a = board.camp?.find((r) => r.rig === "rig-a");
     assert.deepEqual(a?.verified_by, ["rig-b"]);

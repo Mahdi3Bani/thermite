@@ -13,7 +13,13 @@ import {
 } from "../../../src/control/views/index.ts";
 import { EVENT_STREAM } from "../../../src/core/link/events.ts";
 import { controlOnly } from "../../helpers/control-stack.ts";
-import { applied, busOf, controlStore, freshFolds } from "../../helpers/control-store.ts";
+import {
+  applied,
+  busOf,
+  controlStore,
+  freshFolds,
+  ingestReport,
+} from "../../helpers/control-store.ts";
 import { uniforms } from "../../helpers/property.ts";
 import {
   goalEvents,
@@ -38,9 +44,9 @@ const OPTS = { staleAfterMs: 600_000, now: VIEW_NOW };
 /** A view of folds made fresh from the store's events stream now, in one pass. */
 const fresh = async (store: ControlStore, rig: string) => (await freshFolds(store)).view(rig, OPTS);
 
-/** A rig's report, as report() makes it, once the apply has handed it to the folds. */
+/** A rig's report, as await report() makes it, once the apply has handed it to the folds. */
 async function reported(...args: Parameters<typeof report>): Promise<void> {
-  report(...args);
+  await report(...args);
   await applied(args[0]);
 }
 
@@ -77,7 +83,7 @@ describe("a kept fold, with events ingested between reads, gives a fresh fold's 
   for (const set of VIEW_SETS)
     test(set.name, async () => {
       const source = controlStore();
-      set.fill(source);
+      await set.fill(source);
       const summaries = new Map(source.reportedRigs.list().map((u) => [u.id, u.summary]));
       const events = await sent(source);
       for (const seed of [1, 2]) {
@@ -98,7 +104,7 @@ describe("a kept fold, with events ingested between reads, gives a fresh fold's 
           )
             n++;
           const piece = events.slice(at, at + n).map((x) => x.event);
-          store.rigEvents.ingest({
+          await ingestReport(store, {
             rig: first.rig,
             ledger_id: first.ledger,
             cursor: (piece[0]?.id ?? 1) - 1,
@@ -135,7 +141,7 @@ test("a rig's new ledger starts a new fold, and a retired rig loses its fold", a
   const store = controlStore();
   const folds = keepFolds(store);
   assert.equal(keepFolds(store), folds, "one set of folds for a store");
-  report(store, "rig-a", "ledger-1", hillClimbEvents("r-1"));
+  await report(store, "rig-a", "ledger-1", hillClimbEvents("r-1"));
   await reported(store, "rig-b", "ledger-b", goalEvents("g-1"));
   assert.equal(rigView(store, "rig-a", OPTS)?.runs.length, 2);
   assert.equal(folds.views(OPTS).length, 2);
@@ -172,16 +178,19 @@ test("a rig's new ledger whose events are still on their way has an empty view, 
   const store = controlStore();
   const { bus } = busOf(store);
   await reported(store, "rig-a", "ledger-1", hillClimbEvents("r-1"));
-  // The bus holds the next page's events: the store's row has the new ledger before the folds.
+  // The bus holds the next page's events: the rig's row has the new ledger before the folds.
   let release = () => {};
   bus.hold = new Promise<void>((r) => {
     release = r;
   });
-  report(store, "rig-a", "ledger-2", goalEvents("r-1").slice(0, 5));
+  const taking = report(store, "rig-a", "ledger-2", goalEvents("r-1").slice(0, 5));
+  const end = Date.now() + 2000;
+  while (store.reportedRigs.reportRow("rig-a")?.ledger_id !== "ledger-2" && Date.now() < end)
+    await new Promise((r) => setTimeout(r, 2));
   assert.deepEqual(rigView(store, "rig-a", OPTS)?.runs, []);
   release();
   bus.hold = undefined;
-  await applied(store);
+  await taking;
   assert.deepEqual(
     rigView(store, "rig-a", OPTS)?.runs.map((r) => r.id),
     ["r-1"],
@@ -313,7 +322,7 @@ describe("a view is its caller's own", () => {
     keepFolds(store);
     const set = VIEW_SETS.find((s) => s.name === "a hill climb with promotions");
     assert.ok(set);
-    set.fill(store);
+    await set.fill(store);
     await applied(store);
     return store;
   };
@@ -371,7 +380,7 @@ describe("a view is its caller's own", () => {
     const store = await filled();
     const held = rigView(store, "rig-h", OPTS);
     const before = structuredClone(held);
-    report(
+    await report(
       store,
       "rig-h",
       "ledger-h",
@@ -407,7 +416,7 @@ describe("a run is read wherever it ran (goal 170)", () => {
   test("from control's run registry: the rig's current ledger, an earlier one after a full reset, a retired rig's", async () => {
     const store = controlStore();
     const folds = keepFolds(store);
-    report(store, "rig-a", "ledger-1", hillClimbEvents("r-1"));
+    await report(store, "rig-a", "ledger-1", hillClimbEvents("r-1"));
     await reported(store, "rig-b", "ledger-b", goalEvents("g-1"));
     const now = await findRun(store, "r-1", OPTS);
     assert.ok(now);
@@ -473,7 +482,7 @@ describe("a run is read wherever it ran (goal 170)", () => {
     const folds = keepFolds(store);
     const n = EARLIER_FOLDS + 2;
     for (let i = 1; i <= n; i++)
-      report(store, "rig-a", `ledger-${i}`, later(goalEvents(`g-${i}`).slice(0, 4), i));
+      await report(store, "rig-a", `ledger-${i}`, later(goalEvents(`g-${i}`).slice(0, 4), i));
     await applied(store);
     // Each run before the newest ledger's is an earlier one.
     for (let i = 1; i < n; i++)

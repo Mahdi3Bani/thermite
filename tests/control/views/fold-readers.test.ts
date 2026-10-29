@@ -28,7 +28,7 @@ const ev = (
   subject,
   body,
 });
-/** When the event at `i` (from 0) of a report happened, as report() times them. */
+/** When the event at `i` (from 0) of a report happened, as await report() times them. */
 const at = (i: number) => new Date(SET_START + i * 60_000).toISOString();
 const sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
 const BASE = "b".repeat(40);
@@ -54,14 +54,14 @@ const published = (run: string, seq: number, patch: Buffer) =>
  */
 async function seeded(): Promise<ControlStore> {
   const store = controlStore();
-  report(store, "rig-a", "ledger-1", [
+  await report(store, "rig-a", "ledger-1", [
     ev("run_created", "r-0", { campaign: "sort", mode: "hill_climb" }),
     ev("agent_message", "r-0", { id: 1, to: "all", text: "The old run's words.", keep: false }),
     ev("epoch_started", "r-0", { n: 1, source: "planner" }),
     published("r-0", 2, OLD),
     ev("rig_check_finished", null, { check: "model", id: "chk-0", ok: false, summary: "old" }),
   ]);
-  report(store, "rig-a", "ledger-2", [
+  await report(store, "rig-a", "ledger-2", [
     ev("run_created", "r-1", { campaign: "sort", mode: "hill_climb" }),
     ev("run_created", "r-2", { campaign: "sort", mode: "hill_climb" }),
     ev("run_status", "r-2", { status: "paused", reason: "the owner paused it" }),
@@ -103,7 +103,7 @@ async function seeded(): Promise<ControlStore> {
       ...callUsage({ at: at(19), calls: 1, tokensIn: 100, cachedIn: null, tokensOut: 20 }),
     }),
   ]);
-  report(store, "rig-b", "ledger-b", [
+  await report(store, "rig-b", "ledger-b", [
     ev("run_created", "r-3", { campaign: "other", mode: "hill_climb" }),
     ev("experiment_added", "r-3", { id: "x-1", title: "unroll", by: "planner", state: "queued" }),
   ]);

@@ -9,7 +9,14 @@ import { rigView } from "../../src/control/views/index.ts";
 import { KbSync } from "../../src/core/kb.ts";
 import { assigned } from "../helpers/assignments.ts";
 import { controlOnly } from "../helpers/control-stack.ts";
-import { applied, busOf, closeBus, controlStore, heldEvents } from "../helpers/control-store.ts";
+import {
+  applied,
+  busOf,
+  closeBus,
+  controlStore,
+  heldEvents,
+  ingestReport,
+} from "../helpers/control-store.ts";
 
 type Ev = [string, string, string, Record<string, unknown>];
 
@@ -24,7 +31,7 @@ async function ingest(
   from = 0,
   ledger = `ledger-${rig}`,
 ) {
-  store.rigEvents.ingest({
+  await ingestReport(store, {
     rig,
     ledger_id: ledger,
     cursor: from,
@@ -40,7 +47,6 @@ async function ingest(
     })),
     summary: {},
   });
-  await applied(store);
 }
 
 /** Two rigs: a goal campaign with a run's journal and experiments, and a research campaign. */
@@ -609,11 +615,8 @@ test("after an upgrade, the runs indexed before get their run and trial items, o
     ["control:owner", "run_status", "gs-3", { status: "paused", reason: "a pause" }],
   ]);
   const kb = store.kb();
-  // As an earlier reading left the store, indexed from control's events table: no run or trial
-  // items, and no reading's version.
-  store.db.exec(
-    "update kb_cursor set seq = (select max(seq) from rig_event); delete from kb_item where kind in ('run', 'trial'); delete from kb_meta;",
-  );
+  // As an earlier reading left the store: no run or trial items, and no reading's version.
+  store.db.exec("delete from kb_item where kind in ('run', 'trial'); delete from kb_meta;");
   const note = kb.search("kept", ["gemv-speed"])[0];
   // Control starts again: the knowledge base reads those events again from the events stream.
   await readKnowledgeAgain(store, busOf(store).bus);
@@ -663,11 +666,9 @@ test("a store built by an earlier reading rebuilds its experiments and attempts 
   const kb = store.kb();
   const [exp] = kb.search("vector", ["gemv-speed"], { kinds: ["experiment"] });
   const whole = exp?.body;
-  // As reading 2 left an item whose details held "Result: ": cut, and its state in its text,
-  // indexed from control's events table.
+  // As reading 2 left an item whose details held "Result: ": cut, and its state in its text.
   store.db.prepare("update kb_item set body = 'cut', meta = '{}' where kind = 'experiment'").run();
   store.db.prepare("update kb_meta set value = '2' where key = 'reading'").run();
-  store.db.exec("update kb_cursor set seq = (select max(seq) from rig_event)");
   await readKnowledgeAgain(store, busOf(store).bus);
   const [again] = kb.search("vector", ["gemv-speed"], { kinds: ["experiment"] });
   assert.equal(again?.body, whole);

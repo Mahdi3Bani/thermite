@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { controlStore, heldEvents } from "../../helpers/control-store.ts";
+import { controlStore, heldEvents, ingestReport } from "../../helpers/control-store.ts";
 
 test("a reported event's run is kept and read back; an event that names none has none (goal 170)", async () => {
   const store = controlStore();
@@ -14,7 +14,7 @@ test("a reported event's run is kept and read back; an event that names none has
     body: {},
     ...(run === undefined ? {} : { run }),
   });
-  store.rigEvents.ingest({
+  await ingestReport(store, {
     rig: "rig-a",
     ledger_id: "ledger-a",
     cursor: 0,

@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { championsIn, uploadChampions } from "../../src/supervisor/champions.ts";
 import { ADMIN, controlStack, RIG_TOKEN, signIn } from "../helpers/control-stack.ts";
-import { applied } from "../helpers/control-store.ts";
+import { applied, ingestReport } from "../helpers/control-store.ts";
 
 const git = (cwd: string, ...args: string[]) =>
   execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], {
@@ -52,7 +52,7 @@ describe("champion patches reach control", () => {
     };
     // Before control has the rig's signed event, the upload waits.
     assert.deepEqual(await uploadChampions(cfg, queue), queue);
-    store.rigEvents.ingest({
+    await ingestReport(store, {
       rig: "rig-a",
       ledger_id: "ledger-a",
       cursor: 0,
@@ -122,7 +122,7 @@ describe("champion patches reach control", () => {
     const { store, control } = controlStack();
     const folder = "examples/matmul-cpu/project";
     const at = new Date().toISOString();
-    store.rigEvents.ingest({
+    await ingestReport(store, {
       rig: "rig-a",
       ledger_id: "ledger-a",
       cursor: 0,

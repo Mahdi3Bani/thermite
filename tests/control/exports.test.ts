@@ -16,6 +16,7 @@ import { describe, test } from "node:test";
 import { tunnelRouteAllowed } from "../../src/control/runpod/tunnel.ts";
 import { uploadExportsOnce } from "../../src/supervisor/export-upload.ts";
 import { controlOnly, signIn } from "../helpers/control-stack.ts";
+import { ingestReport } from "../helpers/control-store.ts";
 
 const OWNER = "owner-token-abcdef";
 const RIG_A = "rig-a-token-abcdef";
@@ -430,7 +431,7 @@ describe("Export and the Exports page (goal 103)", () => {
 
   test("Export on a rig's page sends export_now with full as the owner chose, and says where it will show", async () => {
     const s = setup();
-    s.store.rigEvents.ingest({
+    await ingestReport(s.store, {
       rig: "rig-a",
       ledger_id: "ledger-a",
       cursor: 0,

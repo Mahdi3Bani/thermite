@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { doingsOf, workOf } from "../../../src/control/views/work.ts";
+import { ingestReport } from "../../helpers/control-store.ts";
 import { ev, researchControl, researchRunEvents } from "../../helpers/research-reviews.ts";
 
 /**
@@ -54,7 +55,7 @@ describe("what each lane's trial is doing, in at_work (goal 143)", () => {
       ev("trial_started", { trial: "t-2", lane: "lane-2", family: "contradict", focus: "f2" }),
     ];
     await c.ingest(events);
-    c.store.rigEvents.ingest({
+    await ingestReport(c.store, {
       rig: "rig-a",
       ledger_id: "ledger-a",
       cursor: events.length,

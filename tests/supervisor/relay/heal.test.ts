@@ -26,11 +26,14 @@ async function rig(o: { requireKeyAcceptance?: boolean; clock?: () => Date } = {
   await bus.makeStream(REPORT_STREAM_CONFIG);
   const intake = { store: s.store, control: buildInfo(), requireKeyAcceptance };
   let read = 0;
-  const fold = () =>
-    bus.kept.slice(read).map((m) => {
+  const fold = async () => {
+    const out = [];
+    for (const m of bus.kept.slice(read)) {
       read++;
-      return foldReport(intake, asMessage(m));
-    });
+      out.push(await foldReport(intake, asMessage(m)));
+    }
+    return out;
+  };
   const figures = async (cursor: number): Promise<unknown> => {
     const body = { at: new Date().toISOString(), relay: { cursor } };
     const r = await s.api("POST", "/v1/rigs/rig-a/supervisor", body, RIG_TOKEN);
@@ -65,7 +68,7 @@ describe("a report page refused on the bus heals", () => {
     const end = state.cursor;
     const pages = r.bus.kept.length;
     assert.ok(pages >= 3);
-    for (const f of r.fold())
+    for (const f of await r.fold())
       assert.deepEqual(f, { refused: "the rig's key waits for the owner's acceptance" });
     assert.equal(await r.taken(), 0);
 
@@ -74,7 +77,9 @@ describe("a report page refused on the bus heals", () => {
     state = healCursor(state, await r.figures(state.cursor));
     assert.deepEqual([state.cursor, state.healing], [end, false]);
     state = await relayOnce(r.cfg, state);
-    assert.deepEqual(r.fold(), [{ refused: "the rig's key waits for the owner's acceptance" }]);
+    assert.deepEqual(await r.fold(), [
+      { refused: "the rig's key waits for the owner's acceptance" },
+    ]);
     state = healCursor(state, await r.figures(state.cursor));
     assert.deepEqual([state.cursor, state.healing], [0, true]);
     const pending = r.store.reportedRigs.key("rig-a").pending ?? "";
@@ -90,21 +95,21 @@ describe("a report page refused on the bus heals", () => {
     state = await relayOnce(r.cfg, state);
     assert.equal(state.cursor, 10);
     assert.equal(r.bus.kept.length, kept, "a duplicate: not kept again");
-    assert.deepEqual(r.fold(), []);
+    assert.deepEqual(await r.fold(), []);
     state = healCursor(state, await r.figures(state.cursor));
     assert.equal(state.cursor, 0);
 
     // Once the window has passed, the page is kept and control takes it; the healing ends.
     r.bus.forgetIds();
     state = await relayOnce(r.cfg, state);
-    assert.deepEqual(r.fold(), [{ folded: 10 }]);
+    assert.deepEqual(await r.fold(), [{ folded: 10 }]);
     state = healCursor(state, await r.figures(state.cursor));
     assert.deepEqual([state.cursor, state.healing], [10, false]);
 
     // The rest goes in one round, as before the refusal.
     state = await relayOnce(r.cfg, state);
     assert.equal(state.cursor, end);
-    for (const f of r.fold()) assert.ok("folded" in f, JSON.stringify(f));
+    for (const f of await r.fold()) assert.ok("folded" in f, JSON.stringify(f));
     assert.equal(await r.taken(), end);
     state = healCursor(state, await r.figures(state.cursor));
     assert.deepEqual([state.cursor, state.healing], [end, false]);
@@ -116,20 +121,20 @@ describe("a report page refused on the bus heals", () => {
     const r = await rig({ clock: () => new Date(Date.now() + ahead) });
     r.events(5);
     let state: RelayState = await relayOnce(r.cfg, { cursor: 0, pageLimit: 10 });
-    assert.deepEqual(r.fold(), [{ refused: "report from the future" }]);
+    assert.deepEqual(await r.fold(), [{ refused: "report from the future" }]);
     state = healCursor(state, await r.figures(state.cursor));
     assert.equal(state.healing, false, "a round to read it first");
     // Its clock is set right; the next page is refused too: control has none of the ledger.
     ahead = 0;
     r.events(3, "late");
     state = await relayOnce(r.cfg, state);
-    assert.deepEqual(r.fold(), [{ refused: "a new ledger's events start at 0" }]);
+    assert.deepEqual(await r.fold(), [{ refused: "a new ledger's events start at 0" }]);
     state = healCursor(state, await r.figures(state.cursor));
     assert.deepEqual([state.cursor, state.healing], [0, true]);
     // Sent again from 0: a page that reaches further than the refused one, so a message of its
     // own on the bus at once.
     state = await relayOnce(r.cfg, state);
-    assert.deepEqual(r.fold(), [{ folded: state.cursor }]);
+    assert.deepEqual(await r.fold(), [{ folded: state.cursor }]);
     state = healCursor(state, await r.figures(state.cursor));
     assert.equal(state.healing, false);
     assert.equal(await r.taken(), state.cursor);
@@ -142,14 +147,14 @@ describe("a report page refused on the bus heals", () => {
     // Control has read none of this round's pages when it answers: the supervisor stays.
     state = healCursor(state, await r.figures(state.cursor));
     assert.equal(state.healing, false);
-    assert.equal(r.fold().length, 3);
+    assert.equal((await r.fold()).length, 3);
     r.events(2, "more");
     state = await relayOnce(r.cfg, state);
     // It has all but this round's page: the supervisor's cursor stays again.
     const ahead = healCursor(state, await r.figures(state.cursor));
     assert.equal(ahead.cursor, state.cursor);
     assert.equal(ahead.healing, false);
-    r.fold();
+    await r.fold();
     assert.equal(await r.taken(), state.cursor);
   });
 

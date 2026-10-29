@@ -3,12 +3,12 @@ import { test } from "node:test";
 import { briefingFromKb } from "../../src/control/briefing.ts";
 import { briefingSeedOf } from "../../src/control/kb.ts";
 import type { ControlStore } from "../../src/control/store/index.ts";
-import { applied, controlStore } from "../helpers/control-store.ts";
+import { controlStore, ingestReport } from "../helpers/control-store.ts";
 
 /** One run of `campaign` on `rig`, named `run`, with one finding, in the knowledge base. */
 async function ran(store: ControlStore, rig: string, run: string, words: string) {
   const at = (m: number) => new Date(Date.parse("2026-10-27T01:00:00Z") + m * 60_000).toISOString();
-  store.rigEvents.ingest({
+  await ingestReport(store, {
     rig,
     ledger_id: `ledger-${rig}`,
     cursor: 0,
@@ -34,7 +34,6 @@ async function ran(store: ControlStore, rig: string, run: string, words: string)
     ],
     summary: {},
   });
-  await applied(store);
 }
 
 test("a briefing item from one of two runs of one name, on two rigs, is found by its rig (goal 162)", async () => {

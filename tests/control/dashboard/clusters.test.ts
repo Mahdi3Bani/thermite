@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { mcpClient } from "../../helpers/control-stack.ts";
+import { ingestReport } from "../../helpers/control-store.ts";
 import { control, fakeCluster, KUBECONFIG } from "../../helpers/fake-cluster.ts";
 
 describe("clusters in Providers and Add a rig", () => {
@@ -347,8 +348,8 @@ describe("clusters in Providers and Add a rig", () => {
     await new Promise((r) => setTimeout(r, 20));
     before.store.clusters.setRigStatus("cpu-1", "running");
     // The rig reports what still runs: two trials and the judge's job.
-    const report = (work: Record<string, unknown>) =>
-      before.store.rigEvents.ingest({
+    const report = async (work: Record<string, unknown>) =>
+      await ingestReport(before.store, {
         rig: "cpu-1",
         ledger_id: "l-1",
         cursor: 0,
@@ -357,7 +358,7 @@ describe("clusters in Providers and Add a rig", () => {
         events: [],
         summary: { work },
       });
-    report({ trials: 2, judge_jobs: 1, draining: null });
+    await report({ trials: 2, judge_jobs: 1, draining: null });
     const s = await control(f.k, { store: before.store, secrets: before.secrets, tag: "2" });
     f.calls.length = 0;
     assert.match(
@@ -401,7 +402,7 @@ describe("clusters in Providers and Add a rig", () => {
     assert.ok(f.calls.some((c) => c.args[0] === "apply"));
     // An idle rig is updated at once, with no drain.
     s.store.clusters.setRigStatus("cpu-1", "running");
-    report({ trials: 0, judge_jobs: 0, draining: null });
+    await report({ trials: 0, judge_jobs: 0, draining: null });
     const idle = await control(f.k, { store: s.store, secrets: s.secrets, tag: "3" });
     assert.match(
       await idle.post("/ui/rigs/cpu-1/cluster/images", {}),
@@ -427,8 +428,8 @@ describe("clusters in Providers and Add a rig", () => {
     });
     await new Promise((r) => setTimeout(r, 20));
     before.store.clusters.setRigStatus("cpu-1", "running");
-    const report = (work: Record<string, unknown>) =>
-      before.store.rigEvents.ingest({
+    const report = async (work: Record<string, unknown>) =>
+      await ingestReport(before.store, {
         rig: "cpu-1",
         ledger_id: "l-1",
         cursor: 0,
@@ -437,7 +438,7 @@ describe("clusters in Providers and Add a rig", () => {
         events: [],
         summary: { work },
       });
-    report({ trials: 1, judge_jobs: 0, draining: null });
+    await report({ trials: 1, judge_jobs: 0, draining: null });
     const s = await control(f.k, {
       store: before.store,
       secrets: before.secrets,
@@ -447,11 +448,11 @@ describe("clusters in Providers and Add a rig", () => {
     await s.post("/ui/rigs/cpu-1/cluster/images", {});
     f.calls.length = 0;
     // The rig took the drain, and its trial still runs: no restart.
-    report({ trials: 1, judge_jobs: 0, draining: { since: "x", reason: "r" } });
+    await report({ trials: 1, judge_jobs: 0, draining: { since: "x", reason: "r" } });
     await new Promise((r) => setTimeout(r, 100));
     assert.ok(!f.calls.some((c) => c.args[0] === "apply"));
     // Its trial ended and the judge has no job: the pods restart on the new images.
-    report({ trials: 0, judge_jobs: 0, draining: { since: "x", reason: "r" } });
+    await report({ trials: 0, judge_jobs: 0, draining: { since: "x", reason: "r" } });
     for (let i = 0; i < 50 && !f.calls.some((c) => c.args[0] === "apply"); i++)
       await new Promise((r) => setTimeout(r, 20));
     assert.ok(
@@ -479,8 +480,8 @@ describe("clusters in Providers and Add a rig", () => {
     });
     await new Promise((r) => setTimeout(r, 20));
     before.store.clusters.setRigStatus("cpu-1", "running");
-    const report = (work: Record<string, unknown>) =>
-      before.store.rigEvents.ingest({
+    const report = async (work: Record<string, unknown>) =>
+      await ingestReport(before.store, {
         rig: "cpu-1",
         ledger_id: "l-1",
         cursor: 0,
@@ -489,7 +490,7 @@ describe("clusters in Providers and Add a rig", () => {
         events: [],
         summary: { work },
       });
-    report({ trials: 1, judge_jobs: 0, draining: null });
+    await report({ trials: 1, judge_jobs: 0, draining: null });
     const s = await control(f.k, {
       store: before.store,
       secrets: before.secrets,
@@ -507,11 +508,11 @@ describe("clusters in Providers and Add a rig", () => {
     assert.ok(first);
     s.store.commands.ack("cpu-1", first.id, "delivered", {});
     await new Promise((r) => setTimeout(r, 5));
-    report({ trials: 1, judge_jobs: 0, draining: null });
+    await report({ trials: 1, judge_jobs: 0, draining: null });
     await new Promise((r) => setTimeout(r, 100));
     assert.equal(drains().length, 1);
     // The next report has no drain either: the harness started again and forgot it.
-    report({ trials: 1, judge_jobs: 0, draining: null });
+    await report({ trials: 1, judge_jobs: 0, draining: null });
     for (let i = 0; i < 50 && drains().length < 2; i++) await new Promise((r) => setTimeout(r, 20));
     assert.equal(drains().length, 2);
     assert.match(
@@ -550,7 +551,7 @@ describe("clusters in Providers and Add a rig", () => {
     });
     await new Promise((r) => setTimeout(r, 20));
     before.store.clusters.setRigStatus("cpu-1", "running");
-    before.store.rigEvents.ingest({
+    await ingestReport(before.store, {
       rig: "cpu-1",
       ledger_id: "l-1",
       cursor: 0,

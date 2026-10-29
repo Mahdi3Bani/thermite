@@ -6,6 +6,7 @@ import { issueCommand } from "../../../src/control/issue/index.ts";
 import { STYLE } from "../../../src/control/ui/style/index.ts";
 import { parseContract } from "../../../src/core/contract.ts";
 import { ADMIN, controlOnly, mcpClient, signIn } from "../../helpers/control-stack.ts";
+import { ingestReport } from "../../helpers/control-store.ts";
 
 /**
  * Archive a campaign, and folders for campaigns in the left navigation (goal 077): over REST, MCP
@@ -34,10 +35,10 @@ async function stack() {
     options: { staleAfterMs: 600_000 },
   });
   const next = new Map<string, number>();
-  const ingest = (rig: string, events: Ev[]) => {
+  const ingest = async (rig: string, events: Ev[]) => {
     const from = next.get(rig) ?? 0;
     next.set(rig, from + events.length);
-    store.rigEvents.ingest({
+    await ingestReport(store, {
       rig,
       ledger_id: `ledger-${rig}`,
       cursor: from,
@@ -54,7 +55,7 @@ async function stack() {
       summary: {},
     });
   };
-  ingest("rig-a", [
+  await ingest("rig-a", [
     ["harness", "run_created", "old-sweep-1", { campaign: "old-sweep", mode: "hill_climb" }],
     ["owner", "run_status", "old-sweep-1", { status: "closed", reason: "done" }],
     ["harness", "run_created", "wide-gemm-1", { campaign: "wide-gemm", mode: "hill_climb" }],
@@ -62,7 +63,7 @@ async function stack() {
     ["owner", "run_status", "wide-gemm-1", { status: "paused", reason: "the owner paused it" }],
     ["harness", "run_created", "fast-sort-1", { campaign: "fast-sort", mode: "hill_climb" }],
   ]);
-  ingest("rig-b", [
+  await ingest("rig-b", [
     ["harness", "run_created", "survey-1", { campaign: "survey", mode: "research" }],
   ]);
   const goal = JSON.parse(

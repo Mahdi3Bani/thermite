@@ -9,6 +9,7 @@ import {
   mcpClient,
   RIG_TOKEN,
 } from "../../helpers/control-stack.ts";
+import { ingestReport } from "../../helpers/control-store.ts";
 import { makeJudgeEnv } from "../../helpers/judge-env.ts";
 
 /**
@@ -51,13 +52,13 @@ const DEFAULTS = {
  * Control with three rigs reporting: rig-a with a set of 4 GPUs (2 for the judge), rig-b with no
  * GPU set, and rig-old, whose older harness reports no settings.
  */
-function stack() {
+async function stack() {
   const { store, control: api } = controlOnly({
     tokens: TOKENS,
     options: { staleAfterMs: 600_000 },
   });
-  const report = (rig: string, summary: Record<string, unknown>) =>
-    store.rigEvents.ingest({
+  const report = async (rig: string, summary: Record<string, unknown>) =>
+    await ingestReport(store, {
       rig,
       ledger_id: `ledger-${rig}`,
       cursor: 0,
@@ -66,9 +67,9 @@ function stack() {
       events: [],
       summary,
     });
-  report("rig-a", { settings: DEFAULTS, gpu_split: { set: 4, judge: 2 } });
-  report("rig-b", { settings: DEFAULTS });
-  report("rig-old", {});
+  await report("rig-a", { settings: DEFAULTS, gpu_split: { set: 4, judge: 2 } });
+  await report("rig-b", { settings: DEFAULTS });
+  await report("rig-old", {});
   const call =
     (token: string) =>
     async (method: "GET" | "POST", body?: unknown, rig = "rig-a") => {
@@ -173,7 +174,7 @@ describe("Edit rig's settings over REST and MCP", () => {
   });
 
   test("REST: each field sent alone, signed for owner:api, with Edit rig's words", async () => {
-    const s = stack();
+    const s = await stack();
     for (const [field, value] of FIELDS) {
       const r = await s.set({ [field]: value });
       assert.equal(r.status, 200, field);
@@ -195,7 +196,7 @@ describe("Edit rig's settings over REST and MCP", () => {
       assert.equal(last?.id, r.body.id);
     }
     // No limit on a trial's length (goal 079) or its turns, and the rig's default split, are null.
-    s.report("rig-a", {
+    await s.report("rig-a", {
       settings: { ...DEFAULTS, trial_minutes: 30, max_turns: 50, judge_gpus: 3 },
       gpu_split: { set: 4, judge: 3 },
     });
@@ -216,7 +217,7 @@ describe("Edit rig's settings over REST and MCP", () => {
   });
 
   test("REST: nothing differing sends nothing", async () => {
-    const s = stack();
+    const s = await stack();
     const before = s.store.commands.list(100).length;
     for (const body of [
       {},
@@ -237,7 +238,7 @@ describe("Edit rig's settings over REST and MCP", () => {
   });
 
   test("REST: every refusal in words, in the audit log, and nothing sent", async () => {
-    const s = stack();
+    const s = await stack();
     const cases: [unknown, string, number, string][] = [
       [{ lanes: 2 }, "rig-9", 404, "no rig rig-9"],
       [
@@ -309,7 +310,7 @@ describe("Edit rig's settings over REST and MCP", () => {
   });
 
   test("REST: GET reads the settings the rig reports and its GPU split", async () => {
-    const s = stack();
+    const s = await stack();
     assert.deepEqual((await s.owner("GET")).body, {
       rig: "rig-a",
       settings: DEFAULTS,
@@ -331,7 +332,7 @@ describe("Edit rig's settings over REST and MCP", () => {
   });
 
   test("MCP: the owner sets each field; refusals are errors in the same words", async () => {
-    const s = stack();
+    const s = await stack();
     const owner = await mcpClient(s.api, TOKENS.admin);
     const call = (args: Record<string, unknown>) =>
       owner.callTool({ name: "set_rig_settings", arguments: { rig: "rig-a", ...args } });
@@ -405,7 +406,7 @@ describe("Edit rig's settings over REST and MCP", () => {
   });
 
   test("MCP tokens: an operator changes all but the promotion rule and the GPU split; the agent and the reader change nothing", async () => {
-    const s = stack();
+    const s = await stack();
     const operator = await mcpClient(s.api, TOKENS.operator);
     const agent = await mcpClient(s.api, TOKENS.agent);
     const reader = await mcpClient(s.api, TOKENS.read);

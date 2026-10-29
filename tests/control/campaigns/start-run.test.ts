@@ -3,7 +3,7 @@ import { describe, test } from "node:test";
 import { issueCommand } from "../../../src/control/issue/index.ts";
 import type { ControlStore } from "../../../src/control/store/index.ts";
 import { ADMIN, controlOnly, mcpClient, signIn } from "../../helpers/control-stack.ts";
-import { applied } from "../../helpers/control-store.ts";
+import { ingestReport } from "../../helpers/control-store.ts";
 
 /**
  * Start a run's twins (goal 029): REST's POST /v1/campaigns/<name>/runs and MCP's start_run take
@@ -14,7 +14,7 @@ type Ev = [string, string, string, Record<string, unknown>];
 
 /** A rig's report of `events`, once control applied them from the events stream. */
 async function ingest(store: ControlStore, rig: string, events: Ev[], summary: object = {}) {
-  store.rigEvents.ingest({
+  await ingestReport(store, {
     rig,
     ledger_id: `ledger-${rig}`,
     cursor: 0,
@@ -30,7 +30,6 @@ async function ingest(store: ControlStore, rig: string, events: Ev[], summary: o
     })),
     summary,
   });
-  await applied(store);
 }
 
 const TOKENS = {

@@ -8,7 +8,7 @@ import { SecretBox } from "../../../src/control/secrets.ts";
 import { generateSigningKeys } from "../../../src/core/commands.ts";
 import { keySha256 } from "../../../src/core/tunnel.ts";
 import { controlOnly, mcpClient } from "../../helpers/control-stack.ts";
-import { applied, controlStore } from "../../helpers/control-store.ts";
+import { applied, controlStore, ingestReport } from "../../helpers/control-store.ts";
 import { FAKE_RUNPOD_KEY, fakeRunpod } from "../../helpers/fake-runpod.ts";
 import {
   exportName,
@@ -64,7 +64,7 @@ function setup(o: { noCapacity?: boolean; image?: string | undefined } = {}) {
     rig: string,
     ...events: [kind: string, subject: string, body?: object][]
   ) => {
-    store.rigEvents.ingest({
+    await ingestReport(store, {
       rig,
       ledger_id: "l1",
       cursor: seq,

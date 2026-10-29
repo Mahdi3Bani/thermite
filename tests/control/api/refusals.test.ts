@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { answerOf, BadInput, Refusal } from "../../../src/common/errors.ts";
 import { ADMIN, controlOnly } from "../../helpers/control-stack.ts";
+import { ingestReport } from "../../helpers/control-store.ts";
 
 function control() {
   const { store, control: api } = controlOnly({
@@ -57,7 +58,7 @@ describe("refusals over REST are answered as refusals, never as server errors (g
       body: { campaign: "c", mode: "hill_climb", seed: { repo: "p", commit: "s" } },
     });
     const at = new Date().toISOString();
-    store.rigEvents.ingest({
+    await ingestReport(store, {
       rig: "rig-a",
       ledger_id: "l-a",
       cursor: 0,

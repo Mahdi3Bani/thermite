@@ -6,7 +6,7 @@ import { SecretBox } from "../../../../src/control/secrets.ts";
 import type { ControlStore } from "../../../../src/control/store/index.ts";
 import { generateSigningKeys } from "../../../../src/core/commands.ts";
 import { controlOnly } from "../../../helpers/control-stack.ts";
-import { applied, controlStore } from "../../../helpers/control-store.ts";
+import { controlStore, ingestReport } from "../../../helpers/control-store.ts";
 import { FAKE_RUNPOD_KEY, fakeRunpod } from "../../../helpers/fake-runpod.ts";
 import { supervisorReports } from "../../../helpers/rig-results.ts";
 
@@ -73,7 +73,7 @@ export function setup(o: Parameters<typeof fakeRunpod>[0] = {}) {
  * control's views have it.
  */
 async function reportRun(store: ControlStore, rig: string, run: string, n: number, ended = false) {
-  store.rigEvents.ingest({
+  await ingestReport(store, {
     rig,
     ledger_id: "l1",
     cursor: n - 1,
@@ -92,7 +92,6 @@ async function reportRun(store: ControlStore, rig: string, run: string, n: numbe
       },
     ],
   });
-  await applied(store);
 }
 
 /** A launched rig that enrolled and whose harness reports one running run. */

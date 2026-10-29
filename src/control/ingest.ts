@@ -1,4 +1,4 @@
-import type { Bus, BusMessage } from "../common/bus.ts";
+import { BUS_RETRY_MS, type Bus, type BusMessage } from "../common/bus.ts";
 import { log } from "../common/env.ts";
 import {
   REPORT_CONSUMER_CONFIG,
@@ -9,15 +9,18 @@ import {
   rigOfSubject,
   type SignedReport,
 } from "../core/link/report.ts";
+import { currentEvent } from "../core/names.ts";
 import { type BuildInfo, buildFromHeaders, readBuild } from "../core/version.ts";
-import { tooLargeForBus } from "./events/index.ts";
-import type { ControlStore } from "./store/index.ts";
+import { notForBus, writerOf } from "./events/index.ts";
+import type { ControlStore, IngestReport } from "./store/index.ts";
 import { checkRig } from "./versions.ts";
 
 /**
- * How control takes a rig's signed report: posted to `POST /v1/rigs/<rig>/ingest`, or read from
- * the message bus (goal 168). Both go through takeReport, with the same checks, refusals and
- * records.
+ * How control takes a rig's signed report: posted to `POST /v1/rigs/<rig>/ingest` (by the rig, or
+ * through the tunnel of a rig in pull mode), or read from the message bus (goal 168). Each goes
+ * through takeReport, with the same checks, refusals and records, in the turn of the writer of the
+ * events stream (events/writer.ts), one report at a time: its events go on the stream first, and
+ * control answers once it has applied them.
  */
 
 /** What taking a report needs: the store, control's build, and whether keys wait for the owner. */
@@ -31,16 +34,38 @@ export interface Intake {
 /** A refusal, as the ingest route answers it: its words, and control's cursor after a gap. */
 type Refused = { error: string; expected_cursor?: number | undefined };
 
+/** What taking a report came to: the status and the answer; 503 refuses it for now. */
+export type TakeAnswer = [200, { added: number }] | [400 | 403 | 409 | 503, Refused];
+
+/** The words for a store control made without its bus, as a test's may be. */
+const NO_BUS = "control keeps its rigs' events on its message bus, and has none";
+
 /**
- * Takes a report for `rig`, read by readReport: its signature against the rig's pinned key (pinned
- * or held here at first contact), its events' sizes, its place in the rig's event stream, its
- * time, and the harness's build. The status and the answer.
+ * Takes a report for `rig`, read by readReport, in the turn of the writer of the events stream:
+ * its signature against the rig's pinned key (pinned or held here at first contact), its events'
+ * sizes and names for the bus, its place in the rig's events (the held cursor of its ledger), its
+ * time, and the harness's build. Then the events after the held cursor go on the events stream,
+ * and control answers once it has applied them. The bus away, its store full, or too many reports
+ * waiting: 503, refused for now, and the rig sends it again.
  */
-export function takeReport(
+export async function takeReport(
   t: Intake,
   rig: string,
   read: { report: SignedReport; unknown: number },
-): [200, { added: number }] | [400 | 403 | 409, Refused] {
+): Promise<TakeAnswer> {
+  const writer = writerOf(t.store);
+  if (!writer) return [503, { error: NO_BUS }];
+  const busy = writer.tooMany();
+  if (busy) return [503, { error: busy }];
+  return await writer.turn(() => takeNow(t, rig, read));
+}
+
+/** takeReport in the writer's turn. */
+async function takeNow(
+  t: Intake,
+  rig: string,
+  read: { report: SignedReport; unknown: number },
+): Promise<TakeAnswer> {
   const { store, control } = t;
   const body = read.report;
   if (body.rig !== rig) return [403, { error: "rig mismatch" }];
@@ -53,12 +78,12 @@ export function takeReport(
     store.auditLog.add(`rig:${rig}`, "report_rejected", { reason: "bad signature" });
     return [403, { error: "bad report signature" }];
   }
-  // Every event control keeps goes on the message bus too (control/events): a page with one the
-  // bus can't carry is refused before anything of it is stored, the rig's key too.
-  const tooLarge = tooLargeForBus(body);
-  if (tooLarge) {
-    store.auditLog.add(`rig:${rig}`, "report_refused", { reason: tooLarge });
-    return [409, { error: tooLarge }];
+  // Every event control keeps goes on the message bus (control/events): a page with one the bus
+  // can't carry is refused before anything of it is kept, the rig's key too.
+  const refusedByBus = notForBus(body);
+  if (refusedByBus) {
+    store.auditLog.add(`rig:${rig}`, "report_refused", { reason: refusedByBus });
+    return [409, { error: refusedByBus }];
   }
   if (!key.pubkey) {
     // First contact: pinned, unless the owner must accept every rig's first key.
@@ -71,8 +96,8 @@ export function takeReport(
     if (key.pending?.trim() !== offered) store.reportedRigs.holdKey(rig, offered);
     return [409, { error: "rig key changed: the owner must accept the new key" }];
   }
-  // Freshness and completeness: no report from a ledger this rig has left, no gap in the
-  // event stream, and nothing older than the newest report already taken.
+  // Freshness and completeness: no report from a ledger this rig has left, no gap after the events
+  // control holds of its ledger, and nothing older than the newest report already taken.
   const fresh = store.reportedRigs.reportCheck(rig, {
     ledgerId: body.ledger_id,
     cursor: body.cursor,
@@ -97,11 +122,35 @@ export function takeReport(
     const leftOut = { rig, left_out: read.unknown };
     log("control", "a report with fields control does not know", leftOut, "debug");
   }
-  // The events, and the rig's row. What control derives from them, the apply of the events stream
-  // writes once the copy on the bus has them (control/events).
-  const added = store.rigEvents.ingest(body);
-  noteReportAfterWait(store, rig);
-  return [200, { added }];
+  const kept = await keepReport(store, body);
+  if ("later" in kept) return [503, { error: kept.later }];
+  return [200, kept];
+}
+
+/**
+ * A report that passed control's checks, in the writer's turn: its ledger becomes the rig's
+ * current one and the runs its events create join the run registry, in one transaction, before
+ * the events go on the stream (the registry chooses their subjects); then the events after the
+ * held cursor are published and applied; then the rig's row notes the report, its summary and its
+ * time. A report refused for now keeps none of the row's note: the rig sends it again.
+ */
+export async function keepReport(
+  store: ControlStore,
+  report: IngestReport,
+): Promise<{ added: number } | { later: string }> {
+  const writer = writerOf(store);
+  if (!writer) return { later: NO_BUS };
+  const now = new Date().toISOString();
+  store.tx(() => {
+    store.reportedRigs.enterLedger(report.rig, report.ledger_id, now);
+    for (const e of report.events)
+      store.runRegistry.registerRunCreated(report.rig, report.ledger_id, currentEvent(e));
+  });
+  const written = await writer.publish(report);
+  if ("later" in written) return written;
+  store.reportedRigs.noteReport(report, new Date().toISOString());
+  noteReportAfterWait(store, report.rig);
+  return written;
 }
 
 /**
@@ -129,23 +178,28 @@ function noteReportAfterWait(store: ControlStore, rig: string): void {
   store.rigHistory.add(rig, step, true, "it reported after the wait ended");
 }
 
-/** What one message from the reports stream came to. */
-export type Folded = { folded: number } | { skipped: string } | { refused: string };
+/** What one message from the reports stream came to; `later`: handed again after a while. */
+export type Folded =
+  | { folded: number }
+  | { skipped: string }
+  | { refused: string }
+  | { later: string };
 
 /**
  * Control's place in a rig's events (ReportPlace), for its answer to the supervisor's figures: a
- * supervisor on the message bus goes back there after a page control refused.
+ * supervisor on the message bus goes back there after a page control refused. The cursor is the
+ * held cursor of the rig's current ledger: the events control holds of it.
  */
 export function reportPlace(store: ControlStore, rig: string): ReportPlace {
   const u = store.reportedRigs.reportRow(rig);
-  return typeof u?.ledger_id === "string"
-    ? { ledger_id: u.ledger_id, cursor: Number(u.last_cursor) }
+  return u?.ledger_id
+    ? { ledger_id: u.ledger_id, cursor: u.cursor }
     : { ledger_id: null, cursor: 0 };
 }
 
 /**
  * Whether control holds this report already: from the rig's current ledger, every event in it
- * taken, and a report at least as new taken too. It brings nothing new, such as a page the bus
+ * held, and a report at least as new taken too. It brings nothing new, such as a page the bus
  * hands again after control folded it but before its ack arrived.
  */
 function alreadyTaken(store: ControlStore, rig: string, r: SignedReport): boolean {
@@ -153,8 +207,8 @@ function alreadyTaken(store: ControlStore, rig: string, r: SignedReport): boolea
   return (
     u !== undefined &&
     u.ledger_id === r.ledger_id &&
-    r.next <= Number(u.last_cursor) &&
-    typeof u.report_at === "string" &&
+    r.next <= u.cursor &&
+    u.report_at !== null &&
     r.generated_at <= u.report_at
   );
 }
@@ -163,9 +217,9 @@ function alreadyTaken(store: ControlStore, rig: string, r: SignedReport): boolea
  * One message from the reports stream, through the checks a rig's call to the ingest route gets
  * (rigAuth in api.ts) and then takeReport. The subject's rig must be the report's signed rig. A
  * page control has already is skipped; a refusal, a gap among them, is recorded as over HTTP and
- * logged, since no answer goes back to the supervisor.
+ * logged, since no answer goes back to the supervisor; a page refused for now is handed again.
  */
-export function foldReport(t: Intake, m: BusMessage): Folded {
+export async function foldReport(t: Intake, m: BusMessage): Promise<Folded> {
   const { store, control } = t;
   const rig = rigOfSubject(m.subject);
   const refuse = (error: string, fields: Record<string, unknown> = {}): Folded => {
@@ -193,7 +247,12 @@ export function foldReport(t: Intake, m: BusMessage): Folded {
     store.refusals.countCall(rig);
     return refuse(early, at);
   }
-  const [status, answer] = takeReport(t, rig, read);
+  const [status, answer] = await takeReport(t, rig, read);
+  if (status === 503) {
+    const later = (answer as Refused).error;
+    log("control", "report from the bus taken later", { rig, seq: m.seq, ...at, later }, "debug");
+    return { later };
+  }
   if (status !== 200) {
     const why = answer as Refused;
     return refuse(why.error, { ...at, expected_cursor: why.expected_cursor });
@@ -206,11 +265,13 @@ export function foldReport(t: Intake, m: BusMessage): Folded {
 
 /**
  * Folds the reports stream as it grows (goal 168): makes sure the stream and control's consumer
- * exist, then takes each message in order and acks it once folded, skipped or refused. Runs until
- * the bus is closed.
+ * exist, then takes each message in order and acks it once folded, skipped or refused; a page
+ * refused for now is handed again after BUS_RETRY_MS, before any later one. Runs until the bus is
+ * closed.
  */
 export async function followReports(bus: Pick<Bus, "follow">, t: Intake): Promise<void> {
-  await bus.follow(REPORT_STREAM_CONFIG, REPORT_CONSUMER_CONFIG, (m) => {
-    foldReport(t, m);
+  await bus.follow(REPORT_STREAM_CONFIG, REPORT_CONSUMER_CONFIG, async (m) => {
+    const folded = await foldReport(t, m);
+    return "later" in folded ? { againInMs: BUS_RETRY_MS } : undefined;
   });
 }

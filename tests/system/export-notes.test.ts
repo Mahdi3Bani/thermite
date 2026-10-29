@@ -10,7 +10,7 @@ import { LocalRunner } from "../../src/harness/broker/runner.ts";
 import { ResearchFolder } from "../../src/harness/research/folder.ts";
 import { Research } from "../../src/harness/research/research/index.ts";
 import { exportOnce } from "../../src/supervisor/git-export.ts";
-import { applied, controlStore } from "../helpers/control-store.ts";
+import { controlStore, ingestReport } from "../helpers/control-store.ts";
 import { researchFixture } from "../helpers/fixtures.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";
 
@@ -364,7 +364,7 @@ describe("a run's export holds its journal, its research notes and its briefing"
     // The same items control files from the same events, field by field.
     const store = controlStore();
     const events = s.ledger.eventsAfter(0, 100_000).events;
-    store.rigEvents.ingest({
+    await ingestReport(store, {
       rig: s.rig,
       ledger_id: "l-1",
       cursor: 0,
@@ -373,7 +373,6 @@ describe("a run's export holds its journal, its research notes and its briefing"
       events,
       summary: {},
     });
-    await applied(store);
     const filed = store
       .kb()
       .changedAfter([String(s.ledger.runs.get(RUN)?.campaign)], 0)

@@ -9,7 +9,7 @@ import { goalChecks } from "../../../src/core/goal/index.ts";
 import { KitSchema } from "../../../src/core/kit.ts";
 import { seedDemo } from "../../helpers/control-demo.ts";
 import { ADMIN, controlOnly, mcpClient, signIn } from "../../helpers/control-stack.ts";
-import { applied } from "../../helpers/control-store.ts";
+import { applied, ingestReport } from "../../helpers/control-store.ts";
 
 /**
  * Goal 082 on control's side: what the judge found about an attempt, from the rig's events, on
@@ -36,7 +36,7 @@ async function control(kits?: KitRepos) {
   const ingest = async (
     events: { kind: string; subject: string; body: Record<string, unknown> }[],
   ) => {
-    store.rigEvents.ingest({
+    await ingestReport(store, {
       rig: "rig-a",
       ledger_id: "ledger-a",
       cursor: id,
@@ -49,7 +49,6 @@ async function control(kits?: KitRepos) {
       })),
       summary: {},
     });
-    await applied(store);
   };
   return { store, page, rest, mcp, ingest };
 }
@@ -311,7 +310,7 @@ describe("each goal's real check on control (goal 082)", () => {
 describe("the dashboard demo's goal checks (goal 082)", () => {
   test("a goal run reported by its rig: its Goals block and its campaign's page show how each goal is checked", async () => {
     const c = await control();
-    seedDemo(c.store);
+    await seedDemo(c.store);
     await applied(c.store);
     const run = await c.page("/ui/campaigns/opus-simd/runs/dec-2");
     assert.match(run, /<summary>How it is checked<\/summary>/);

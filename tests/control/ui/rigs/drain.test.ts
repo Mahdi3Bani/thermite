@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { drainBanner, drainOf, drainSaid } from "../../../../src/control/ui/rigs/drain.ts";
+import { ingestReport } from "../../../helpers/control-store.ts";
 import { ev, part, researchControl, researchRunEvents } from "../../../helpers/research-reviews.ts";
 
 /**
@@ -44,7 +45,7 @@ async function draining(work?: Record<string, unknown>) {
     refused_again: null,
     ...more,
   });
-  c.store.rigEvents.ingest({
+  await ingestReport(c.store, {
     rig: "rig-a",
     ledger_id: "ledger-a",
     cursor: events.length,

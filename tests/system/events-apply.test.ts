@@ -5,11 +5,11 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { EventsApply } from "../../src/control/events/index.ts";
 import { ControlStore } from "../../src/control/store/index.ts";
-import { EVENT_HEADERS, EVENT_STREAM } from "../../src/core/link/events.ts";
+import { EVENT_STREAM } from "../../src/core/link/events.ts";
 import { callUsage } from "../../src/core/usage.ts";
 import { assigned } from "../helpers/assignments.ts";
 import { controlStack } from "../helpers/control-stack.ts";
-import { applied, busOf, closeBus, controlStore } from "../helpers/control-store.ts";
+import { applied, busOf, closeBus, controlStore, ingestReport } from "../helpers/control-store.ts";
 import { FakeBus } from "../helpers/fake-bus.ts";
 import { appendOther } from "../helpers/kinds.ts";
 
@@ -19,7 +19,8 @@ import { appendOther } from "../helpers/kinds.ts";
  * restart goes on from that place, a store older than the stream catches up, a store past the
  * stream's end is refused; an event applied twice changes nothing; each rig ledger's held cursor;
  * the knowledge base's cursors; the subjects of a run a page creates; and a page posted over HTTP
- * reaching the derived state through the bus.
+ * reaching the derived state through the bus. The knowledge base of a store moved from its events
+ * table is in events-move.test.ts.
  */
 
 type Ev = {
@@ -30,10 +31,10 @@ type Ev = {
   body?: unknown;
 };
 
-/** A page of a rig's ledger, as a report taken stores it. */
-function page(store: ControlStore, rig: string, ledger: string, events: Ev[]): void {
+/** A page of a rig's ledger, taken as a report that passed control's checks is. */
+async function page(store: ControlStore, rig: string, ledger: string, events: Ev[]): Promise<void> {
   const first = events[0]?.id ?? 1;
-  store.rigEvents.ingest({
+  await ingestReport(store, {
     rig,
     ledger_id: ledger,
     cursor: first - 1,
@@ -121,7 +122,7 @@ describe("control's records, applied from the events stream", () => {
     const store = controlStore();
     assigned(store, "rig-a", "gs-1", "gemv");
     issued(store, "rig-a", "cmd-1");
-    page(store, "rig-a", "l-1", RUN_PAGE);
+    await page(store, "rig-a", "l-1", RUN_PAGE);
     await applied(store);
     const d = derived(store);
     assert.deepEqual(d.registry, [
@@ -147,7 +148,7 @@ describe("control's records, applied from the events stream", () => {
     assert.equal(d.place, 5, "the stream's place of the last event");
 
     // A transaction that fails part way keeps nothing of the page, its place neither, and the
-    // apply tries again until it goes through.
+    // apply tries again until it goes through; the report waits for it.
     const { apply } = busOf(store);
     const recordCall = store.usage.recordCall.bind(store.usage);
     let fail = true;
@@ -156,11 +157,10 @@ describe("control's records, applied from the events stream", () => {
       recordCall(...a);
     };
     issued(store, "rig-a", "cmd-2");
-    page(store, "rig-a", "l-1", [
+    const done = page(store, "rig-a", "l-1", [
       { id: 6, kind: "command", subject: "cmd-2", body: { accepted: false } },
       { id: 7, kind: "model_call", subject: "gs-1", run: "gs-1", body: call("t-2") },
     ]);
-    const done = applied(store);
     const end = Date.now() + 2000;
     while (apply.waiting === null && Date.now() < end) await new Promise((r) => setTimeout(r, 2));
     assert.equal(apply.waiting, "disk I/O error");
@@ -181,13 +181,13 @@ describe("control's records, applied from the events stream", () => {
     const first = controlStore(path);
     assigned(first, "rig-a", "gs-1", "gemv");
     issued(first, "rig-a", "cmd-1");
-    page(first, "rig-a", "l-1", RUN_PAGE.slice(0, 3));
+    await page(first, "rig-a", "l-1", RUN_PAGE.slice(0, 3));
     await applied(first);
     const bus = busOf(first).bus;
     closeBus(first);
     // Control starts again on the same store and bus, and takes the rest of the ledger.
     const second = controlStore(path, bus);
-    page(second, "rig-a", "l-1", RUN_PAGE.slice(3));
+    await page(second, "rig-a", "l-1", RUN_PAGE.slice(3));
     await applied(second);
     assert.equal(busOf(second).apply.applied, 2, "only what came after the store's place");
     assert.equal(second.busPositions.of(EVENT_STREAM), 5);
@@ -200,13 +200,13 @@ describe("control's records, applied from the events stream", () => {
     const live = controlStore(join(dir, "control.db"));
     assigned(live, "rig-a", "gs-1", "gemv");
     issued(live, "rig-a", "cmd-1");
-    page(live, "rig-a", "l-1", RUN_PAGE.slice(0, 2));
+    await page(live, "rig-a", "l-1", RUN_PAGE.slice(0, 2));
     await applied(live);
     // A backup of the store, then more events.
     const backup = join(dir, "backup.db");
     live.db.exec(`vacuum into '${backup}'`);
-    page(live, "rig-a", "l-1", RUN_PAGE.slice(2));
-    page(live, "rig-b", "l-b", [{ id: 1, kind: "journal_note" }]);
+    await page(live, "rig-a", "l-1", RUN_PAGE.slice(2));
+    await page(live, "rig-b", "l-b", [{ id: 1, kind: "journal_note" }]);
     await applied(live);
     const bus = busOf(live).bus;
     closeBus(live);
@@ -236,7 +236,7 @@ describe("control's records, applied from the events stream", () => {
     const store = controlStore();
     assigned(store, "rig-a", "gs-1", "gemv");
     issued(store, "rig-a", "cmd-1");
-    page(store, "rig-a", "l-1", RUN_PAGE);
+    await page(store, "rig-a", "l-1", RUN_PAGE);
     await applied(store);
     const before = derived(store);
     // As if the store lost its place and the stream handed every message again.
@@ -260,15 +260,15 @@ describe("control's records, applied from the events stream", () => {
 
   test("each rig ledger keeps its own held cursor, across a full reset's new ledger", async () => {
     const store = controlStore();
-    page(store, "rig-a", "l-1", [
+    await page(store, "rig-a", "l-1", [
       { id: 1, kind: "journal_note" },
       { id: 2, kind: "journal_note" },
       { id: 3, kind: "journal_note" },
     ]);
-    page(store, "rig-b", "l-b", [{ id: 1, kind: "journal_note" }]);
+    await page(store, "rig-b", "l-b", [{ id: 1, kind: "journal_note" }]);
     await applied(store);
     // A full reset: rig-a's new ledger starts again at event 1.
-    page(store, "rig-a", "l-2", [
+    await page(store, "rig-a", "l-2", [
       { id: 1, kind: "journal_note" },
       { id: 2, kind: "journal_note" },
     ]);
@@ -277,12 +277,12 @@ describe("control's records, applied from the events stream", () => {
     assert.equal(store.reportedRigs.heldCursor("rig-a", "l-2"), 2);
     assert.equal(store.reportedRigs.heldCursor("rig-b", "l-b"), 1);
     assert.equal(store.reportedRigs.heldCursor("rig-a", "l-9"), 0, "a ledger never applied");
-    // The gap check keeps its cursor: the rig's row, as ingest moves it.
+    // Control's place in the rig's events is its current ledger's held cursor.
     const row = store.reportedRigs.reportRow("rig-a");
-    assert.deepEqual([row?.ledger_id, row?.last_cursor], ["l-2", 2]);
+    assert.deepEqual([row?.ledger_id, row?.cursor], ["l-2", 2]);
   });
 
-  test("the knowledge base: indexed once, across the table's gaps, and a rig's cursor counts items", async () => {
+  test("the knowledge base: each event indexed once, and a rig's cursor counts items", async () => {
     const store = controlStore();
     assigned(store, "rig-a", "gs-1", "gemv");
     const note = (id: number, text: string): Ev => ({
@@ -292,24 +292,13 @@ describe("control's records, applied from the events stream", () => {
       run: "gs-1",
       body: { id, by: "lane-1", kind: "lesson", text },
     });
-    page(store, "rig-a", "l-1", [
+    await page(store, "rig-a", "l-1", [
       { id: 1, kind: "run_created", subject: "gs-1", run: "gs-1", body: { campaign: "gemv" } },
       note(2, "first lesson"),
     ]);
-    // The table's seq jumps: the stream's places no longer equal the table's seqs after this.
-    store.db.exec("update sqlite_sequence set seq = seq + 10 where name = 'rig_event'");
-    page(store, "rig-a", "l-1", [note(3, "second lesson"), note(4, "third lesson")]);
-    await applied(store);
-    const kept = busOf(store).bus.kept.filter((k) => k.stream === EVENT_STREAM);
-    assert.deepEqual(
-      kept.map((k) => [k.seq, Number(k.headers[EVENT_HEADERS.seq])]),
-      [
-        [1, 1],
-        [2, 2],
-        [3, 13],
-        [4, 14],
-      ],
-    );
+    // The same page again, and the next: each event once.
+    await page(store, "rig-a", "l-1", [note(2, "first lesson"), note(3, "second lesson")]);
+    await page(store, "rig-a", "l-1", [note(4, "third lesson")]);
     const kb = store.kb();
     const items = () => kb.changedAfter(["gemv"], 0).map((x) => [x.seq, x.ref]);
     assert.deepEqual(items(), [
@@ -320,10 +309,9 @@ describe("control's records, applied from the events stream", () => {
     ]);
     // A run's sync from the cursor a rig holds: the items after it, by their seqs.
     assigned(store, "rig-b", "gs-2", "gemv");
-    page(store, "rig-b", "l-b", [
+    await page(store, "rig-b", "l-b", [
       { id: 1, kind: "run_created", subject: "gs-2", run: "gs-2", body: { campaign: "gemv" } },
     ]);
-    await applied(store);
     const sync = kb.sync("rig-b", "gs-2", 2);
     assert.deepEqual(
       sync?.items.map((x) => [x.seq, x.ref]),
@@ -333,43 +321,11 @@ describe("control's records, applied from the events stream", () => {
       ],
     );
     assert.equal(sync?.next, 4);
-
-    // A store upgraded from before the apply: the table's catch-up indexed up to seq 13 (the
-    // second lesson), and the apply goes through the whole stream once. It indexes only the events
-    // after 13, by the seq their messages carry: none twice, none skipped.
-    const upgraded = controlStore();
-    assigned(upgraded, "rig-a", "gs-1", "gemv");
-    const kbUp = upgraded.kb();
-    for (const e of [
-      { kind: "run_created", subject: "gs-1", body: { campaign: "gemv" } },
-      { kind: "journal_note", subject: "gs-1", body: note(2, "first lesson").body },
-      { kind: "journal_note", subject: "gs-1", body: note(3, "second lesson").body },
-    ])
-      kbUp.index(
-        { rig: "rig-a", ledger: "l-1" },
-        { at: "2026-10-29T05:00:00.000Z", actor: "harness", ...e },
-      );
-    upgraded.db.exec("update kb_cursor set seq = 13");
-    const before = kbUp.changedAfter(["gemv"], 0).map((x) => [x.seq, x.ref]);
-    assert.deepEqual(before, [
-      [1, "gs-1"],
-      [2, "2"],
-      [3, "3"],
-    ]);
-    const apply = new EventsApply({ store: upgraded, bus: busOf(store).bus, retryMs: 5 });
-    await apply.start();
-    await apply.nudge();
-    assert.deepEqual(
-      kbUp.changedAfter(["gemv"], 0).map((x) => [x.seq, x.ref]),
-      [...before, [4, "4"]],
-      "the third lesson alone is new",
-    );
-    assert.equal(kbUp.indexedFromTable(), 13, "the table's cursor does not move");
   });
 
   test("a page that creates a run puts every event of the run on the run's subject", async () => {
     const store = controlStore();
-    page(store, "rig-a", "l-1", [
+    await page(store, "rig-a", "l-1", [
       { id: 1, kind: "run_created", subject: "nr-1", run: "nr-1", body: { campaign: "c" } },
       { id: 2, kind: "trial_started", subject: "nr-1", run: "nr-1" },
       { id: 3, kind: "experiment_added", subject: "nr-1", run: "nr-1" },
@@ -377,7 +333,7 @@ describe("control's records, applied from the events stream", () => {
       { id: 4, kind: "dev_run", run: "nr-2" },
     ]);
     // rig-b's event of rig-a's run: on rig-b's own subject.
-    page(store, "rig-b", "l-b", [{ id: 1, kind: "dev_run", run: "nr-1" }]);
+    await page(store, "rig-b", "l-b", [{ id: 1, kind: "dev_run", run: "nr-1" }]);
     await applied(store);
     assert.deepEqual(
       busOf(store)

@@ -1,5 +1,6 @@
 import type { ControlStore } from "../../src/control/store/index.ts";
 import type { LiveEntry } from "../../src/core/live.ts";
+import { ingestReport } from "./control-store.ts";
 
 /**
  * A realistic control store for dashboard tests and demos: three rigs, a goal campaign with two
@@ -8,14 +9,14 @@ import type { LiveEntry } from "../../src/core/live.ts";
  * a hill climb whose rig waits for the owner's approval of a confirmed win, with an earlier one the
  * auditor blocked. Every event has the shape the harness writes; names are generic.
  */
-export function seedDemo(store: ControlStore, now = Date.now()): void {
+export async function seedDemo(store: ControlStore, now = Date.now()): Promise<void> {
   const at = (minutesAgo: number) => new Date(now - minutesAgo * 60_000).toISOString();
-  const rig = (
+  const rig = async (
     id: string,
     events: [number, string, string | null, Record<string, unknown>][],
     summary: Record<string, unknown>,
   ) => {
-    store.rigEvents.ingest({
+    await ingestReport(store, {
       rig: id,
       ledger_id: `ledger-${id}`,
       cursor: 0,
@@ -77,7 +78,7 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
   );
 
   // ---------------------------------------------------------------- rig-a: dec-1, an attempt held for an audit
-  rig(
+  await rig(
     "rig-a",
     [
       [
@@ -278,7 +279,7 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
   );
 
   // ---------------------------------------------------------------- rig-b: dec-2, at work
-  rig(
+  await rig(
     "rig-b",
     [
       [
@@ -523,7 +524,7 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
         { seq, attempt, commit: `${attempt.slice(2)}`.padEnd(40, "0") },
       ],
     ] as [number, string, string | null, Record<string, unknown>][];
-  rig(
+  await rig(
     "rig-c",
     [
       [

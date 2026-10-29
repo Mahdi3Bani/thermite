@@ -9,7 +9,7 @@ import { promisify } from "node:util";
 import { serve } from "@hono/node-server";
 import type { DirectionView } from "../../src/control/views/index.ts";
 import { ADMIN, controlStack, mcpClient } from "../helpers/control-stack.ts";
-import { applied } from "../helpers/control-store.ts";
+import { ingestReport } from "../helpers/control-store.ts";
 
 /**
  * Rules name directions (goal 066), over REST, MCP and the command line, against a real harness
@@ -243,7 +243,7 @@ describe("rules name directions over REST, MCP and the command line (goal 066)",
 
   test("control refuses a research run a rule for another direction than its task kinds", async () => {
     const { store, api } = controlStack({ tokens: { rigs: {} } });
-    store.rigEvents.ingest({
+    await ingestReport(store, {
       rig: "rig-r",
       ledger_id: "ledger-r",
       cursor: 0,
@@ -261,7 +261,6 @@ describe("rules name directions over REST, MCP and the command line (goal 066)",
       ],
       summary: {},
     });
-    await applied(store);
     const post = (family: string) =>
       api("POST", "/v1/commands", {
         rig: "rig-r",

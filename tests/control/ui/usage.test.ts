@@ -7,7 +7,7 @@ import { PRICE_CORE_JS } from "../../../src/control/ui/providers/client.ts";
 import { bars, dayEdges, PRICE_WORDS } from "../../../src/control/ui/usage.ts";
 import { callUsage, startOfDay } from "../../../src/core/usage.ts";
 import { ADMIN, controlOnly, signIn } from "../../helpers/control-stack.ts";
-import { applied } from "../../helpers/control-store.ts";
+import { ingestReport } from "../../helpers/control-store.ts";
 
 /**
  * Model use and cost on the screens (goal 075, as the owner approved the mockup v010-usage): the
@@ -59,7 +59,7 @@ async function ingest(
   events: [string, string, Record<string, unknown>][],
   first = 1,
 ) {
-  store.rigEvents.ingest({
+  await ingestReport(store, {
     rig,
     ledger_id: `ledger-${rig}`,
     cursor: first - 1,
@@ -75,7 +75,6 @@ async function ingest(
     })),
     summary: {},
   });
-  await applied(store);
 }
 
 /**

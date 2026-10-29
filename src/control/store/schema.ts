@@ -1,10 +1,17 @@
 import type { DatabaseSync, SQLInputValue } from "node:sqlite";
-import { copyBeforeMigration, newerSchemaWords } from "../../common/db-copy.ts";
+import { copyBeforeMigration, keepCopyBefore, newerSchemaWords } from "../../common/db-copy.ts";
 import { transaction } from "../../common/sqlite.ts";
 import { busKeyTables, busSealKeyColumn } from "./bus.ts";
-import { eventsInOrderIndex } from "./events.ts";
+import {
+  dropEventsTable,
+  type EventsMoved,
+  eventsInOrderIndex,
+  eventsTableHoldsRows,
+  eventsTableMayGo,
+} from "./events.ts";
 import { synthesizerAndWriterSlots } from "./models.ts";
 import { appliedPlacesTables } from "./positions.ts";
+import { migrateModelRoutes } from "./providers.ts";
 import { runRegistryTable } from "./runs.ts";
 
 /**
@@ -714,14 +721,36 @@ const STORE_MIGRATIONS: readonly ((db: DatabaseSync) => void)[] = [
   synthesizerAndWriterSlots,
   // How far the store applied the events stream, and each rig ledger's held cursor (goal 168).
   appliedPlacesTables,
+  // Control's events table goes, once the events stream holds it whole (EVENTS_TABLE_GOES).
+  dropEventsTable,
 ];
 
 /**
- * Brings the store to this code's schema. A store with tables in it is copied first (goal 173),
- * so an update that migrates can be undone; a store newer than this code is refused, with the copy
- * to restore.
+ * The migration that drops control's events table (goal 168). It waits until the move of the
+ * table's rows to the events stream has checked them there (control/events/move.ts), which needs
+ * the bus, and so runs after the store is open: control then migrates again, given what the move
+ * found (ControlStore.migrate). The migrations after it wait with it. The copy before it is kept
+ * outside the copies' rotation, until the owner removes it: it is the last copy of the table.
  */
-export function migrateStore(db: DatabaseSync, path: string): void {
+const EVENTS_TABLE_GOES = 12;
+
+/** What control gives a migration that waits for what it does outside the store. */
+export interface MigrateGiven {
+  /** The move's check of the events stream against control's events table. */
+  eventsMoved?: EventsMoved | undefined;
+}
+
+/**
+ * Brings the store to this code's schema, as far as it may go now (EVENTS_TABLE_GOES). A store
+ * with tables in it is copied first (goal 173), so an update that migrates can be undone; a store
+ * newer than this code is refused, with the copy to restore. Returns the path of a copy kept
+ * outside the rotation, made now.
+ */
+export function migrateStore(
+  db: DatabaseSync,
+  path: string,
+  given: MigrateGiven = {},
+): string | undefined {
   // Read before anything is created, so the copy below is the store exactly as it was.
   const versioned = db
     .prepare("select 1 from sqlite_master where type = 'table' and name = 'schema_migrations'")
@@ -732,54 +761,26 @@ export function migrateStore(db: DatabaseSync, path: string): void {
   const current = row?.v ?? 0;
   const known = STORE_MIGRATIONS.length;
   if (current > known) throw new Error(newerSchemaWords("control store", path, current, known));
-  if (current === known) return;
+  const waits = current < EVENTS_TABLE_GOES && !eventsTableMayGo(db, given.eventsMoved);
+  const to = waits ? EVENTS_TABLE_GOES - 1 : known;
+  if (current >= to) return undefined;
   const tables = db
     .prepare(
       "select count(*) as n from sqlite_master where type = 'table' and name not like 'sqlite_%' and name != 'schema_migrations'",
     )
     .get() as { n: number };
-  if (path !== ":memory:" && tables.n > 0) copyBeforeMigration(db, path, current, known);
+  let kept: string | undefined;
+  if (path !== ":memory:" && tables.n > 0) {
+    if (to >= EVENTS_TABLE_GOES && eventsTableHoldsRows(db))
+      kept = keepCopyBefore(db, path, current, to, "the last copy of control's events table");
+    else copyBeforeMigration(db, path, current, to);
+  }
   db.exec("create table if not exists schema_migrations (version integer primary key)");
   // Each migration in a transaction of its own, as the ledger's: all of it, or none.
-  for (let version = current + 1; version <= known; version++)
+  for (let version = current + 1; version <= to; version++)
     transaction(db, () => {
       STORE_MIGRATIONS[version - 1]?.(db);
       db.prepare("insert into schema_migrations (version) values (?)").run(version);
     });
-}
-
-/**
- * The settings page's first version stored one route per model (model_route, rig_model_route).
- * Each becomes a provider of type openai with that model, and its rigs keep their model.
- */
-function migrateModelRoutes(db: DatabaseSync): void {
-  const has = (t: string) =>
-    db.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(t);
-  if (!has("model_route")) return;
-  const now = new Date().toISOString();
-  const routes = db.prepare("select * from model_route").all() as Row[];
-  for (const r of routes)
-    db.prepare(
-      `insert or ignore into model_provider (name, type, base_url, key_sealed, key_hint, version, updated_at, models)
-       values (?, 'openai', ?, ?, ?, 1, ?, ?)`,
-    ).run(
-      String(r.name),
-      String(r.base_url),
-      String(r.key_sealed),
-      String(r.key_hint),
-      now,
-      JSON.stringify([{ id: String(r.model), added: true }]),
-    );
-  if (has("rig_model_route")) {
-    const given = db.prepare("select * from rig_model_route").all() as Row[];
-    for (const g of given) {
-      const route = routes.find((r) => r.name === g.route);
-      if (route)
-        db.prepare(
-          "insert or ignore into rig_model (rig, provider, model, assigned_at) values (?, ?, ?, ?)",
-        ).run(String(g.rig), String(route.name), String(route.model), now);
-    }
-    db.exec("drop table rig_model_route");
-  }
-  db.exec("drop table model_route");
+  return kept;
 }

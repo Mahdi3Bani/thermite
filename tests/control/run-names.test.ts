@@ -7,7 +7,7 @@ import { nextRunName } from "../../src/control/run-names.ts";
 import type { ControlStore } from "../../src/control/store/index.ts";
 import { findRun } from "../../src/control/views/index.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
-import { applied, controlStore } from "../helpers/control-store.ts";
+import { controlStore, ingestReport } from "../helpers/control-store.ts";
 
 /** A rig's report of these events, in `ledger`. */
 async function report(
@@ -16,7 +16,7 @@ async function report(
   ledger: string,
   events: [string, string, object][],
 ) {
-  store.rigEvents.ingest({
+  await ingestReport(store, {
     rig,
     ledger_id: ledger,
     cursor: 0,
@@ -32,7 +32,6 @@ async function report(
     })),
     summary: {},
   });
-  await applied(store);
 }
 
 describe("a run's name is used once on control (goal 170)", () => {

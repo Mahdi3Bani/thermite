@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { controlOnly, mcpClient, signIn } from "../../helpers/control-stack.ts";
-import { applied } from "../../helpers/control-store.ts";
+import { ingestReport } from "../../helpers/control-store.ts";
 
 /**
  * Goal 115 on control's side, from a rig's events: a hill climb that waits for the judge's
@@ -25,7 +25,7 @@ async function control() {
   const ingest = async (
     events: { kind: string; subject: string; body: Record<string, unknown> }[],
   ) => {
-    store.rigEvents.ingest({
+    await ingestReport(store, {
       rig: "rig-a",
       ledger_id: "ledger-a",
       cursor: id,
@@ -38,7 +38,6 @@ async function control() {
       })),
       summary: {},
     });
-    await applied(store);
   };
   return { page, rest, mcp, ingest };
 }

@@ -9,7 +9,7 @@ import { generateSigningKeys } from "../../src/core/commands.ts";
 import { verifyExport } from "../../src/supervisor/git-export.ts";
 import { relayOnce } from "../../src/supervisor/relay/index.ts";
 import { ADMIN, controlOnly, controlStack } from "../helpers/control-stack.ts";
-import { heldEvents } from "../helpers/control-store.ts";
+import { heldEvents, ingestReport } from "../helpers/control-store.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";
 import { appendOther } from "../helpers/kinds.ts";
 
@@ -65,7 +65,7 @@ describe("signed reports at control", () => {
     assert.deepEqual(kinds, ["one", "two"]);
     // A rig that moved to a new ledger never goes back to the one it left.
     const base = { rig: "rig-a", cursor: 0, next: 0, events: [], summary: {} };
-    store.rigEvents.ingest({
+    await ingestReport(store, {
       ...base,
       ledger_id: "ledger-new",
       generated_at: new Date().toISOString(),

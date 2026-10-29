@@ -10,7 +10,7 @@ describe("retiring a rig that is gone", () => {
     // A rig that reported once, long ago: it shows as not reporting.
     store.db
       .prepare(
-        "insert into rig (id, first_seen, last_seen, last_cursor, ledger_id, summary, report_at) values (?, ?, ?, 0, null, '{}', ?)",
+        "insert into rig (id, first_seen, last_seen, ledger_id, summary, report_at) values (?, ?, ?, null, '{}', ?)",
       )
       .run("rig-a", "2026-10-01T00:00:00Z", "2026-10-01T00:00:00Z", "2026-10-01T00:00:00Z");
     const { page, csrfOf, post: send } = await signIn(api);
@@ -22,7 +22,7 @@ describe("retiring a rig that is gone", () => {
     // A rig that never reported has no last report: "not yet", not days since 1970.
     store.db
       .prepare(
-        "insert into rig (id, first_seen, last_seen, last_cursor, ledger_id, summary, report_at) values (?, ?, ?, 0, null, '{}', ?)",
+        "insert into rig (id, first_seen, last_seen, ledger_id, summary, report_at) values (?, ?, ?, null, '{}', ?)",
       )
       .run("rig-new", "2026-10-19T00:00:00Z", new Date(0).toISOString(), new Date(0).toISOString());
     assert.match(await page("/ui/rigs/rig-new"), /rig-new has not reported yet\./);

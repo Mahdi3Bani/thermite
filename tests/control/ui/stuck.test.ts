@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { stuckTrials } from "../../../src/control/ui/stuck.ts";
+import { ingestReport } from "../../helpers/control-store.ts";
 import { ev, RUN, researchControl, researchRunEvents } from "../../helpers/research-reviews.ts";
 
 /**
@@ -59,8 +60,8 @@ async function stuckRun(settings: Record<string, unknown> = { quiet_minutes: 30 
     ev("trial_started", { trial: "t-3", lane: "lane-3", family: "primary", focus: "f3" }),
   ];
   await c.ingest(events);
-  const report = (lane2: Record<string, unknown>) =>
-    c.store.rigEvents.ingest({
+  const report = async (lane2: Record<string, unknown>) =>
+    await ingestReport(c.store, {
       rig: "rig-a",
       ledger_id: "ledger-a",
       cursor: events.length,
@@ -80,7 +81,7 @@ async function stuckRun(settings: Record<string, unknown> = { quiet_minutes: 30 
         },
       },
     });
-  report(QUIET);
+  await report(QUIET);
   return { ...c, report };
 }
 
@@ -167,7 +168,7 @@ describe("a stuck trial asks under Needs you (goal 143)", () => {
     const audit = c.store.auditLog.list(5).find((a) => a.action === "trial_left");
     assert.equal(audit?.actor, "owner:ui");
     // It sent a line, then went quiet again: the card is back.
-    c.report({ ...QUIET, last_line_at: ago(45) });
+    await c.report({ ...QUIET, last_line_at: ago(45) });
     assert.match(needsOf(await c.page(RUN)), /lane-2(&#39;|')s trial has sent nothing for 45 min/);
     // A form that is not a stuck trial's card is refused.
     const bad = await c.post(`${RUN}/trials/t-2/leave`, {
@@ -233,8 +234,8 @@ test("a trial that asks again and again for a refused page is stuck too (goals 1
     times,
   });
   // Its answer counts the asks, so it is no streak of the same answer: goal 136's count says it.
-  const report = (times: number) =>
-    c.store.rigEvents.ingest({
+  const report = async (times: number) =>
+    await ingestReport(c.store, {
       rig: "rig-a",
       ledger_id: "ledger-a",
       cursor: 0,
@@ -250,9 +251,9 @@ test("a trial that asks again and again for a refused page is stuck too (goals 1
         },
       },
     });
-  report(3);
+  await report(3);
   assert.doesNotMatch(needsOf(await c.page(RUN)), /refused/);
-  report(12);
+  await report(12);
   const page = await c.page(RUN);
   const needs = needsOf(page);
   assert.match(

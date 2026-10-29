@@ -12,7 +12,7 @@ import { SecretBox } from "../../../src/control/secrets.ts";
 import { generateSigningKeys } from "../../../src/core/commands.ts";
 import { assigned } from "../../helpers/assignments.ts";
 import { ADMIN, controlOnly, signIn } from "../../helpers/control-stack.ts";
-import { applied, controlStore } from "../../helpers/control-store.ts";
+import { applied, controlStore, ingestReport } from "../../helpers/control-store.ts";
 import { FAKE_GPUS, FAKE_RUNPOD_KEY, fakeRunpod } from "../../helpers/fake-runpod.ts";
 import {
   exportName,
@@ -112,7 +112,7 @@ async function working(s: Awaited<ReturnType<typeof setup>>, form: Partial<typeo
   );
   await s.advance();
   assert.ok(s.store.tunnels.pin("rp-test-1", "sign", "box"));
-  s.store.rigEvents.ingest({
+  await ingestReport(s.store, {
     rig: "rp-test-1",
     ledger_id: "l1",
     cursor: 0,
@@ -129,7 +129,6 @@ async function working(s: Awaited<ReturnType<typeof setup>>, form: Partial<typeo
       },
     ],
   });
-  await applied(s.store);
   supervisorReports(s.store, "rp-test-1");
 }
 
@@ -479,7 +478,7 @@ describe("a RunPod rig's page", () => {
     /** The harness's next signed events, after working()'s first. */
     let cursor = 1;
     const report = async (...events: [kind: string, body: object][]) => {
-      s.store.rigEvents.ingest({
+      await ingestReport(s.store, {
         rig: "rp-test-1",
         ledger_id: "l1",
         cursor,
@@ -575,7 +574,7 @@ describe("a stopped RunPod pod elsewhere on the dashboard", () => {
     await s.post("/ui/rigs/rp-test-1/runpod/stop");
     harnessApplies(s.store, "rp-test-1", exportName(1));
     // The harness reports the run the stop paused.
-    s.store.rigEvents.ingest({
+    await ingestReport(s.store, {
       rig: "rp-test-1",
       ledger_id: "l1",
       cursor: 1,
@@ -643,7 +642,7 @@ describe("a stopped RunPod pod elsewhere on the dashboard", () => {
   test("a new campaign started on it starts the pod first, and the page says so", async () => {
     const s = await stopped();
     // The rig's last report named its hardware, as a CPU rig's does.
-    s.store.rigEvents.ingest({
+    await ingestReport(s.store, {
       rig: "rp-test-1",
       ledger_id: "l1",
       cursor: 2,

@@ -8,8 +8,8 @@ import { startCampaign } from "../../../../src/control/campaigns/new.ts";
 import { KitRepos } from "../../../../src/control/kits/repos.ts";
 import { McpServers } from "../../../../src/control/mcp-servers/index.ts";
 import { SecretBox } from "../../../../src/control/secrets.ts";
-import { ControlStore } from "../../../../src/control/store/index.ts";
 import { controlOnly, signIn } from "../../../helpers/control-stack.ts";
+import { controlStore, ingestReport } from "../../../helpers/control-store.ts";
 
 /**
  * Copy on a campaign's page (goal 069), driven as a browser drives it without the page's script:
@@ -61,7 +61,7 @@ const research: Omit<CampaignDraft, "target"> = {
  * web-survey once; signed in to the dashboard.
  */
 async function stack() {
-  const store = new ControlStore(":memory:");
+  const store = controlStore();
   const kits = new KitRepos(mkdtempSync(join(tmpdir(), "thermite-kits-")));
   const secrets = SecretBox.ephemeral();
   const listed: Record<string, string[]> = {
@@ -85,7 +85,7 @@ async function stack() {
     tokens: { rigs: {} },
     options: { staleAfterMs: 600_000, kits, secrets, mcpServers: servers },
   });
-  store.rigEvents.ingest({
+  await ingestReport(store, {
     rig: "rig-a",
     ledger_id: "ledger-rig-a",
     cursor: 0,
@@ -449,7 +449,7 @@ describe("Copy on a campaign's page (goal 069)", () => {
 
   test("a campaign control can't copy has no Copy: a rig check, and one control does not know", async () => {
     const s = await stack();
-    s.store.rigEvents.ingest({
+    await ingestReport(s.store, {
       rig: "rig-a",
       ledger_id: "ledger-rig-a",
       cursor: 0,

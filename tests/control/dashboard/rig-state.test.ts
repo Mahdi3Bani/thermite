@@ -10,7 +10,7 @@ import { rigView } from "../../../src/control/views/index.ts";
 import { generateSigningKeys } from "../../../src/core/commands.ts";
 import type { BuildInfo } from "../../../src/core/version.ts";
 import { controlOnly, RIG_TOKEN, signIn } from "../../helpers/control-stack.ts";
-import { applied, controlStore } from "../../helpers/control-store.ts";
+import { applied, controlStore, ingestReport } from "../../helpers/control-store.ts";
 
 const CONTROL: BuildInfo = { version: "0.1.0", commit: null, protocol: 1, oldest_protocol: 1 };
 const OLD = { version: "0.0.9", commit: null, protocol: 1, oldest_protocol: 1 };
@@ -122,7 +122,7 @@ async function control(o: { ssh?: MachineSsh; kube?: ClusterKubectl } = {}) {
     events: { kind: string; subject: string; body: object }[] = [],
   ) => {
     const from = cursors.get(rig) ?? 0;
-    store.rigEvents.ingest({
+    await ingestReport(store, {
       rig,
       ledger_id: `ledger-${rig}`,
       cursor: from,

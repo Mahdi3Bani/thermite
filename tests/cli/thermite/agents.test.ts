@@ -11,6 +11,7 @@ import { promptRecord } from "../../../src/agents/prompt.ts";
 import { ROLES, renderAuditor } from "../../../src/agents/roles/index.ts";
 import { promptEventBody, sha256 } from "../../../src/core/prompts.ts";
 import { controlOnly } from "../../helpers/control-stack.ts";
+import { ingestReport } from "../../helpers/control-store.ts";
 
 const run = promisify(execFile);
 const CLI = join(import.meta.dirname, "../../../src/cli/thermite/main.ts");
@@ -40,7 +41,7 @@ test("thermite agents list and show: the roles, and the prompt a run's role was 
   );
   const fixed = new Set(ROLES.flatMap((r) => r.texts.map((t) => sha256(t.text))));
   const at = (i: number) => new Date(Date.parse("2026-10-28T10:00:00Z") + i * 1000).toISOString();
-  store.rigEvents.ingest({
+  await ingestReport(store, {
     rig: "rig-a",
     ledger_id: "l-1",
     cursor: 0,

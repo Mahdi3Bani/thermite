@@ -75,8 +75,8 @@ export function metricsText(store: ControlStore, staleAfterMs: number, now = Dat
 
 /**
  * The message bus's series, with the bus on (goal 168): whether control reached its server, each
- * stream's messages and bytes and each consumer's backlog, the mirror of control's events table
- * (the table's last seq, the stream's, the rows behind, those published, and whether it stopped),
+ * stream's messages and bytes and each consumer's backlog, the writer of the events stream (the
+ * reports' events it published, the rows the move published, and the reports refused for now),
  * the apply of the events stream (its place, the messages behind it, those applied and passed
  * over), the live stream's lines (those control took and refused, and those each rig's supervisor
  * published and dropped), and the config bucket's values (those control wrote and failed to write,
@@ -110,24 +110,12 @@ export async function busMetricsText(
       lines.push(`thermite_bus_consumer_ack_pending{${l}} ${c.ack_pending}`);
     }
   const events = state.events;
-  help("thermite_events_table_seq", "gauge", "The last seq of control's events table");
-  lines.push(`thermite_events_table_seq ${events.table_seq}`);
-  help(
-    "thermite_events_stream_seq",
-    "gauge",
-    "The Thermite-Seq of the events stream's last message",
-  );
-  help("thermite_events_behind", "gauge", "Rows of control's events table the stream lacks");
-  if (events.stream_seq !== null) lines.push(`thermite_events_stream_seq ${events.stream_seq}`);
-  if (events.behind !== null) lines.push(`thermite_events_behind ${events.behind}`);
-  help("thermite_events_published_total", "counter", "Events control published to the stream");
+  help("thermite_events_published_total", "counter", "Reports' events control published");
   lines.push(`thermite_events_published_total ${events.published}`);
-  help(
-    "thermite_events_mirror_stopped",
-    "gauge",
-    "1 when the mirror stopped on what it can't copy",
-  );
-  lines.push(`thermite_events_mirror_stopped ${events.stopped ? 1 : 0}`);
+  help("thermite_events_moved_total", "counter", "Rows of its events table control moved");
+  lines.push(`thermite_events_moved_total ${events.moved}`);
+  help("thermite_events_later_total", "counter", "Reports control refused for now");
+  lines.push(`thermite_events_later_total ${events.later}`);
   help(
     "thermite_events_applied_place",
     "gauge",

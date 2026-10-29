@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { RigView, RunView } from "../../../../src/control/views/index.ts";
-import { applied, controlStore } from "../../../helpers/control-store.ts";
+import { applied, controlStore, ingestReport } from "../../../helpers/control-store.ts";
 import { rig, statusRun } from "./fixtures.ts";
 
 /**
@@ -96,7 +96,7 @@ test("a research run's rounds are counted as research rounds, not as planner fal
     at: "2026-10-22T00:00:00Z",
     body,
   });
-  store.rigEvents.ingest({
+  await ingestReport(store, {
     rig: "rig-a",
     ledger_id: "l-1",
     cursor: 0,

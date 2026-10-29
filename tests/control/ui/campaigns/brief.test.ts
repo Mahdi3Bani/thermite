@@ -12,6 +12,7 @@ import {
 import { NEW_CAMPAIGN_JS } from "../../../../src/control/ui/campaigns/new/client.ts";
 import { MD_CORE_JS, mdHtml } from "../../../../src/control/ui/components/markdown.ts";
 import { controlOnly, mcpClient, signIn } from "../../../helpers/control-stack.ts";
+import { ingestReport } from "../../../helpers/control-store.ts";
 
 /**
  * A campaign's brief on the screens and over the APIs (goal 078): New campaign takes it for every
@@ -46,7 +47,7 @@ async function stack() {
       probeRepo: async () => ({ commit: C, files: 3, suggest: ["src/**"] }),
     },
   });
-  store.rigEvents.ingest({
+  await ingestReport(store, {
     rig: "rig-a",
     ledger_id: "ledger-rig-a",
     cursor: 0,
@@ -67,7 +68,7 @@ async function stack() {
         errors: [],
       },
     },
-  } as Parameters<typeof store.rigEvents.ingest>[0]);
+  });
   const { page: get, csrfOf, post } = await signIn(control);
   const csrf = csrfOf(await get("/ui/campaigns/new"));
   /** New campaign's form, posted as the browser posts it: the draft as JSON, and the rig. */

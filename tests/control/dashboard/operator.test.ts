@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { seedDemo } from "../../helpers/control-demo.ts";
 import { controlOnly, signIn } from "../../helpers/control-stack.ts";
-import { applied, controlStore } from "../../helpers/control-store.ts";
+import { applied, controlStore, ingestReport } from "../../helpers/control-store.ts";
 
 /**
  * The dashboard for an operator, over the demo seed: each decision and what it decides, the
@@ -12,7 +12,7 @@ import { applied, controlStore } from "../../helpers/control-store.ts";
 /** Control over the demo seed (no harness): three rigs with decisions waiting and runs at work. */
 async function demo() {
   const store = controlStore();
-  seedDemo(store);
+  await seedDemo(store);
   // The knowledge base's folders and the model usage, as control applies them from the bus.
   await applied(store);
   const { control } = controlOnly({
@@ -284,7 +284,7 @@ describe("control dashboard for an operator", () => {
   test("agent-written text in decisions, timelines and attempt pages is escaped", async () => {
     const { store, get } = await demo();
     const at = new Date().toISOString();
-    store.rigEvents.ingest({
+    await ingestReport(store, {
       rig: "rig-a",
       ledger_id: "ledger-rig-a",
       cursor: 0,
@@ -317,7 +317,6 @@ describe("control dashboard for an operator", () => {
       ],
       summary: {},
     });
-    await applied(store);
     for (const path of [
       "/ui",
       "/ui/campaigns/opus-simd/runs/dec-1/attempts/a-evil0001",

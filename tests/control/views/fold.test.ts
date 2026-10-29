@@ -21,7 +21,7 @@ const OPTS = { staleAfterMs: 600_000, now: VIEW_NOW };
 for (const set of VIEW_SETS) {
   describe(set.name, async () => {
     const store = controlStore();
-    set.fill(store);
+    await set.fill(store);
     await applied(store);
     for (const u of store.reportedRigs.list()) {
       const events = await foldedEvents(store, u.id, u.ledger_id ?? "");
@@ -87,7 +87,7 @@ test("after a reset, a rig's view folds only its new ledger's events", async () 
   const set = VIEW_SETS.find((s) => s.name === "a reset to a new ledger");
   assert.ok(set);
   const store = controlStore();
-  set.fill(store);
+  await set.fill(store);
   await applied(store);
   const v = rigView(store, "rig-a", OPTS);
   assert.equal(v?.ledger_id, "ledger-2");

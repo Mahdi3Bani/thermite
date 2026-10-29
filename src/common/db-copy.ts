@@ -8,7 +8,8 @@ import { log } from "./env.ts";
  * can then be undone. The copy is a consistent snapshot (`vacuum into`), made beside the database
  * as `<file>.v<version>.<time>.copy`, where the version is the schema's before the migration. The
  * two newest copies of each database are kept: a copy is not the record, and each one costs the
- * disk of the database.
+ * disk of the database. A copy before a migration that removes what only the copy then keeps is
+ * kept outside that rotation (keepCopyBefore).
  */
 
 /** How many copies of each database are kept beside it. */
@@ -58,6 +59,26 @@ export function copyBeforeMigration(
   db.prepare("vacuum into ?").run(copy);
   for (const old of copiesOf(path).slice(COPIES_KEPT)) rmSync(old.path, { force: true });
   log("db", "copied the database before a migration", { path, copy, from: version, to });
+  return copy;
+}
+
+/**
+ * Copies the database before a migration that removes what only the copy then keeps, as the drop
+ * of control's events table: the copy is `<file>.v<version>.<time>.kept`, outside the rotation
+ * above, and stays until the owner removes it. Returns the copy's path.
+ */
+export function keepCopyBefore(
+  db: DatabaseSync,
+  path: string,
+  version: number,
+  to: number,
+  why: string,
+  now: Date = new Date(),
+): string {
+  const copy = `${path}.v${version}.${now.toISOString().replace(/[:.]/g, "-")}.kept`;
+  db.prepare("vacuum into ?").run(copy);
+  const what = { path, copy, from: version, to, why };
+  log("db", "kept a copy of the database before a migration, until you remove it", what, "warn");
   return copy;
 }
 

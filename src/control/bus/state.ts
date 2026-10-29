@@ -15,9 +15,9 @@ import { REPORT_STREAM } from "../../core/link/report.ts";
 import {
   applyState,
   type EventsApply,
-  type EventsMirror,
-  mirrorState,
-  streamEnd,
+  type EventsMove,
+  type EventsWriter,
+  writerState,
 } from "../events/index.ts";
 import type { LiveTaken } from "../live/index.ts";
 import type { ControlStore } from "../store/index.ts";
@@ -25,9 +25,9 @@ import { type ConfigWritten, configState } from "./config.ts";
 
 /**
  * The message bus's state, for whoever runs control (goal 168): its server, the streams control
- * makes with what each consumer has still to take, the mirror of control's events table and the
- * apply of the events stream, and the live stream's and the config bucket's figures, from
- * control's side and from each rig's supervisor. REST (`GET /v1/bus`), MCP (`bus_state`) and
+ * makes with what each consumer has still to take, the writer of the events stream and its apply,
+ * and the live stream's and the config bucket's figures, from control's side and from each rig's
+ * supervisor. REST (`GET /v1/bus`), MCP (`bus_state`) and
  * `/metrics` read it.
  */
 
@@ -44,15 +44,16 @@ export const BUS_STREAMS = [
 export const BUS_STATE_TIMEOUT_MS = 5_000;
 
 /**
- * The bus as control's APIs see it: its server, the mirror of control's events table and the
- * apply of the events stream, what control took from the live stream, and what it wrote to the
- * config bucket.
+ * The bus as control's APIs see it: its server, the writer of the events stream, the move of the
+ * events table a store had before, and the apply of the stream, what control took from the live
+ * stream, and what it wrote to the config bucket.
  */
 export interface BusView {
   /** The server's host and port. */
   server: string;
-  bus: Pick<Bus, "streams" | "connected" | "lastSeq" | "message">;
-  events: EventsMirror;
+  bus: Pick<Bus, "streams" | "connected" | "lastSeq">;
+  events: EventsWriter;
+  move: Pick<EventsMove, "published">;
   apply: EventsApply;
   live: LiveTaken;
   config: ConfigWritten;
@@ -115,10 +116,8 @@ export const busHealth = (view: BusView | undefined): "off" | "connected" | "awa
 export async function busState(store: ControlStore, view: BusView | undefined) {
   if (!view) return { on: false as const };
   let streams: StreamState[] = [];
-  // The events stream's last place, and the Thermite-Seq of its last message, as the server has
-  // them.
+  // The events stream's last place, as the server has it.
   let eventsPlace: number | null = null;
-  let eventsSeq: number | null = null;
   let error: string | null = null;
   let timer: NodeJS.Timeout | undefined;
   const late = new Promise<never>((_, fail) => {
@@ -128,8 +127,8 @@ export async function busState(store: ControlStore, view: BusView | undefined) {
     );
   });
   try {
-    const read = Promise.all([view.bus.streams(BUS_STREAMS), streamEnd(view.bus)]);
-    [streams, { place: eventsPlace, seq: eventsSeq }] = await Promise.race([read, late]);
+    const read = Promise.all([view.bus.streams(BUS_STREAMS), view.bus.lastSeq(EVENT_STREAM)]);
+    [streams, eventsPlace] = await Promise.race([read, late]);
   } catch (err) {
     error = errorText(err);
   } finally {
@@ -142,7 +141,7 @@ export async function busState(store: ControlStore, view: BusView | undefined) {
     error,
     streams,
     events: {
-      ...mirrorState(store, view.events, eventsSeq),
+      ...writerState(view.events, view.move.published),
       apply: applyState(store, view.apply, eventsPlace),
     },
     live: liveState(store, view.live),

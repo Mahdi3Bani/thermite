@@ -9,9 +9,9 @@ import {
 import { type PodLogRead, RunpodRigs } from "../../../src/control/runpod/rigs.ts";
 import { ControlTunnels } from "../../../src/control/runpod/tunnel.ts";
 import { SecretBox } from "../../../src/control/secrets.ts";
-import { ControlStore } from "../../../src/control/store/index.ts";
 import { generateSigningKeys } from "../../../src/core/commands.ts";
 import { controlOnly, mcpClient, signIn } from "../../helpers/control-stack.ts";
+import { controlStore, ingestReport } from "../../helpers/control-store.ts";
 import { FAKE_RUNPOD_KEY, fakeRunpod } from "../../helpers/fake-runpod.ts";
 
 /** A pod log read stops this soon after the last line here, so the tests take little time. */
@@ -27,7 +27,7 @@ const tokens = {
 
 /** Control with a RunPod account (the fake RunPod) and one rig launched on it, not enrolled. */
 async function setup(o: Parameters<typeof fakeRunpod>[0] = {}) {
-  const store = new ControlStore(":memory:");
+  const store = controlStore();
   const secrets = SecretBox.ephemeral();
   store.gpuClouds.add({
     name: "runpod",
@@ -230,7 +230,7 @@ describe("a RunPod rig's pod log over REST and MCP", () => {
       assert.equal((await s.rest(`/v1/rigs/rp-log-1/runpod/logs?${q}`)).status, 400, q);
     for (const t of [tokens.operator, tokens.agent, tokens.read])
       assert.equal((await s.rest("/v1/rigs/rp-log-1/runpod/logs", t)).status, 401);
-    s.store.rigEvents.ingest({
+    await ingestReport(s.store, {
       rig: "plain-1",
       ledger_id: "l1",
       cursor: 0,
@@ -342,7 +342,7 @@ describe("a RunPod rig's pod log on its page", () => {
 
   test("once it reports, the block is lower on its page and waits for Read the log", async () => {
     const s = await setup();
-    s.store.rigEvents.ingest({
+    await ingestReport(s.store, {
       rig: "rp-log-1",
       ledger_id: "l1",
       cursor: 0,

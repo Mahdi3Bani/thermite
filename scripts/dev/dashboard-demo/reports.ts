@@ -1,4 +1,5 @@
 import type { ControlStore } from "../../../src/control/store/index.ts";
+import { ingestReport } from "../../../tests/helpers/control-store.ts";
 import { iso, Rig } from "./shared.ts";
 
 // Synthetic hardware, shaped like what a harness reports (no real host data).
@@ -38,12 +39,17 @@ const hardware = (devices: ReturnType<typeof card>[], cpus: number, mib: number)
 });
 
 /** Each rig's report to control (its events, jobs and hardware), and its supervisor's state. */
-export function reportRigs(
+export async function reportRigs(
   store: ControlStore,
   { g1, g2, g3, c1, g4 }: { g1: Rig; g2: Rig; g3: Rig; c1: Rig; g4: Rig },
-): void {
-  const report = (u: Rig, jobs: Record<string, number>, hw: unknown, lastSeenHoursAgo = 0) => {
-    store.rigEvents.ingest({
+): Promise<void> {
+  const report = async (
+    u: Rig,
+    jobs: Record<string, number>,
+    hw: unknown,
+    lastSeenHoursAgo = 0,
+  ) => {
+    await ingestReport(store, {
       rig: u.id,
       ledger_id: `ledger-${u.id}`,
       cursor: 0,
@@ -53,11 +59,11 @@ export function reportRigs(
       generated_at: iso(lastSeenHoursAgo),
     });
   };
-  report(g1, { queued: 1, leased: 1, done: 214 }, hardware([card("shared", 1)], 6, 16_384));
+  await report(g1, { queued: 1, leased: 1, done: 214 }, hardware([card("shared", 1)], 6, 16_384));
   // gpu-2's ledger from before its full reset (goal 170): its run is under decode-speed's
   // Earlier runs, and opens like any run.
   const before = earlierRun();
-  store.rigEvents.ingest({
+  await ingestReport(store, {
     rig: "gpu-2",
     ledger_id: "ledger-gpu-2-before-reset",
     cursor: 0,
@@ -66,14 +72,14 @@ export function reportRigs(
     summary: {},
     generated_at: iso(40),
   });
-  report(g2, { queued: 0, leased: 1, done: 162 }, hardware([card("shared", 2)], 8, 24_576));
-  report(
+  await report(g2, { queued: 0, leased: 1, done: 162 }, hardware([card("shared", 2)], 8, 24_576));
+  await report(
     g3,
     { queued: 2, leased: 1, done: 88 },
     hardware([card("judge", 3), card("dev", 4)], 12, 32_768),
   );
-  report(c1, { done: 0 }, hardware([], 8, 16_384));
-  report(g4, {}, hardware([card("judge", 5), card("dev", 6)], 16, 65_536));
+  await report(c1, { done: 0 }, hardware([], 8, 16_384));
+  await report(g4, {}, hardware([card("judge", 5), card("dev", 6)], 16, 65_536));
   store.db.prepare("update rig set last_seen = ? where id = ?").run(iso(2.3), "gpu-4");
   for (const [u, usd] of [
     ["gpu-1", 4.2],

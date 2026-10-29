@@ -68,13 +68,14 @@ async function readStream(
 const TEXT_LEFT_OUT = new Set(["source_fetched", "research_doc", "context_compacted"]);
 
 /**
- * An event as a rig's fold takes it: under the current names, with its seq in control's events
- * table (its place in the stream, for an event published first), and without what no page reads:
- * the text of a source and a document, which the knowledge base keeps, and the model calls, which
- * the usage tables keep (undefined for one).
+ * An event as a rig's fold takes it: under the current names, with its place in the stream as its
+ * seq, as `GET /v1/rigs/<rig>/events` gives it (the move put the rows of control's events table
+ * first in the stream, in the table's order, so the places of all events follow control's order),
+ * and without what no page reads: the text of a source and a document, which the knowledge base
+ * keeps, and the model calls, which the usage tables keep (undefined for one).
  */
 export function foldEvent(e: StreamEvent): StoredEvent | undefined {
-  const { event, ledger, seq } = e.read;
+  const { event, ledger } = e.read;
   if (event.kind === MODEL_CALL_EVENT) return undefined;
   let body = event.body as Record<string, unknown>;
   if (TEXT_LEFT_OUT.has(event.kind) && body && typeof body === "object" && "text" in body) {
@@ -82,7 +83,7 @@ export function foldEvent(e: StreamEvent): StoredEvent | undefined {
     body = rest;
   }
   const stored: StoredEvent & { run: string | null } = {
-    seq: seq ?? e.place,
+    seq: e.place,
     ledger_id: ledger,
     id: event.id,
     at: event.at,

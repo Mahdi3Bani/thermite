@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { ModelSource } from "../../../src/harness/agents/model/source.ts";
 import { syncModelRoute } from "../../../src/supervisor/model-route.ts";
+import { heldEvents } from "../../helpers/control-store.ts";
 import { stack } from "./stack.ts";
 
 /**
@@ -136,11 +137,11 @@ describe("control dashboard", () => {
     assert.match(page, /Its agents run under Pi with deepseek-v4\.1-flash-free from opencode\./);
     const rig = await (await s.get("/ui/rigs/rig-a")).text();
     assert.match(rig, /The agents now use model route &quot;opencode&quot;/);
-    // Nothing the rig reports or records carries the key.
+    // Nothing the rig reports or records carries the key: its row, its events on control's bus.
     assert.ok(
       !JSON.stringify([
         s.store.db.prepare("select * from rig").all(),
-        s.store.db.prepare("select * from rig_event").all(),
+        await heldEvents(s.store, "rig-a"),
         s.env.service.ledger.db.prepare("select * from event").all(),
       ]).includes(key),
     );

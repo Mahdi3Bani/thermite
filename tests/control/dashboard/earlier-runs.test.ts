@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { ADMIN, controlOnly, mcpClient, signIn } from "../../helpers/control-stack.ts";
-import { applied } from "../../helpers/control-store.ts";
+import { ingestReport } from "../../helpers/control-store.ts";
 
 /**
  * A run's pages, links and records stay whole wherever it ran (goal 170): when its rig is
@@ -47,7 +47,7 @@ async function earlierRuns() {
   const { store, control, api } = controlOnly({ tokens: { rigs: TOKENS } });
   const at = Date.now() - 3_600_000;
   const report = async (rig: string, ledger: string, events: Ev[], hour: number) => {
-    store.rigEvents.ingest({
+    await ingestReport(store, {
       rig,
       ledger_id: ledger,
       cursor: 0,
@@ -60,7 +60,6 @@ async function earlierRuns() {
       })),
       summary: {},
     });
-    await applied(store);
   };
   // sort-1 on rig-a, then rig-a's full reset; sort-2 on rig-b, then rig-b retired; sort-3 at work.
   await report("rig-a", "ledger-1", runEvents("sort-1", "a-1", "radix sort", "paused"), 0);

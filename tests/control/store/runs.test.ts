@@ -6,6 +6,8 @@ import { describe, test } from "node:test";
 import { runNameUsed } from "../../../src/control/run-names.ts";
 import { ControlStore } from "../../../src/control/store/index.ts";
 import type { SignedCommand } from "../../../src/core/commands.ts";
+import { controlStore, ingestReport } from "../../helpers/control-store.ts";
+import { keepOldRows, withEventsTable } from "../../helpers/old-store.ts";
 
 /**
  * Control's run registry (goal 170): every run control signed an assignment for and every run a
@@ -26,8 +28,8 @@ const assignment = (id: string, rig: string, run: string, campaign = "sort-speed
     signature: "not checked by the store",
   }) as unknown as SignedCommand;
 
-const created = (store: ControlStore, rig: string, run: string, campaign = "sort-speed") =>
-  store.rigEvents.ingest({
+const created = async (store: ControlStore, rig: string, run: string, campaign = "sort-speed") =>
+  await ingestReport(store, {
     rig,
     ledger_id: `ledger-${rig}`,
     cursor: 0,
@@ -46,8 +48,8 @@ const created = (store: ControlStore, rig: string, run: string, campaign = "sort
   });
 
 describe("control's run registry", () => {
-  test("an assignment uses its name until it is refused; a run a rig created keeps it", () => {
-    const store = new ControlStore(":memory:");
+  test("an assignment uses its name until it is refused; a run a rig created keeps it", async () => {
+    const store = controlStore();
     store.commands.enqueue(assignment("c-1", "rig-a", "sort-speed-1"));
     store.commands.enqueue(assignment("c-2", "rig-a", "sort-speed-2"));
     assert.equal(runNameUsed(store, "sort-speed-1"), "rig-a");
@@ -64,26 +66,26 @@ describe("control's run registry", () => {
       new Map([["sort-speed-1", "sort-speed"]]),
     );
     // A run a rig reports creating uses its name, though control never assigned it there.
-    created(store, "rig-b", "other-1", "other");
+    await created(store, "rig-b", "other-1", "other");
     assert.equal(runNameUsed(store, "other-1"), "rig-b");
     // What a rig claims is not what control assigned it.
     assert.deepEqual(store.runRegistry.assignedCampaigns("rig-b"), new Map());
   });
 
-  test("a run's campaign on a rig is known once the rig reports creating it", () => {
-    const store = new ControlStore(":memory:");
+  test("a run's campaign on a rig is known once the rig reports creating it", async () => {
+    const store = controlStore();
     store.commands.enqueue(assignment("c-1", "rig-a", "sort-speed-1"));
     // Assigned, not created yet: the rig has no such run.
     assert.equal(store.runRegistry.createdOn("sort-speed-1", "rig-a"), undefined);
     assert.equal(store.runRegistry.campaignOf("sort-speed-1", "rig-a"), undefined);
-    created(store, "rig-a", "sort-speed-1");
+    await created(store, "rig-a", "sort-speed-1");
     assert.equal(store.runRegistry.campaignOf("sort-speed-1", "rig-a"), "sort-speed");
     assert.equal(store.runRegistry.createdOn("sort-speed-1", "rig-a")?.ledger_id, "ledger-rig-a");
     // Another rig has no run of that name.
     assert.equal(store.runRegistry.createdOn("sort-speed-1", "rig-b"), undefined);
     assert.equal(store.runRegistry.campaignOf("sort-speed-1", "rig-b"), undefined);
     // A run created without a campaign is its own: it has none to give.
-    store.rigEvents.ingest({
+    await ingestReport(store, {
       rig: "rig-b",
       ledger_id: "ledger-rig-b",
       cursor: 0,
@@ -110,9 +112,19 @@ describe("control's run registry", () => {
     old.commands.enqueue(assignment("c-1", "rig-a", "sort-speed-1"));
     old.commands.enqueue(assignment("c-2", "rig-a", "sort-speed-2"));
     old.commands.ack("rig-a", "c-2", "failed", { error: "x" });
-    created(old, "rig-b", "other-1", "other");
-    // As a store at version 5 left it: no registry yet.
-    old.db.exec("drop table run_registry; delete from schema_migrations where version >= 6");
+    // As a store at version 5 left it: its events in its events table, no registry yet.
+    withEventsTable(old.db, 5);
+    keepOldRows(old.db, [
+      {
+        rig: "rig-b",
+        ledger: "ledger-rig-b",
+        id: 1,
+        kind: "run_created",
+        subject: "other-1",
+        body: { campaign: "other" },
+      },
+    ]);
+    old.db.exec("drop table run_registry");
     old.db.close();
     const store = new ControlStore(path);
     assert.deepEqual([...store.runRegistry.usedNames()].sort(), ["other-1", "sort-speed-1"]);

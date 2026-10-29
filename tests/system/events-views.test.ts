@@ -5,13 +5,14 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { readKnowledgeAgain } from "../../src/control/events/index.ts";
 import { runPrompts } from "../../src/control/prompts.ts";
-import { RigEvents } from "../../src/control/store/events.ts";
-import type { ControlStore } from "../../src/control/store/index.ts";
+import { EventsTable } from "../../src/control/store/events.ts";
+import { ControlStore } from "../../src/control/store/index.ts";
 import { findRunOn, keepFolds, rigView } from "../../src/control/views/index.ts";
 import { EVENT_HEADERS, EVENT_STREAM } from "../../src/core/link/events.ts";
 import { assigned } from "../helpers/assignments.ts";
 import { controlOnly } from "../helpers/control-stack.ts";
-import { applied, busOf, closeBus, controlStore } from "../helpers/control-store.ts";
+import { applied, busOf, closeBus, controlStore, ingestReport } from "../helpers/control-store.ts";
+import { keepOldRows, withEventsTable } from "../helpers/old-store.ts";
 
 /**
  * Control's views and its raw reads of events come from the message bus's `EVENTS` stream (goal
@@ -19,7 +20,8 @@ import { applied, busOf, closeBus, controlStore } from "../helpers/control-store
  * and applies nothing again; `GET /v1/rigs/<rig>/events` pages a rig's events by their places in
  * the stream, over its ledgers, with no other rig's; a run's prompts are its rig's alone; the
  * knowledge base reads again from the stream what an upgrade of its reading needs, bounded as
- * the apply's own indexing is; and nothing in control but the mirror reads the events table.
+ * the apply's own indexing is; and nothing in control but the move reads the events table of a
+ * store from before the stream.
  */
 
 type Ev = {
@@ -30,10 +32,10 @@ type Ev = {
   body?: unknown;
 };
 
-/** A page of a rig's ledger, as a report taken stores it. */
-function page(store: ControlStore, rig: string, ledger: string, events: Ev[]): void {
+/** A page of a rig's ledger, taken as a report that passed control's checks is. */
+async function page(store: ControlStore, rig: string, ledger: string, events: Ev[]): Promise<void> {
   const first = events[0]?.id ?? 1;
-  store.rigEvents.ingest({
+  await ingestReport(store, {
     rig,
     ledger_id: ledger,
     cursor: first - 1,
@@ -58,7 +60,7 @@ const OPTS = { staleAfterMs: 600_000, now: Date.UTC(2026, 9, 29, 7) };
  * rig-a: r-1 of gemv in ledger l-1, then a full reset and r-3 in l-2; rig-b: r-2, and a run of
  * the name r-1 of its own (named before goal 170). Each with a rig's own event.
  */
-function fill(store: ControlStore): void {
+async function fill(store: ControlStore): Promise<void> {
   const run = (id: number, kind: string, r: string, body: unknown = { n: id }): Ev => ({
     id,
     kind,
@@ -66,19 +68,21 @@ function fill(store: ControlStore): void {
     run: r,
     body,
   });
-  page(store, "rig-a", "l-1", [
+  await page(store, "rig-a", "l-1", [
     run(1, "run_created", "r-1", { campaign: "gemv", mode: "goal" }),
     run(2, "run_status", "r-1", { status: "running", reason: null }),
     { id: 3, kind: "rig_check_started", body: { check: "smoke", id: "chk-1" } },
     run(4, "experiment_added", "r-1", { id: "x-1", title: "tile", by: "planner", state: "queued" }),
   ]);
-  page(store, "rig-b", "l-b", [
+  await page(store, "rig-b", "l-b", [
     run(1, "run_created", "r-2", { campaign: "gemv", mode: "goal" }),
     run(2, "run_created", "r-1", { campaign: "old", mode: "goal" }),
     run(3, "run_status", "r-1", { status: "paused", reason: "rig-b's own" }),
   ]);
-  page(store, "rig-a", "l-1", [run(5, "run_status", "r-1", { status: "paused", reason: "a" })]);
-  page(store, "rig-a", "l-2", [
+  await page(store, "rig-a", "l-1", [
+    run(5, "run_status", "r-1", { status: "paused", reason: "a" }),
+  ]);
+  await page(store, "rig-a", "l-2", [
     run(1, "run_created", "r-3", { campaign: "gemv", mode: "goal" }),
     { id: 2, kind: "rig_check_finished", body: { check: "smoke", id: "chk-2", ok: true } },
     run(3, "run_status", "r-3", { status: "running", reason: null }),
@@ -89,7 +93,7 @@ describe("control's views and raw reads from the events stream", () => {
   test("control started again builds its views in one pass over the stream, and applies nothing again", async () => {
     const path = join(mkdtempSync(join(tmpdir(), "thermite-views-")), "control.db");
     const first = controlStore(path);
-    fill(first);
+    await fill(first);
     await applied(first);
     const views = (s: ControlStore) => ["rig-a", "rig-b"].map((r) => rigView(s, r, OPTS));
     const before = views(first);
@@ -123,7 +127,7 @@ describe("control's views and raw reads from the events stream", () => {
     const earlier = await findRunOn(second, "rig-a", "r-1", OPTS);
     assert.deepEqual([earlier?.earlier, earlier?.run.status], ["reset", "paused"]);
     // New events reach the views of the control started again.
-    page(second, "rig-b", "l-b", [
+    await page(second, "rig-b", "l-b", [
       {
         id: 4,
         kind: "run_status",
@@ -142,7 +146,7 @@ describe("control's views and raw reads from the events stream", () => {
   test("a retired rig's fold is read from the stream after control starts again, and kept when it is brought back", async () => {
     const path = join(mkdtempSync(join(tmpdir(), "thermite-views-")), "control.db");
     const first = controlStore(path);
-    fill(first);
+    await fill(first);
     await applied(first);
     const before = rigView(first, "rig-b", OPTS);
     first.retired.add("rig-b", "owner:test");
@@ -167,7 +171,7 @@ describe("control's views and raw reads from the events stream", () => {
 
   test("GET /v1/rigs/<rig>/events pages a rig's events by their places in the stream, over its ledgers, with no other rig's", async () => {
     const { store, api } = controlOnly();
-    fill(store);
+    await fill(store);
     await applied(store);
     const { bus } = busOf(store);
     type Raw = { seq: number; ledger_id: string; id: number; kind: string; run: string | null };
@@ -258,7 +262,7 @@ describe("control's views and raw reads from the events stream", () => {
       ],
     });
     // rig-a's p-1, and rig-b's run of the same name (named before goal 170).
-    page(store, "rig-a", "l-1", [
+    await page(store, "rig-a", "l-1", [
       { id: 1, kind: "run_created", subject: "p-1", run: "p-1", body: { campaign: "c" } },
       { id: 2, kind: "agent_prompt", subject: "p-1", run: "p-1", body: prompt(2, "rig-a's first") },
       {
@@ -269,7 +273,7 @@ describe("control's views and raw reads from the events stream", () => {
         body: prompt(3, "rig-a's second"),
       },
     ]);
-    page(store, "rig-b", "l-b", [
+    await page(store, "rig-b", "l-b", [
       { id: 1, kind: "run_created", subject: "p-1", run: "p-1", body: { campaign: "c" } },
       { id: 2, kind: "agent_prompt", subject: "p-1", run: "p-1", body: prompt(2, "rig-b's") },
     ]);
@@ -291,23 +295,39 @@ describe("control's views and raw reads from the events stream", () => {
   });
 
   test("the knowledge base reads again what it read before an upgrade: to the store's place, and to the hand-over mark", async () => {
-    const store = controlStore();
-    assigned(store, "rig-a", "r-1", "gemv");
-    const added = (id: number, x: string): Ev => ({
+    // A store from before the stream, its five events in its events table, moved at the start.
+    const path = join(mkdtempSync(join(tmpdir(), "thermite-views-")), "control.db");
+    const old = new ControlStore(path);
+    assigned(old, "rig-a", "r-1", "gemv");
+    withEventsTable(old.db);
+    const added = (id: number, x: string) => ({
+      rig: "rig-a",
+      ledger: "l-1",
       id,
       kind: "experiment_added",
       subject: "r-1",
       run: "r-1",
       body: { id: x, title: `try ${x}`, by: "planner", state: "queued" },
     });
-    page(store, "rig-a", "l-1", [
-      { id: 1, kind: "run_created", subject: "r-1", run: "r-1", body: { campaign: "gemv" } },
+    keepOldRows(old.db, [
+      {
+        rig: "rig-a",
+        ledger: "l-1",
+        id: 1,
+        kind: "run_created",
+        subject: "r-1",
+        run: "r-1",
+        body: { campaign: "gemv" },
+      },
       added(2, "x-1"),
       added(3, "x-2"),
       added(4, "x-3"),
       added(5, "x-4"),
     ]);
+    old.db.close();
+    const store = controlStore(path);
     await applied(store);
+    assert.equal(store.eventsTable.exists(), false, "moved, and dropped");
     const experiments = () =>
       store
         .kb()
@@ -330,7 +350,7 @@ describe("control's views and raw reads from the events stream", () => {
     assert.equal(await readKnowledgeAgain(store, busOf(store).bus), 0, "once only");
   });
 
-  test("nothing in control reads the events table but its copy on the bus and the store's migrations", () => {
+  test("nothing in control reads the events table but the move and the store's migrations", () => {
     const files = (dir: string): string[] =>
       readdirSync(dir).flatMap((f) => {
         const p = join(dir, f);
@@ -342,23 +362,16 @@ describe("control's views and raw reads from the events stream", () => {
       "src/control/store/runs.ts",
       "src/control/store/schema.ts",
     ]);
-    // The store's part keeps its events and reads them only for the mirror (control/events).
-    const methods = Object.getOwnPropertyNames(RigEvents.prototype).filter(
+    // The store's part keeps no event: it reads an old store's table for the move alone.
+    const methods = Object.getOwnPropertyNames(EventsTable.prototype).filter(
       (m) => m !== "constructor",
     );
-    assert.deepEqual(methods.sort(), [
-      "countAfter",
-      "inOrder",
-      "ingest",
-      "keepReport",
-      "lastSeq",
-      "watch",
-    ]);
-    for (const read of ["countAfter", "inOrder", "lastSeq", "watch"]) {
+    assert.deepEqual(methods.sort(), ["at", "countAfter", "exists", "inOrder", "size"]);
+    for (const read of methods) {
       const callers = files("src").filter((f) =>
-        new RegExp(`rigEvents\\.${read}\\(`).test(readFileSync(f, "utf8")),
+        new RegExp(`eventsTable\\.${read}\\(`).test(readFileSync(f, "utf8")),
       );
-      assert.deepEqual(callers, ["src/control/events/mirror.ts"], read);
+      assert.deepEqual(callers, ["src/control/events/move.ts"], read);
     }
   });
 });

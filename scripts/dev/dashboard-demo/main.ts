@@ -38,7 +38,7 @@ const { g1, g2 } = hillClimbRigs();
 const g3 = goalRig();
 const c1 = researchRig();
 const g4 = pilotRig();
-reportRigs(store, { g1, g2, g3, c1, g4 });
+await reportRigs(store, { g1, g2, g3, c1, g4 });
 liveSessions(store);
 
 const keys = generateSigningKeys();

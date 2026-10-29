@@ -14,6 +14,7 @@ import { ControlStore } from "../../../src/control/store/index.ts";
 import { generateSigningKeys } from "../../../src/core/commands.ts";
 import { parseContract } from "../../../src/core/contract.ts";
 import { controlOnly } from "../../helpers/control-stack.ts";
+import { ingestReport } from "../../helpers/control-store.ts";
 import { FAKE_RUNPOD_KEY, fakeRunpod } from "../../helpers/fake-runpod.ts";
 
 const run = promisify(execFile);
@@ -40,8 +41,11 @@ async function cli(...args: string[]): Promise<{ code: number; stdout: string; s
 }
 
 /** A rig whose runs reported these events, in order (subject: the run). */
-function report(store: ControlStore, events: [string, string, string, Record<string, unknown>][]) {
-  store.rigEvents.ingest({
+async function report(
+  store: ControlStore,
+  events: [string, string, string, Record<string, unknown>][],
+) {
+  await ingestReport(store, {
     rig: "rig-a",
     ledger_id: "ledger-a",
     cursor: 0,
@@ -70,7 +74,7 @@ describe("thermite assign --queue-from (goal 067)", () => {
         string,
         Record<string, unknown>,
       ];
-    report(store, [
+    await report(store, [
       [
         past,
         "harness",

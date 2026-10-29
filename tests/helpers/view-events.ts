@@ -1,6 +1,7 @@
 import type { ControlStore } from "../../src/control/store/index.ts";
 import { PAPER_ACCEPTED, PAPER_REFUSED, PAPER_REQUESTED } from "../../src/core/research-check.ts";
 import { seedDemo } from "./control-demo.ts";
+import { ingestReport } from "./control-store.ts";
 import { researchRunEvents } from "./research-reviews.ts";
 
 /**
@@ -22,7 +23,7 @@ export interface SetEvent {
 /** A set of rigs' events: a name for the test's messages, and how it fills a store. */
 export interface ViewSet {
   name: string;
-  fill(store: ControlStore): void;
+  fill(store: ControlStore): Promise<void>;
 }
 
 /** The time the sets' events start at, and the time the views are read at. */
@@ -37,15 +38,15 @@ const ev = (
 ): SetEvent => ({ kind, subject, body, ...(actor ? { actor } : {}) });
 
 /** A rig's report of `events` in one ledger, numbered from `from` + 1, a minute apart. */
-export function report(
+export async function report(
   store: ControlStore,
   rig: string,
   ledger: string,
   events: SetEvent[],
   summary: Record<string, unknown> = {},
   from = 0,
-): void {
-  store.rigEvents.ingest({
+): Promise<void> {
+  await ingestReport(store, {
     rig,
     ledger_id: ledger,
     cursor: from,
@@ -610,9 +611,9 @@ export const VIEW_SETS: ViewSet[] = [
   { name: "a research campaign", fill: (s) => report(s, "rig-r", "ledger-r", researchEvents()) },
   {
     name: "a reset to a new ledger",
-    fill: (s) => {
-      report(s, "rig-a", "ledger-1", hillClimbEvents("r-1"));
-      report(s, "rig-a", "ledger-2", goalEvents("r-1").slice(0, 8), summaryWith([]));
+    fill: async (s) => {
+      await report(s, "rig-a", "ledger-1", hillClimbEvents("r-1"));
+      await report(s, "rig-a", "ledger-2", goalEvents("r-1").slice(0, 8), summaryWith([]));
     },
   },
   {

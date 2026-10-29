@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { copiesOf } from "../../../src/common/db-copy.ts";
 import { ControlStore } from "../../../src/control/store/index.ts";
+import { withEventsTable } from "../../helpers/old-store.ts";
 
 const fresh = () => join(mkdtempSync(join(tmpdir(), "thermite-store-")), "control.db");
 
@@ -12,12 +13,13 @@ describe("the message bus's keys in control's store", () => {
   test("a store at version 6 is copied, then gets the keys' tables (goal 168)", () => {
     const path = fresh();
     const six = new ControlStore(path);
+    // As version 6 left it: its events table, no keys' tables.
+    withEventsTable(six.db, 6);
     six.db.exec("drop table rig_bus_key; drop table bus_identity");
-    six.db.exec("delete from schema_migrations where version >= 7");
     six.db.close();
     const store = new ControlStore(path);
     const v = store.db.prepare("select max(version) as v from schema_migrations").get();
-    assert.equal(v?.v, 11);
+    assert.equal(v?.v, 12);
     assert.deepEqual(store.busKeys.rigKeys(), []);
     store.db.close();
     assert.deepEqual(

@@ -90,10 +90,28 @@ There is no single Logs page yet ([goal 027](https://github.com/iammrduncan/ther
 - **Why:** control's store holds records of events the bus's `EVENTS` stream no longer has: the bus's volume was restored from a backup older than control's store, or removed. Going on would skip the stream's next events.
 - **Do:** restore the stream from a backup at least as new as control's store, or the store from one no newer than the stream, then start control again.
 
+### Control stops at start: its events table can't go to the events stream
+
+- **You see:** at the first start of this version on a store from before (from v0.1.0, or from a control that kept its events in a table), control stops, and its log has `control's events table can't go to the events stream`, then a `fatal` line with the same words and one of these reasons:
+  - `the stream holds rows to seq …, past the table's last, …: control's store is older than the stream`, or `the stream holds events published first after place …, where the table's rows after seq … would go: …`;
+  - `the events stream lacks rows of control's events table: it holds … of the table's … rows, …`, or `… its place … does not hold the row it should, in the table's order`;
+  - a row's `rig`, `ledger`, `seq` and `bytes`, with `it is … bytes, more than a message on the bus holds (8388608 bytes with its headers)`.
+- **Why:** control moves the events its store keeps in its events table to the bus's `EVENTS` stream once, checks that the stream holds them all, and only then drops the table ([A store from before](../../explanation/how-the-parts-talk.md#a-store-from-before-its-events-table-moved-once)). It takes no report on top of a stream that does not hold its table: the rows the stream lacks could never go before the events it would publish after them. The store is as it was, its table whole, and nothing is lost.
+- **Do:**
+  - **Older than the stream:** the store came from an older backup than the bus's volume, or the bus's volume belongs to another control. Start control on its own newer store, or restore the bus's volume (`nats-data`) from a backup no newer than the store.
+  - **The stream lacks rows:** the bus's volume was restored in part, or holds another control's stream. Restore it from a backup that holds every event. If this start is the first with this version, the stream holds nothing but rows control moved from this table: stop the stack, remove the bus's volume, and start again. Control makes the stream anew and moves the whole table. The reports and commands waiting on the bus come again: each supervisor sends its reports again from control's place, and control's commands reach the rigs by their poll.
+  - **A row too large for the bus:** control kept that event before it refused events larger than a message on the bus, and no version of Thermite moves it yet. Keep the store as it is, and report the rig, ledger, seq and size from the log as an issue.
+
+### Rigs' reports are refused for now: the bus is away, or its store is full
+
+- **You see:** a rig's events stop reaching its page. Its supervisor's log has `ingest -> 503:` with `the message bus did not take this report's events: …`; control's log has `a report refused for now: its events are not on the bus`, and `GET /v1/bus` says why under `events.waiting`, such as `the bus's store is full: insufficient resources`.
+- **Why:** control keeps every rig's event on its message bus first, and takes a report only once the bus has its events and control has applied them. While the bus is away, or its store is full, control takes none of a report but what the bus has, and the rig keeps its place and sends it again at its next round. A report on the bus waits on the bus and is handed again. Nothing is lost, and nothing is taken twice.
+- **Do:** bring the bus's server back, or give it more disk: [Give it more memory or disk](message-bus.md#give-it-more-memory-or-disk). The next report goes through, control's log says `reports' events go on the bus again`, and `events.waiting` is `null`.
+
 ### Control answers that it is starting
 
 - **You see:** right after control starts, every page and route answers 503, `control is starting: it builds its views from the events stream first`, and `/v1/health` answers 503 with `"starting":true`.
-- **Why:** control builds its pages' views from its message bus's `EVENTS` stream before it serves them: about a second for 100,000 events, longer as the stream grows. While the bus is away, it waits for it: its health says `"bus":"away"`, and its log says `events not applied from the bus; trying again`.
+- **Why:** control builds its pages' views from its message bus's `EVENTS` stream before it serves them: about a second for 100,000 events, longer as the stream grows. At the first start of this version on a store from before, it first moves its store's events table to the stream ([The first start of a store from before](message-bus.md#the-first-start-of-a-store-from-before-its-events-table-moved)). While the bus is away, it waits for it: its health says `"bus":"away"`, and its log says `events not applied from the bus; trying again`.
 - **Do:** wait for `control's views built from the events stream` in its log, after which it serves. If it waits for the bus, bring the bus's server back: [Run the message bus](message-bus.md).
 
 ### The port is already in use

@@ -10,6 +10,7 @@ import { serve } from "@hono/node-server";
 import { issueCommand } from "../../../src/control/issue/index.ts";
 import { parseContract } from "../../../src/core/contract.ts";
 import { controlOnly } from "../../helpers/control-stack.ts";
+import { ingestReport } from "../../helpers/control-store.ts";
 
 const run = promisify(execFile);
 const CLI = join(import.meta.dirname, "../../../src/cli/thermite/main.ts");
@@ -147,7 +148,7 @@ describe("a campaign's brief on the command line (goal 078)", () => {
       },
       issuedBy: "owner:api",
     });
-    store.rigEvents.ingest({
+    await ingestReport(store, {
       rig: "rig-a",
       ledger_id: "ledger-rig-a",
       cursor: 0,

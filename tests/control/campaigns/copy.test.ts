@@ -13,7 +13,7 @@ import { generateSigningKeys } from "../../../src/core/commands.ts";
 import { parseContract } from "../../../src/core/contract.ts";
 import { usesFor } from "../../../src/core/mcp.ts";
 import { ADMIN, controlOnly, mcpClient, signIn } from "../../helpers/control-stack.ts";
-import { applied } from "../../helpers/control-store.ts";
+import { ingestReport } from "../../helpers/control-store.ts";
 
 /**
  * Copy a campaign (goal 069): REST's POST /v1/campaigns/<name>/copy, MCP's copy_campaign. The copy
@@ -75,7 +75,7 @@ async function stack() {
   const ingest = async (rig: string, events: Ev[]) => {
     const from = next.get(rig) ?? 0;
     next.set(rig, from + events.length);
-    store.rigEvents.ingest({
+    await ingestReport(store, {
       rig,
       ledger_id: `ledger-${rig}`,
       cursor: from,
@@ -104,7 +104,6 @@ async function stack() {
         },
       },
     });
-    await applied(store);
   };
   const deps = { store, kits, privateKeyPem: keys.privateKeyPem };
   await ingest("rig-a", []);

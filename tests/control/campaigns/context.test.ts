@@ -10,6 +10,7 @@ import { KitRepos } from "../../../src/control/kits/repos.ts";
 import { SecretBox } from "../../../src/control/secrets.ts";
 import { parseContract } from "../../../src/core/contract.ts";
 import { ADMIN, controlOnly, mcpClient } from "../../helpers/control-stack.ts";
+import { ingestReport } from "../../helpers/control-store.ts";
 
 /**
  * A campaign's own context settings for all its runs' agents (goal 070): REST's POST
@@ -63,7 +64,7 @@ async function stack() {
     tokens: TOKENS,
     options: { staleAfterMs: 600_000, kits, secrets },
   });
-  store.rigEvents.ingest({
+  await ingestReport(store, {
     rig: "rig-a",
     ledger_id: "ledger-rig-a",
     cursor: 0,

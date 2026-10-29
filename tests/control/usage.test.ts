@@ -6,7 +6,7 @@ import { modelUsage } from "../../src/control/usage.ts";
 import { rigView } from "../../src/control/views/index.ts";
 import { callUsage } from "../../src/core/usage.ts";
 import { ADMIN, controlOnly, mcpClient } from "../helpers/control-stack.ts";
-import { applied, controlStore, heldEvents } from "../helpers/control-store.ts";
+import { applied, controlStore, heldEvents, ingestReport } from "../helpers/control-store.ts";
 
 /**
  * Model usage on control (goal 075): the rigs' model_call events become rows the sums read, for a
@@ -60,7 +60,7 @@ async function ingest(
   events: [string, string, Record<string, unknown>][],
   first = 1,
 ) {
-  store.rigEvents.ingest({
+  await ingestReport(store, {
     rig,
     ledger_id: ledger,
     cursor: first - 1,

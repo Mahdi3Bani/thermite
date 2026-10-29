@@ -11,6 +11,7 @@ import { runStartBody, runStartSaid } from "../../src/cli/run.ts";
 import { issueCommand } from "../../src/control/issue/index.ts";
 import type { ControlStore } from "../../src/control/store/index.ts";
 import { controlOnly } from "../helpers/control-stack.ts";
+import { ingestReport } from "../helpers/control-store.ts";
 
 const run = promisify(execFile);
 const CLI = join(import.meta.dirname, "../../src/cli/thermite/main.ts");
@@ -34,13 +35,13 @@ async function cli(...args: string[]): Promise<{ code: number; stdout: string; s
 }
 
 /** A rig whose runs reported these events, in order (subject: the run). */
-function report(
+async function report(
   store: ControlStore,
   rig: string,
   events: [string, string, Record<string, unknown>][],
   summary: object = {},
 ) {
-  store.rigEvents.ingest({
+  await ingestReport(store, {
     rig,
     ledger_id: `ledger-${rig}`,
     cursor: 0,
@@ -74,7 +75,7 @@ describe("thermite run start (goal 029)", () => {
       },
       issuedBy: "owner:api",
     });
-    report(store, "rig-a", [
+    await report(store, "rig-a", [
       ["sort-speed-1", "run_created", { campaign: "sort-speed", mode: "hill_climb", agents: true }],
       ["sort-speed-1", "experiment_added", { id: "x-1", title: "radix sort", by: "planner" }],
       [
@@ -83,9 +84,14 @@ describe("thermite run start (goal 029)", () => {
         { id: "x-2", title: "insertion sort below 16", by: "lane-1", state: "proposed" },
       ],
     ]);
-    report(store, "rig-b", [["notes-1", "run_created", { campaign: "notes", mode: "research" }]], {
-      model: { source: "none", harness: "pi" },
-    });
+    await report(
+      store,
+      "rig-b",
+      [["notes-1", "run_created", { campaign: "notes", mode: "research" }]],
+      {
+        model: { source: "none", harness: "pi" },
+      },
+    );
     store.modelProviders.put({
       name: "zen",
       type: "opencode",

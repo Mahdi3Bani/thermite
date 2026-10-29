@@ -5,6 +5,7 @@ import { SecretBox } from "../../../src/control/secrets.ts";
 import { EDIT_RIG_JS } from "../../../src/control/ui/rigs/edit/client.ts";
 import { AdvisorsConfig, advisorsFileReport } from "../../../src/supervisor/advisors/index.ts";
 import { controlOnly, RIG_TOKEN, signIn } from "../../helpers/control-stack.ts";
+import { ingestReport } from "../../helpers/control-store.ts";
 
 /**
  * Edit rig's section "2 · The agents" (goals 070, 073 and 074, as the owner approved its revised
@@ -22,7 +23,7 @@ import { controlOnly, RIG_TOKEN, signIn } from "../../helpers/control-stack.ts";
 async function stack() {
   const secrets = SecretBox.ephemeral();
   const { store, control: api } = controlOnly({ options: { staleAfterMs: 600_000, secrets } });
-  store.rigEvents.ingest({
+  await ingestReport(store, {
     rig: "rig-a",
     ledger_id: "ledger-rig-a",
     cursor: 0,
@@ -696,8 +697,8 @@ describe("Edit rig's empty model names the real fallback (goal 074)", () => {
 
   test("the workers: the rig's own model, or none: can't run", async () => {
     const s = await stack();
-    const ingest = (model: unknown) =>
-      s.store.rigEvents.ingest({
+    const ingest = async (model: unknown) =>
+      await ingestReport(s.store, {
         rig: "rig-a",
         ledger_id: "ledger-rig-a",
         cursor: 0,
@@ -706,11 +707,11 @@ describe("Edit rig's empty model names the real fallback (goal 074)", () => {
         events: [],
         summary: { model },
       });
-    ingest({ source: "environment", model: "local-coder", harness: "pi" });
+    await ingest({ source: "environment", model: "local-coder", harness: "pi" });
     let w = cells(await s.page(), "workers");
     assert.equal(w.model, "rig's settings: local-coder");
     assert.equal(w.say, "the rig's own settings (local-coder)");
-    ingest({ source: "none" });
+    await ingest({ source: "none" });
     w = cells(await s.page(), "workers");
     assert.equal(w.model, "none: can't run");
     assert.equal(w.ctx, "—");

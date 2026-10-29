@@ -8,6 +8,7 @@ import { writeAtomic } from "../common/fs.ts";
 import { startLogging } from "../common/log.ts";
 import { readNumber } from "../common/settings.ts";
 import { generateSigningKeys } from "../core/commands.ts";
+import { EVENT_STREAM_CONFIG } from "../core/link/events.ts";
 import { createControlApi } from "./api/index.ts";
 import {
   BUS_CA_EXPORT_SETTING,
@@ -25,7 +26,7 @@ import {
 } from "./bus/index.ts";
 import { Credential } from "./credential.ts";
 import { mountDashboard } from "./dashboard/index.ts";
-import { EventsApply, EventsMirror } from "./events/index.ts";
+import { EventsApply, EventsMove, EventsWriter } from "./events/index.ts";
 import { followReports } from "./ingest.ts";
 import { sendCommandsOn } from "./issue/index.ts";
 import { KitRepos } from "./kits/index.ts";
@@ -135,16 +136,14 @@ async function main(): Promise<void> {
     reload: (seed) => reloadBus(natsUrl, seed, trust),
   });
   // Control's connection to the bus, signed in as its own user; the apply of the events stream,
-  // which writes what control derives from the events, and the mirror of its events table there,
-  // which nudges the apply after each batch; and what it took from the live stream and wrote to
-  // the config bucket, which the bus's state shows.
+  // which writes what control derives from the events; the writer of the stream, which publishes
+  // each report's events first and waits for the apply; the move of the events table a store from
+  // before the stream holds, which nudges the apply after each batch; and what control took from
+  // the live stream and wrote to the config bucket, which the bus's state shows.
   const bus = natsBus(natsUrl, "control", { seed: busUsers.controlSeed, trust });
   const eventsApply = new EventsApply({ store, bus });
-  const eventsMirror = new EventsMirror({
-    store,
-    bus,
-    published: () => void eventsApply.nudge(),
-  });
+  const eventsWriter = new EventsWriter({ store, bus, apply: eventsApply });
+  const eventsMove = new EventsMove({ store, bus, published: () => void eventsApply.nudge() });
   const liveTaken = new LiveTaken();
   const configWritten = new ConfigWritten();
   // What the dashboard, REST, MCP and the loops below share, made once here (parts.ts): the test
@@ -174,7 +173,8 @@ async function main(): Promise<void> {
       bus: {
         server: new URL(natsUrl).host,
         bus,
-        events: eventsMirror,
+        events: eventsWriter,
+        move: eventsMove,
         apply: eventsApply,
         live: liveTaken,
         config: configWritten,
@@ -230,13 +230,16 @@ async function main(): Promise<void> {
     bus: new URL(natsUrl).host,
     bus_for_rigs: rigBusUrl ? new URL(rigBusUrl).host : null,
   });
-  // Before control serves a page: the users file, so that the server can start, kept up to date
-  // after; the store's place checked against the events stream's end; the events table, mirrored
-  // to the stream from the stream's last row to the table's end; and the stream applied to its
-  // end, which builds the views' folds in one pass from its first message (control/events).
+  // Before control serves a page or takes a report: the users file, so that the server can start,
+  // kept up to date after; the events stream made, waiting for the bus; the store's place checked
+  // against the stream's end; the events
+  // table of a store from before the stream, moved there in the writer's turn, checked, and
+  // dropped with a copy of the store kept; and the stream applied to its end, which builds the
+  // views' folds in one pass from its first message (control/events).
   void busUsers.sync();
   const usersSync = setInterval(() => void busUsers.sync(), BUS_USERS_SYNC_MS);
   const started = performance.now();
+  await bus.makeStream(EVENT_STREAM_CONFIG);
   await eventsApply.start();
   // A store that applied the stream past its end holds records the stream lacks: control does
   // not go on with it.
@@ -244,7 +247,19 @@ async function main(): Promise<void> {
     log("control", "fatal", { error: eventsApply.stopped }, "error");
     process.exit(1);
   }
-  await eventsMirror.start();
+  await eventsWriter.alone(() => eventsMove.run());
+  // A table the stream can't hold whole stays, and control takes no report on top of it: the
+  // stream must hold the table's rows before the events published first.
+  if (eventsMove.stopped) {
+    const { error, ...at } = eventsMove.stopped;
+    log(
+      "control",
+      "fatal",
+      { error: `control's events table can't go to the events stream: ${error}`, ...at },
+      "error",
+    );
+    process.exit(1);
+  }
   await eventsApply.nudge();
   ready = true;
   log("control", "control's views built from the events stream", {
@@ -252,9 +267,9 @@ async function main(): Promise<void> {
     rigs: eventsApply.folds.held().length,
     ms: Math.round(performance.now() - started),
   });
-  // Reports from the bus, folded through the ingest route's checks as they arrive; the events
-  // table, mirrored to the events stream as reports arrive, by HTTP or by the bus, and the stream
-  // applied after each batch; live lines, folded into the live view as they arrive; each command
+  // Reports from the bus, folded through the ingest route's checks as they arrive, each report's
+  // events published to the events stream and applied before it is acked, as over HTTP; live
+  // lines, folded into the live view as they arrive; each command
   // control issues, published to its rig's subject as well as kept in the store; and each rig's
   // config, written when it changes.
   void busConfig.start().then(() => busConfig.write());

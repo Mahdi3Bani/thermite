@@ -10,6 +10,7 @@ import { serve } from "@hono/node-server";
 import { issueCommand } from "../../../src/control/issue/index.ts";
 import { parseContract } from "../../../src/core/contract.ts";
 import { controlOnly } from "../../helpers/control-stack.ts";
+import { ingestReport } from "../../helpers/control-store.ts";
 
 const run = promisify(execFile);
 const CLI = join(import.meta.dirname, "../../../src/cli/thermite/main.ts");
@@ -56,7 +57,7 @@ describe("thermite campaign copy (goal 069)", () => {
       },
       issuedBy: "owner:api",
     });
-    store.rigEvents.ingest({
+    await ingestReport(store, {
       rig: "rig-a",
       ledger_id: "ledger-rig-a",
       cursor: 0,
@@ -185,7 +186,7 @@ describe("thermite campaign context, and campaign copy's context options (goal 0
     ) as Record<string, unknown>;
     const contract = parseContract({ ...goal, campaign: "sort-speed" });
     assert.ok(contract.ok);
-    store.rigEvents.ingest({
+    await ingestReport(store, {
       rig: "rig-a",
       ledger_id: "ledger-rig-a",
       cursor: 0,

@@ -21,7 +21,7 @@ import type { TrialDoing } from "./work.ts";
  * events they come from.
  */
 
-/** An event a rig reported, as control keeps it; `seq` is control's order of a rig's events. */
+/** An event a rig reported, as control keeps it; `seq` is its place in the events stream. */
 export interface StoredEvent {
   seq: number;
   ledger_id: string;

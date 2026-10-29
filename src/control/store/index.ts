@@ -17,7 +17,7 @@ import { ChampionPatches } from "./champions.ts";
 import { Clusters } from "./clusters.ts";
 import { IssuedCommands } from "./commands.ts";
 import { Enrollments } from "./enrollments.ts";
-import { RigEvents } from "./events.ts";
+import { EventsTable } from "./events.ts";
 import { RigExports } from "./exports.ts";
 import { CampaignFolders } from "./folders.ts";
 import { GitAccessStore } from "./git-access.ts";
@@ -40,15 +40,15 @@ import { RigReports } from "./rig-reports.ts";
 import { ReportedRigs } from "./rigs.ts";
 import { RunpodStore } from "./runpod.ts";
 import { RunRegistry } from "./runs.ts";
-import { migrateStore } from "./schema.ts";
+import { type MigrateGiven, migrateStore } from "./schema.ts";
 import { UiSessions } from "./sessions.ts";
 import { TunnelRigs } from "./tunnels.ts";
 import { RigUpdates } from "./updates.ts";
 import { UsageRecords } from "./usage.ts";
 
 /**
- * Control's store: rigs, the events they report, and command queues. A single control process
- * owns it. Ingest is idempotent: re-sent events (same rig and event id) are ignored.
+ * Control's store: rigs, what control derives from the events they report (the events themselves
+ * are on the message bus, control/events), and command queues. A single control process owns it.
  *
  * Its tables are kept by sub-stores, one for each domain (goal 125, T6), in store/: each owns its
  * tables' SQL, and no other production code reads or writes them.
@@ -65,7 +65,7 @@ export type {
   ClusterRigSize,
 } from "./clusters.ts";
 export type { CommandRow, Decision } from "./commands.ts";
-export type { StoredEvent } from "./events.ts";
+export type { EventsMoved, StoredEvent } from "./events.ts";
 export type { RigExport } from "./exports.ts";
 export type { GitAccess } from "./git-access.ts";
 export type { JoinedRig } from "./joined.ts";
@@ -87,8 +87,8 @@ export class ControlStore {
   // One sub-store for each domain, each over this database (goal 125, T6).
   /** The rigs as they report: their rows, report-signing keys and supervisors' figures. */
   readonly reportedRigs: ReportedRigs;
-  /** The events rigs reported, and ingest, which takes a report. */
-  readonly rigEvents: RigEvents;
+  /** The events table of a store from before the events stream, until it is moved there. */
+  readonly eventsTable: EventsTable;
   readonly liveLines: LiveLines;
   readonly rigReports: RigReports;
   readonly fullResets: FullResets;
@@ -123,12 +123,16 @@ export class ControlStore {
   readonly busPositions: BusPositions;
   private knowledge: KnowledgeBase | undefined;
 
+  /** The store's file, or `:memory:`. */
+  readonly path: string;
+
   constructor(path: string) {
+    this.path = path;
     this.db = openDatabase(path);
     migrateStore(this.db, path);
     // Each sub-store holds the store and its database, and calls no other while it is built.
     this.reportedRigs = new ReportedRigs(this, this.db);
-    this.rigEvents = new RigEvents(this, this.db);
+    this.eventsTable = new EventsTable(this, this.db);
     this.liveLines = new LiveLines(this, this.db);
     this.rigReports = new RigReports(this, this.db);
     this.fullResets = new FullResets(this, this.db);
@@ -160,6 +164,15 @@ export class ControlStore {
     this.rigUpdates = new RigUpdates(this, this.db);
     this.mcpServers = new McpServerRows(this, this.db);
     this.busPositions = new BusPositions(this, this.db);
+  }
+
+  /**
+   * Brings the store as far as it may go now, given what control found outside it: the events
+   * table goes once the move found the events stream to hold it whole (schema.ts). Returns the path
+   * of a copy of the store kept outside the copies' rotation, made now.
+   */
+  migrate(given: MigrateGiven): string | undefined {
+    return migrateStore(this.db, this.path, given);
   }
 
   /**

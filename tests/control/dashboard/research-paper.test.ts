@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { queueSeedOf } from "../../../src/control/kb.ts";
 import { controlOnly, signIn } from "../../helpers/control-stack.ts";
-import { applied } from "../../helpers/control-store.ts";
+import { ingestReport } from "../../helpers/control-store.ts";
 
 /**
  * Goal 112's research paper on control's side, from a rig's events: the research Overview's
@@ -22,7 +22,7 @@ async function control() {
   const ingest = async (
     ...events: { kind: string; subject: string; body: Record<string, unknown> }[]
   ) => {
-    store.rigEvents.ingest({
+    await ingestReport(store, {
       rig: "rig-a",
       ledger_id: "ledger-a",
       cursor: id,
@@ -35,7 +35,6 @@ async function control() {
       })),
       summary: {},
     });
-    await applied(store);
   };
   /** The Overview's one line on the answer check, without markup. */
   const line = async () =>

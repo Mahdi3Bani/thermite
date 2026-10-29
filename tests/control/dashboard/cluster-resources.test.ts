@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { ingestReport } from "../../helpers/control-store.ts";
 import {
   ADMIN,
   control,
@@ -68,8 +69,8 @@ describe("a cluster rig's GPUs, CPUs and memory, changed from control (goal 118)
     await sleep(20);
     // Its first report (the fake cluster has no rig to send one) makes it running.
     s.store.clusters.setRigStatus(rig, "running");
-    const report = (summary: Record<string, unknown>) =>
-      s.store.rigEvents.ingest({
+    const report = async (summary: Record<string, unknown>) =>
+      await ingestReport(s.store, {
         rig,
         ledger_id: "l-1",
         cursor: 0,
@@ -79,7 +80,7 @@ describe("a cluster rig's GPUs, CPUs and memory, changed from control (goal 118)
         summary,
       });
     // Edit rig is for a rig that reported.
-    report({});
+    await report({});
     return { f, s, report };
   }
 
@@ -202,7 +203,7 @@ describe("a cluster rig's GPUs, CPUs and memory, changed from control (goal 118)
   test("an operator changes GPUs, CPUs and memory over MCP, not the judge's share; a share the rig kept follows; REST is the owner's twin", async () => {
     const { f, s, report } = await slotRig("gpu-2", 3);
     // The rig keeps a judge's share from Edit rig: 1 of its 3 GPUs.
-    report({ settings: { judge_gpus: 1 }, gpu_split: { set: 3, judge: 1 } });
+    await report({ settings: { judge_gpus: 1 }, gpu_split: { set: 3, judge: 1 } });
     const op = await mcpWith(s.api, OPERATOR);
     f.calls.length = 0;
     const refused = await op.call("set_cluster_rig_resources", {
@@ -305,7 +306,7 @@ describe("a cluster rig's GPUs, CPUs and memory, changed from control (goal 118)
 
   test("a busy rig drains before its new size: Call the change off, Change now, and the watcher once nothing runs", async () => {
     const { f, s, report } = await slotRig("gpu-3", 3, { drainWatchMs: 20 });
-    report({ work: { trials: 1, judge_jobs: 0, draining: null } });
+    await report({ work: { trials: 1, judge_jobs: 0, draining: null } });
     f.calls.length = 0;
     assert.match(
       await s.post("/ui/rigs/gpu-3/edit", { k_gpus: "4", k_cpus: "", k_mem: "" }),
@@ -363,10 +364,10 @@ describe("a cluster rig's GPUs, CPUs and memory, changed from control (goal 118)
     await s.post("/ui/rigs/gpu-3/edit", { k_gpus: "5", k_cpus: "", k_mem: "" });
     assert.equal(s.store.clusters.rig("gpu-3")?.status, "draining");
     f.calls.length = 0;
-    report({ work: { trials: 1, judge_jobs: 0, draining: { since: "x", reason: "r" } } });
+    await report({ work: { trials: 1, judge_jobs: 0, draining: { since: "x", reason: "r" } } });
     await sleep(100);
     assert.ok(!f.calls.some((c) => c.args[0] === "apply"), "not while its trial runs");
-    report({ work: { trials: 0, judge_jobs: 0, draining: { since: "x", reason: "r" } } });
+    await report({ work: { trials: 0, judge_jobs: 0, draining: { since: "x", reason: "r" } } });
     for (let i = 0; i < 50 && !f.calls.some((c) => c.args[0] === "apply"); i++) await sleep(20);
     assert.equal(f.calls.filter((c) => c.args[0] === "apply").length, 1, "applied once");
     assert.equal(s.store.clusters.rig("gpu-3")?.spec.gpus, 5);
@@ -401,8 +402,8 @@ describe("a cluster rig's GPUs, CPUs and memory, changed from control (goal 118)
     );
     await sleep(20);
     s.store.clusters.setRigStatus("dra-1", "running");
-    const reported = (rig: string) =>
-      s.store.rigEvents.ingest({
+    const reported = async (rig: string) =>
+      await ingestReport(s.store, {
         rig,
         ledger_id: "l-1",
         cursor: 0,
@@ -411,7 +412,7 @@ describe("a cluster rig's GPUs, CPUs and memory, changed from control (goal 118)
         events: [],
         summary: {},
       });
-    reported("dra-1");
+    await reported("dra-1");
     assert.match(await s.post("/ui/rigs/dra-1/cluster/stop", {}), /ok=Stopped/);
     assert.match(
       await s.page("/ui/rigs/dra-1/edit"),
@@ -464,7 +465,7 @@ describe("a cluster rig's GPUs, CPUs and memory, changed from control (goal 118)
     );
     await sleep(20);
     s.store.clusters.setRigStatus("cpu-5", "running");
-    reported("cpu-5");
+    await reported("cpu-5");
     const edit = await s.page("/ui/rigs/cpu-5/edit");
     assert.doesNotMatch(edit, /name="k_gpus"/);
     assert.match(edit, /name="k_cpus"/);

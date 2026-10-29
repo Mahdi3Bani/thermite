@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { sentence } from "../../../src/control/ui/words/index.ts";
 import { rigView } from "../../../src/control/views/index.ts";
-import { applied, controlStore, foldedEvents } from "../../helpers/control-store.ts";
+import { applied, controlStore, foldedEvents, ingestReport } from "../../helpers/control-store.ts";
 
 /**
  * Goal 117 on control's side: a research run's answer cards reach control as `card_written`
@@ -15,8 +15,10 @@ function store() {
   const s = controlStore();
   let id = 0;
   const t0 = Date.now() - 3_600_000;
-  const ingest = (...events: { kind: string; subject: string; body: Record<string, unknown> }[]) =>
-    s.rigEvents.ingest({
+  const ingest = async (
+    ...events: { kind: string; subject: string; body: Record<string, unknown> }[]
+  ) =>
+    await ingestReport(s, {
       rig: "rig-a",
       ledger_id: "ledger-a",
       cursor: id,
@@ -57,7 +59,7 @@ const written = (question: number, version: number, certainty: string) => ({
 describe("a research run's answer cards on control (goal 117)", () => {
   test("the run's view keeps each question's newest card and the newest refusal since it; History says both", async () => {
     const c = store();
-    c.ingest(
+    await c.ingest(
       {
         kind: "run_created",
         subject: "s-1",

@@ -85,17 +85,17 @@ describe("control folds rigs' reports from the message bus", () => {
     const t = intake();
     const { env, page } = harness(10);
     const first = page(0, 10);
-    assert.deepEqual(foldReport(t, message(first)), { folded: 10 });
-    assert.deepEqual(foldReport(t, message(first)), { skipped: "taken already" });
+    assert.deepEqual(await foldReport(t, message(first)), { folded: 10 });
+    assert.deepEqual(await foldReport(t, message(first)), { skipped: "taken already" });
     // A newer report with nothing new is taken: it says the rig is alive.
     await new Promise((r) => setTimeout(r, 5));
     const alive = page(10, 10);
-    assert.deepEqual(foldReport(t, message(alive)), { folded: 0 });
+    assert.deepEqual(await foldReport(t, message(alive)), { folded: 0 });
     // The first page again, after a newer one was taken: skipped, never refused as old.
-    assert.deepEqual(foldReport(t, message(first)), { skipped: "taken already" });
+    assert.deepEqual(await foldReport(t, message(first)), { skipped: "taken already" });
     // A page that brings new events after a skip is folded.
     appendOther(env.service.ledger, "t", "late", null, {});
-    assert.deepEqual(foldReport(t, message(page(10, 10))), { folded: 1 });
+    assert.deepEqual(await foldReport(t, message(page(10, 10))), { folded: 1 });
     assert.equal((await kinds(t)).length, 11);
     assert.deepEqual(refusals(t), []);
   });
@@ -103,14 +103,14 @@ describe("control folds rigs' reports from the message bus", () => {
   test("a gap is refused and recorded as over HTTP, and the pages after it still fold", async () => {
     const t = intake();
     const { page } = harness(25);
-    assert.deepEqual(foldReport(t, message(page(0, 10))), { folded: 10 });
+    assert.deepEqual(await foldReport(t, message(page(0, 10))), { folded: 10 });
     const ahead = page(20, 10);
-    assert.deepEqual(foldReport(t, message(ahead)), { refused: "a gap in the event stream" });
+    assert.deepEqual(await foldReport(t, message(ahead)), { refused: "a gap in the event stream" });
     assert.deepEqual(refusals(t), ["a gap in the event stream"]);
     assert.equal((await kinds(t)).length, 10);
     // The page that closes the gap, from where control is, folds; then the one after it.
-    assert.deepEqual(foldReport(t, message(page(10, 10))), { folded: 10 });
-    assert.deepEqual(foldReport(t, message(page(20, 10))), { folded: 5 });
+    assert.deepEqual(await foldReport(t, message(page(10, 10))), { folded: 10 });
+    assert.deepEqual(await foldReport(t, message(page(20, 10))), { folded: 5 });
     assert.equal((await kinds(t)).length, 25);
   });
 
@@ -119,37 +119,38 @@ describe("control folds rigs' reports from the message bus", () => {
     const { page } = harness(3);
     const forRigA = page(0, 10);
     // Published on rig-b's subject: the signature says rig-a, so nothing is taken for either.
-    const refused = foldReport(t, message(forRigA, reportSubject("rig-b")));
+    const refused = await foldReport(t, message(forRigA, reportSubject("rig-b")));
     assert.deepEqual(refused, { refused: "rig mismatch" });
     assert.deepEqual(await kinds(t, "rig-a"), []);
     assert.deepEqual(await kinds(t, "rig-b"), []);
     assert.equal(t.store.reportedRigs.key("rig-b").pubkey, null, "no key is pinned for rig-b");
     // Its own subject takes it.
-    assert.deepEqual(foldReport(t, message(forRigA)), { folded: 3 });
+    assert.deepEqual(await foldReport(t, message(forRigA)), { folded: 3 });
   });
 
   test("a subject or rig control does not know, a retired rig and a forged report are refused", async () => {
     const t = intake();
     const { page } = harness(2);
     const report = page(0, 10);
-    const refusedFor = (m: BusMessage) => (foldReport(t, m) as { refused?: string }).refused;
+    const refusedFor = async (m: BusMessage) =>
+      ((await foldReport(t, m)) as { refused?: string }).refused;
     assert.equal(
-      refusedFor(message(report, "thermite.rig.rig-a.cmd")),
+      await refusedFor(message(report, "thermite.rig.rig-a.cmd")),
       "not a rig's report subject",
     );
     assert.equal(
-      refusedFor(message(report, reportSubject("rig-c"))),
+      await refusedFor(message(report, reportSubject("rig-c"))),
       "no such rig: control has no token for it",
     );
     const notJson = { ...message(report), data: new TextEncoder().encode("{") };
-    assert.equal(refusedFor(notJson), "not a report");
-    assert.equal(refusedFor(message({ ...report, events: "none" })), "not a report");
+    assert.equal(await refusedFor(notJson), "not a report");
+    assert.equal(await refusedFor(message({ ...report, events: "none" })), "not a report");
     const forged = { ...report, next: report.next + 1 };
-    assert.equal(refusedFor(message(forged)), "bad report signature");
+    assert.equal(await refusedFor(message(forged)), "bad report signature");
     const { signature: _s, ...unsigned } = report as typeof report & { signature: string };
-    assert.equal(refusedFor(message(unsigned)), "unsigned report");
+    assert.equal(await refusedFor(message(unsigned)), "unsigned report");
     t.store.retired.add("rig-a", "owner:test");
-    assert.equal(refusedFor(message(report)), "this rig is retired in control");
+    assert.equal(await refusedFor(message(report)), "this rig is retired in control");
     assert.deepEqual(await kinds(t), []);
   });
 
@@ -159,7 +160,7 @@ describe("control folds rigs' reports from the message bus", () => {
     // Its supervisor said so on a call over HTTP: it works with protocol 99 or later only.
     const newer = { version: "9.0.0", commit: null, protocol: 99, oldest_protocol: 99 };
     t.store.builds.setRig("rig-a", "supervisor", newer);
-    const refused = (foldReport(t, message(page(0, 10))) as { refused?: string }).refused;
+    const refused = ((await foldReport(t, message(page(0, 10)))) as { refused?: string }).refused;
     assert.match(refused ?? "", /^Control cannot work with this rig: its supervisor works with/);
     assert.equal(t.store.refusals.get("rig-a")?.calls, 1);
     assert.deepEqual(await kinds(t), []);

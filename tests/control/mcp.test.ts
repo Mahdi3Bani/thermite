@@ -346,7 +346,7 @@ describe("control over MCP", () => {
     });
     store.db
       .prepare(
-        "insert into rig (id, first_seen, last_seen, last_cursor, ledger_id, summary, report_at) values (?, ?, ?, 0, null, '{}', ?)",
+        "insert into rig (id, first_seen, last_seen, ledger_id, summary, report_at) values (?, ?, ?, null, '{}', ?)",
       )
       .run("cpu-1", new Date().toISOString(), new Date().toISOString(), new Date().toISOString());
     store.modelProviders.put({

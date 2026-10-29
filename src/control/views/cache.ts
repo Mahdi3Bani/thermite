@@ -37,8 +37,8 @@ import type { RigView, RunOnRig } from "./types.ts";
  */
 
 /**
- * One fold: its ledger, the seq of the newest of its events taken, and the place in the stream
- * through which it holds every event of its ledger.
+ * One fold: its ledger, the seq of the newest of its events taken (its place in the stream), and
+ * the place in the stream through which it holds every event of its ledger.
  */
 interface Kept {
   ledger: string | null;
@@ -237,7 +237,7 @@ export class FoldCache {
     try {
       const stored = foldEvent(e);
       if (stored) k.fold.apply(stored);
-      k.seq = e.read.seq ?? e.place;
+      k.seq = e.place;
       k.through = e.place;
     } catch (err) {
       const error = `rig ${rig}'s view failed on its event ${e.read.event.id} (${e.read.event.kind}): ${errorText(err)}`;
@@ -358,7 +358,7 @@ export class FoldCache {
         if (e.place > upTo) break;
         const stored = foldEvent(e);
         if (stored) k.fold.apply(stored);
-        k.seq = e.read.seq ?? e.place;
+        k.seq = e.place;
       }
       k.through = page.done ? upTo : Math.min(page.next - 1, upTo);
     }

@@ -1,19 +1,28 @@
 /**
- * Control's events on the message bus (goal 168, step 4): the mirror of control's events table in
- * the `EVENTS` stream, with what the bus can't carry, which ingest refuses (mirror.ts); the apply
- * of the stream, which writes what control derives from the events and hands them to control's
- * views (apply.ts); and the knowledge base's reading of the stream again after an upgrade
- * (knowledge.ts).
+ * Control's events on the message bus (goal 168, step 4): the `EVENTS` stream is control's one
+ * copy of its rigs' events. The writer publishes each report's events there first, and waits for
+ * the apply (writer.ts); the apply of the stream writes what control derives from the events and
+ * hands them to control's views (apply.ts); a store from before holds its events in a table,
+ * moved to the stream once, checked there and dropped (move.ts); the knowledge base reads the
+ * stream again after an upgrade (knowledge.ts). Events become messages, in batches, in batch.ts.
  */
 
 export { APPLY_PAGE, applyState, EventsApply, type EventsApplyOptions } from "./apply.ts";
+export { BATCH_BYTES, notForBus } from "./batch.ts";
 export { readKnowledgeAgain } from "./knowledge.ts";
 export {
-  EventsMirror,
-  type EventsMirrorOptions,
-  MIRROR_BATCH_BYTES,
-  type MirrorStopped,
-  mirrorState,
-  streamEnd,
-  tooLargeForBus,
-} from "./mirror.ts";
+  EventsMove,
+  type EventsMoveOptions,
+  MOVE_CHECK_SAMPLE,
+  type MoveStopped,
+  movedEnd,
+} from "./move.ts";
+export {
+  APPLY_WAIT_MS,
+  EventsWriter,
+  type EventsWriterOptions,
+  WRITER_WAITING_MAX,
+  type Written,
+  writerOf,
+  writerState,
+} from "./writer.ts";

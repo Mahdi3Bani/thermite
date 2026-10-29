@@ -19,8 +19,9 @@ import { readKnowledgeAgain } from "./knowledge.ts";
  * about what was applied. An event at or below its ledger's held cursor is applied already, and
  * changes nothing. Then it hands each event to control's kept folds (views/cache.ts), which its
  * views read: at control's start it reads the stream from its first message, the events before
- * the store's place for the folds alone, so the folds are built in one pass. Control's own copy of
- * its events table on the stream (mirror.ts) nudges it after each batch it publishes.
+ * the store's place for the folds alone, so the folds are built in one pass. The writer of the
+ * stream (writer.ts) waits for it to reach what it published before control answers a report, and
+ * the move of a store's events table (move.ts) nudges it after each batch it publishes.
  */
 
 /** How many messages one read takes at most: one transaction applies them all. */
@@ -33,7 +34,9 @@ export interface EventsApplyOptions {
   retryMs?: number | undefined;
 }
 
-const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const pause = (ms: number) => new Promise<boolean>((r) => setTimeout(() => r(true), ms));
+/** How long reach() waits after a turn of the apply that found nothing new, before the next. */
+const REACH_PAUSE_MS = 20;
 
 /**
  * The apply of the events stream. start() checks the store's place against the stream's end, then
@@ -94,6 +97,32 @@ export class EventsApply {
   close(): void {
     this.closed = true;
     this.markChecked();
+  }
+
+  /**
+   * Resolves true once control's store has applied the stream through `place`, nudging the apply
+   * as often as it takes; false when it has not after `ms` (the bus away, or the apply failing),
+   * or once the apply stopped or closed.
+   */
+  async reach(place: number, ms: number): Promise<boolean> {
+    const applied = () => this.o.store.busPositions.of(EVENT_STREAM);
+    let timer: NodeJS.Timeout | undefined;
+    const late = new Promise<boolean>((r) => {
+      timer = setTimeout(() => r(false), ms);
+    });
+    try {
+      while (applied() < place) {
+        if (this.stopped || this.closed) return false;
+        const before = applied();
+        if (!(await Promise.race([this.nudge().then(() => true), late]))) return false;
+        // A turn that found nothing new yet: the next looks again after a pause.
+        if (applied() === before && !(await Promise.race([pause(REACH_PAUSE_MS), late])))
+          return false;
+      }
+      return true;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   private async run(): Promise<void> {
@@ -237,9 +266,9 @@ function readOrSay(m: BusMessage): EventRead | undefined {
 }
 
 /**
- * What control keeps of one event, under the current names (core/names.ts), as the readers of its
- * events table read it: the run registry's entry for a run the rig created (ingest wrote it before
- * the copy on the bus chose the event's subject; this writes the same again), a command's outcome
+ * What control keeps of one event, under the current names (core/names.ts): the run registry's
+ * entry for a run the rig created (ingest wrote it before it published the event, whose subject
+ * the registry chose; this writes the same again), a command's outcome
  * as the harness gave it, a model call's usage (goal 075; a body that does not read as one stays
  * an event only), and, with `toKb`, its items in the knowledge base. An event the knowledge base
  * can't index is left out of it, in control's log and the audit log.

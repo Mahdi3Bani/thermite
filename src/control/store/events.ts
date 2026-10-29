@@ -1,17 +1,34 @@
 import type { DatabaseSync } from "node:sqlite";
-import { log } from "../../common/env.ts";
-import { errorText } from "../../common/errors.ts";
-import { canonicalJson } from "../../core/canonical.ts";
-import { currentEvent } from "../../core/names.ts";
 import { type Row, StorePart } from "./part.ts";
-import type { IngestReport } from "./report.ts";
 
 /**
- * The events rigs reported (goal 125, T6): a report taken, with its events. Control's views, its
- * raw reads of events and the knowledge base read the message bus's events stream (goal 168,
- * step 4); the table is read only by its copy there (control/events/mirror.ts), until the copy
- * goes, and by the store's migrations.
+ * Control's events table, `rig_event`, as a store from before the message bus's events stream
+ * holds it (goal 168, step 4). Control publishes every event of a report to the stream before it
+ * answers (control/events), and keeps none here. A store from before that has its table moved to
+ * the stream once, at control's start, and checked there (control/events/move.ts); store
+ * migration 12 then drops the table, with a copy of the store kept. Until then, the move alone
+ * reads it.
  */
+
+/** The table's name. */
+const TABLE = "rig_event";
+
+/** Whether the store holds the events table. */
+function hasTable(db: DatabaseSync): boolean {
+  return Boolean(
+    db.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(TABLE),
+  );
+}
+
+/** The table's rows and its last seq: 0 and 0 for a table with none, or none at all. */
+function tableSize(db: DatabaseSync): { rows: number; lastSeq: number } {
+  if (!hasTable(db)) return { rows: 0, lastSeq: 0 };
+  const r = db.prepare(`select count(*) as rows, max(seq) as last from ${TABLE}`).get() as {
+    rows: number;
+    last: number | null;
+  };
+  return { rows: Number(r.rows), lastSeq: Number(r.last ?? 0) };
+}
 
 /**
  * A rig's events by ledger, in control's order (store migration 8): a view's pages of events
@@ -22,7 +39,43 @@ export function eventsInOrderIndex(db: DatabaseSync): void {
   db.exec("create index if not exists rig_event_ledger_seq on rig_event (rig, ledger_id, seq)");
 }
 
-/** An event as control's table keeps it: its place there, its rig and ledger, and the event. */
+/**
+ * What the move found the events stream to hold: the table's rows, whole, and its last seq. The
+ * table may go only when they are still what it holds.
+ */
+export interface EventsMoved {
+  rows: number;
+  lastSeq: number;
+}
+
+/**
+ * Whether the events table may go now (store migration 12): the store has none, it holds no row,
+ * or the move found the stream to hold every row it holds (`moved`). Until then the migration
+ * waits, and so do the migrations after it.
+ */
+export function eventsTableMayGo(db: DatabaseSync, moved: EventsMoved | undefined): boolean {
+  const { rows, lastSeq } = tableSize(db);
+  return rows === 0 || (moved?.rows === rows && moved.lastSeq === lastSeq);
+}
+
+/** Whether the events table holds a row: the copy of the store before it goes is then kept. */
+export function eventsTableHoldsRows(db: DatabaseSync): boolean {
+  return tableSize(db).rows > 0;
+}
+
+/**
+ * Store migration 12: the events table goes, and with it the rig's `last_cursor`, which the held
+ * cursor of each rig ledger (`rig_ledger.through_event`) replaced: the gap check and control's
+ * place in a rig's events read that. The migration runs once eventsTableMayGo says so.
+ */
+export function dropEventsTable(db: DatabaseSync): void {
+  db.exec(`drop table if exists ${TABLE}`);
+  const cols = db.prepare("pragma table_info(rig)").all() as { name: string }[];
+  if (cols.some((c) => c.name === "last_cursor"))
+    db.exec("alter table rig drop column last_cursor");
+}
+
+/** A row of the table: its place there, its rig and ledger, and the event. */
 export interface StoredEvent {
   seq: number;
   rig: string;
@@ -30,113 +83,70 @@ export interface StoredEvent {
   event: { id: number; at: string; actor: string; kind: string; subject: string | null };
   /** The event's body, as the table keeps it: canonical JSON. */
   body: string;
+  /** The run it is about; null for the rig's own events, and for events kept before goal 170. */
   run: string | null;
 }
 
-export class RigEvents extends StorePart {
-  /** Told each time ingest stores new events: the copy on the message bus (control/events). */
-  private readonly watchers = new Set<() => void>();
+const asStored = (r: Row): StoredEvent => ({
+  seq: Number(r.seq),
+  rig: String(r.rig),
+  ledger_id: String(r.ledger_id),
+  event: {
+    id: Number(r.event_id),
+    at: String(r.at),
+    actor: String(r.actor),
+    kind: String(r.kind),
+    subject: r.subject === null ? null : String(r.subject),
+  },
+  body: String(r.body),
+  run: r.run === null || r.run === undefined ? null : String(r.run),
+});
 
-  /** Tells `fn` each time ingest stores new events, until the function it returns is called. */
-  watch(fn: () => void): () => void {
-    this.watchers.add(fn);
-    return () => {
-      this.watchers.delete(fn);
-    };
+/**
+ * The events table of a store from before the stream, as the move reads it: none once store
+ * migration 12 dropped it. A store from v0.1.0 has no `run` column until migration 5 adds it.
+ */
+export class EventsTable extends StorePart {
+  /** Whether the store still holds the table. */
+  exists(): boolean {
+    return hasTable(this.db);
   }
 
-  /** Stores a rig's report. Returns how many events were new; tells the watchers when any were. */
-  ingest(report: IngestReport): number {
-    const added = this.keepReport(report);
-    if (!added) return added;
-    for (const fn of this.watchers) {
-      try {
-        fn();
-      } catch (err) {
-        const what = { rig: report.rig, error: errorText(err) };
-        log("control", "a watcher of the events table failed", what, "error");
-      }
-    }
-    return added;
+  /** The table's rows and its last seq: 0 and 0 when it holds none, or is gone. */
+  size(): { rows: number; lastSeq: number } {
+    return tableSize(this.db);
   }
 
-  /**
-   * The report's events, and the rig's row, in one transaction. What control derives from the
-   * events (a command's outcome, a model call's usage, the knowledge base's items) the apply of
-   * the events stream writes (control/events), in the stream's order. A run a rig created goes in
-   * the run registry here too, before the copy on the bus chooses its events' subjects from the
-   * registry; the apply writes it again, the same, from the stream.
-   */
-  private keepReport(report: IngestReport): number {
-    const now = new Date().toISOString();
-    return this.tx(() => {
-      this.store.reportedRigs.noteReport(report, now);
-      let added = 0;
-      const insert = this.db.prepare(
-        `insert or ignore into rig_event (rig, ledger_id, event_id, at, actor, kind, subject, body,
-           received_at, run) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      );
-      for (const e of report.events) {
-        this.store.runRegistry.registerRunCreated(report.rig, report.ledger_id, currentEvent(e));
-        added += Number(
-          insert.run(
-            report.rig,
-            report.ledger_id,
-            e.id,
-            e.at,
-            e.actor,
-            e.kind,
-            e.subject,
-            canonicalJson(e.body ?? {}),
-            now,
-            e.run ?? null,
-          ).changes,
-        );
-      }
-      return added;
-    });
-  }
-
-  /** The table's last seq: 0 while it holds no event. */
-  lastSeq(): number {
-    const r = this.db.prepare("select max(seq) as seq from rig_event").get() as {
-      seq: number | null;
-    };
-    return Number(r.seq ?? 0);
-  }
-
-  /** How many events the table holds after a seq. */
+  /** How many rows the table holds after a seq. */
   countAfter(seq: number): number {
-    const r = this.db.prepare("select count(*) as n from rig_event where seq > ?").get(seq) as {
+    if (!this.exists()) return 0;
+    const r = this.db.prepare(`select count(*) as n from ${TABLE} where seq > ?`).get(seq) as {
       n: number;
     };
     return Number(r.n);
   }
 
-  /**
-   * Every rig's events after a seq, in the table's order, `limit` at most, as the table keeps them:
-   * for the copy on the message bus, which keeps each as the rig recorded it.
-   */
+  /** Every rig's events after a seq, in the table's order, `limit` at most. */
   inOrder(after: number, limit: number): StoredEvent[] {
+    if (!this.exists()) return [];
     const rows = this.db
       .prepare(
-        `select seq, rig, ledger_id, event_id, at, actor, kind, subject, body, run from rig_event
+        `select seq, rig, ledger_id, event_id, at, actor, kind, subject, body, run from ${TABLE}
            where seq > ? order by seq limit ?`,
       )
       .all(after, limit) as Row[];
-    return rows.map((r) => ({
-      seq: Number(r.seq),
-      rig: String(r.rig),
-      ledger_id: String(r.ledger_id),
-      event: {
-        id: Number(r.event_id),
-        at: String(r.at),
-        actor: String(r.actor),
-        kind: String(r.kind),
-        subject: r.subject === null ? null : String(r.subject),
-      },
-      body: String(r.body),
-      run: r.run === null ? null : String(r.run),
-    }));
+    return rows.map(asStored);
+  }
+
+  /** The row at a seq, or undefined when the table has none there. */
+  at(seq: number): StoredEvent | undefined {
+    if (!this.exists()) return undefined;
+    const r = this.db
+      .prepare(
+        `select seq, rig, ledger_id, event_id, at, actor, kind, subject, body, run from ${TABLE}
+           where seq = ?`,
+      )
+      .get(seq) as Row | undefined;
+    return r ? asStored(r) : undefined;
   }
 }

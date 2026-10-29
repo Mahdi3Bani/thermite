@@ -21,6 +21,7 @@ import {
 } from "../../../../src/control/ui/campaigns/context/client.ts";
 import { agentsContextRefusal } from "../../../../src/core/compaction.ts";
 import { controlOnly, signIn } from "../../../helpers/control-stack.ts";
+import { ingestReport } from "../../../helpers/control-store.ts";
 
 /**
  * A campaign's Agents' context on the screens (goal 070, as the owner approved the revised
@@ -83,7 +84,7 @@ async function stack() {
     ["rig-b", "cpu", "narrow-model"],
     ["rig-g", "cuda-gpu", "wide-model"],
   ] as const)
-    store.rigEvents.ingest({
+    await ingestReport(store, {
       rig,
       ledger_id: `ledger-${rig}`,
       cursor: 0,

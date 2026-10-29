@@ -9,6 +9,9 @@ import { takeLive } from "../live/index.ts";
 import type { ApiContext } from "./context.ts";
 import { supervisorRoutes } from "./supervisor.ts";
 
+/** How long a report refused for now tells its sender to wait before it sends it again. */
+const RETRY_SECONDS = 5;
+
 /**
  * What a rig's supervisor relays to control and fetches from it, with the rig's token: its reports,
  * the commands it fetches and acknowledges (and the owner's cancel of one still pending), its own
@@ -19,10 +22,13 @@ export function relayRoutes(app: Hono, api: ApiContext): void {
   const { secrets } = parts;
 
   // A report the rig's supervisor posts; with the message bus, control also folds them from there.
+  // Control answers once the report's events are on its events stream and applied; 503 refuses it
+  // for now, and the supervisor sends it again.
   const intake = { store, control, requireKeyAcceptance: Boolean(opts.requireKeyAcceptance) };
   app.post(INGEST.path, rigAuth, bodyLimit({ maxSize: INGEST.maxBytes }), async (c) => {
     const read = readReport(await jsonBody(c.req));
-    const [status, answer] = takeReport(intake, c.req.param("rig"), read);
+    const [status, answer] = await takeReport(intake, c.req.param("rig"), read);
+    if (status === 503) return c.json(answer, status, { "retry-after": String(RETRY_SECONDS) });
     return c.json(answer, status);
   });
 

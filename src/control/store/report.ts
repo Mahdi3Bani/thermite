@@ -1,6 +1,7 @@
 /**
- * A rig's report as control's store takes it: the events of one ledger after a cursor,
- * and the rig's summary. The API checks its shape and its signature first.
+ * A rig's report as control keeps it: the events of one ledger after a cursor, which go on the
+ * message bus's events stream, and the rig's summary, which its row keeps. The API checks its
+ * shape and its signature first.
  */
 export interface IngestReport {
   generated_at?: string | undefined;

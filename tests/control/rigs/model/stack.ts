@@ -1,5 +1,6 @@
 import { SecretBox } from "../../../../src/control/secrets.ts";
 import { ADMIN, controlOnly, RIG_TOKEN } from "../../../helpers/control-stack.ts";
+import { ingestReport } from "../../../helpers/control-store.ts";
 
 /**
  * Each agent's model over REST and MCP (goal 029): POST /v1/rigs/<rig>/model and set_rig_model
@@ -26,7 +27,7 @@ export async function stack() {
     tokens: TOKENS,
     options: { staleAfterMs: 600_000, secrets },
   });
-  store.rigEvents.ingest({
+  await ingestReport(store, {
     rig: "rig-a",
     ledger_id: "ledger-rig-a",
     cursor: 0,

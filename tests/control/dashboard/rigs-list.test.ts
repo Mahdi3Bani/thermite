@@ -5,7 +5,7 @@ import { ControlTunnels } from "../../../src/control/runpod/tunnel.ts";
 import { SecretBox } from "../../../src/control/secrets.ts";
 import { generateSigningKeys } from "../../../src/core/commands.ts";
 import { controlOnly, signIn } from "../../helpers/control-stack.ts";
-import { applied, controlStore } from "../../helpers/control-store.ts";
+import { applied, controlStore, ingestReport } from "../../helpers/control-store.ts";
 import { FAKE_RUNPOD_KEY, fakeRunpod } from "../../helpers/fake-runpod.ts";
 import {
   exportName,
@@ -67,7 +67,7 @@ async function rigsStack() {
     events: { kind: string; subject: string; body: object }[] = [],
   ) => {
     const from = cursors.get(rig) ?? 0;
-    store.rigEvents.ingest({
+    await ingestReport(store, {
       rig,
       ledger_id: `ledger-${rig}`,
       cursor: from,

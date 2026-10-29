@@ -10,6 +10,7 @@ import { serve } from "@hono/node-server";
 import { type Enrolled, writeRigFiles } from "../../src/cli/rig.ts";
 import { fingerprint } from "../../src/control/store/index.ts";
 import { controlOnly } from "../helpers/control-stack.ts";
+import { ingestReport } from "../helpers/control-store.ts";
 
 const run = promisify(execFile);
 const CLI = join(import.meta.dirname, "../../src/cli/thermite/main.ts");
@@ -119,7 +120,11 @@ describe("thermite rig", () => {
     });
     // rig-old reports from an older, compatible build; rig-new never reported; rig-x is refused.
     const report = { cursor: 0, next: 0, events: [], summary: {}, ledger_id: "l1" };
-    store.rigEvents.ingest({ rig: "rig-old", ...report, generated_at: new Date().toISOString() });
+    await ingestReport(store, {
+      rig: "rig-old",
+      ...report,
+      generated_at: new Date().toISOString(),
+    });
     const old = { version: "0.1.0", commit: "abcdef0123456789", protocol: 1, oldest_protocol: 1 };
     store.builds.setRig("rig-old", "harness", old);
     store.builds.setRig("rig-old", "supervisor", old);

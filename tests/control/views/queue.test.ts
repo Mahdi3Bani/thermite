@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { experimentsTab, plannerTab } from "../../../src/control/ui/campaigns/queue/index.ts";
 import { rigView } from "../../../src/control/views/index.ts";
-import { applied, controlStore } from "../../helpers/control-store.ts";
+import { controlStore, ingestReport } from "../../helpers/control-store.ts";
 
 /** A rig whose run "r-1" reported these events (subject: the run), in order. */
 async function rigWith(events: [string, string, Record<string, unknown>][]) {
@@ -11,7 +11,7 @@ async function rigWith(events: [string, string, Record<string, unknown>][]) {
     ["harness", "run_created", { campaign: "c", mode: "hill_climb", version: 1, agents: true }],
     ...events,
   ];
-  store.rigEvents.ingest({
+  await ingestReport(store, {
     rig: "rig-a",
     ledger_id: "ledger-a",
     cursor: 0,
@@ -27,7 +27,6 @@ async function rigWith(events: [string, string, Record<string, unknown>][]) {
     })),
     summary: {},
   });
-  await applied(store);
   const u = rigView(store, "rig-a", { staleAfterMs: 600_000 });
   assert.ok(u);
   const r = u.runs.find((x) => x.id === "r-1");
@@ -593,7 +592,7 @@ test("a change that became the champion no longer waits: only pending promotions
     ],
     ["control:owner:ui", "champion_promoted", "r-1", { seq: 2, attempt: "a-1", commit: "c1" }],
   ];
-  store.rigEvents.ingest({
+  await ingestReport(store, {
     rig: "rig-a",
     ledger_id: "ledger-a",
     cursor: 0,
@@ -609,7 +608,6 @@ test("a change that became the champion no longer waits: only pending promotions
     })),
     summary: {},
   });
-  await applied(store);
   const r = rigView(store, "rig-a", { staleAfterMs: 600_000 })?.runs.find((x) => x.id === "r-1");
   assert.ok(r);
   assert.deepEqual(r.pending_promotions, ["a-2"]);

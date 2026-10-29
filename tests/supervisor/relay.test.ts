@@ -7,7 +7,7 @@ import { generateSigningKeys, signEnvelope } from "../../src/core/commands.ts";
 import { createHarnessApi } from "../../src/harness/api/index.ts";
 import { relayOnce } from "../../src/supervisor/relay/index.ts";
 import { controlOnly, controlStack } from "../helpers/control-stack.ts";
-import { heldEvents } from "../helpers/control-store.ts";
+import { heldEvents, ingestReport } from "../helpers/control-store.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";
 import { appendOther } from "../helpers/kinds.ts";
 
@@ -35,7 +35,7 @@ describe("supervisor relay between control and harness", () => {
     assert.equal(events.length, env.service.ledger.latestEventId());
     assert.ok(events.some((e) => e.kind === "run_created"));
     assert.equal(
-      store.rigEvents.ingest({
+      await ingestReport(store, {
         rig: "rig-a",
         ledger_id: env.service.ledger.ledgerId(),
         cursor: 0,

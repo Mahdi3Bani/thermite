@@ -1,12 +1,12 @@
 ---
 title: "Run the message bus"
-description: "Check the message bus beside control, follow control's events to it and back, open its port to rigs on other machines and clusters, give it more memory or disk, and turn the rigs off it."
+description: "Check the message bus beside control, follow control's events to it and back, see an older store's events table moved there, open its port to rigs on other machines and clusters, give it more memory or disk, and turn the rigs off it."
 type: how-to
 sidebar:
   order: 11
 ---
 
-The message bus carries the rigs' reports and live lines to control, and control's commands and each rig's config to the rigs, as soon as each is there, and it keeps control's copy of every rig's events, from which control writes its records. It is a NATS server with JetStream, and it runs beside control: the compose stack's `nats` service. Control needs it, and does not start without it. This page says how to tell that it works, what you see while control copies its events to it and applies them from there, what to open so that rigs on other machines and clusters reach it, what control keeps for its certificate, how to give it more memory or disk, and how to keep the rigs off it. [How the parts talk](../../explanation/how-the-parts-talk.md#reports-over-the-message-bus) explains what travels on it and why.
+The message bus carries the rigs' reports and live lines to control, and control's commands and each rig's config to the rigs, as soon as each is there, and it keeps every rig's events for control, which writes its records from them. It is a NATS server with JetStream, and it runs beside control: the compose stack's `nats` service. Control needs it, and does not start without it. This page says how to tell that it works, what you see while control keeps its events there and applies them, and while it moves an older store's events there, what to open so that rigs on other machines and clusters reach it, what control keeps for its certificate, how to give it more memory or disk, and how to keep the rigs off it. [How the parts talk](../../explanation/how-the-parts-talk.md#reports-over-the-message-bus) explains what travels on it and why.
 
 ```sh
 docker compose ps nats                      # or: podman compose ps nats
@@ -40,7 +40,7 @@ A rig on the bus has the step "Its key on the message bus registered" in its his
 
 ## Follow control's events to the bus and back
 
-Control copies every event it holds to the bus's `EVENTS` stream, and each new one as it arrives, whether its rig reported it over the bus or over HTTP. From that stream, in its order, control then writes what it derives from the events: a run a rig created in its run registry, a command's outcome as the harness gave it, each model call's usage, and the knowledge base's items; and its pages, REST and MCP read the rigs' events from there ([Control's events on the message bus](../../explanation/how-the-parts-talk.md#controls-events-on-the-message-bus)). When control starts, it copies the events the stream lacks, the first time all of them, applies the stream from the place its store applied through, the first time from its start, and builds its views from the stream's first event. Only then does it serve its pages and take reports: a million events took about 41 seconds to copy when measured, and 100,000 events about a second to build the views from.
+Control keeps every rig's events on the bus's `EVENTS` stream, and nowhere else. It publishes each report's new events there, whether its rig reported over the bus or over HTTP, and answers the rig once it has applied them: from that stream, in its order, control writes what it derives from the events (a run a rig created in its run registry, a command's outcome as the harness gave it, each model call's usage, and the knowledge base's items), and its pages, REST and MCP read the rigs' events from there ([Control's events on the message bus](../../explanation/how-the-parts-talk.md#controls-events-on-the-message-bus)). When control starts, it applies the stream from the place its store applied through and builds its views from the stream's first event; only then does it serve its pages and take reports. 100,000 events took about a second to build the views from when measured.
 
 1. Read control's log as it starts:
 
@@ -48,20 +48,43 @@ Control copies every event it holds to the bus's `EVENTS` stream, and each new o
    docker compose logs control | grep "events"     # or: podman compose logs control | grep "events"
    ```
 
-   `control's records go on from the events stream's place` says where control applies from (`place`), the stream's last place (`last`) and how many messages it has to apply (`behind`). `control's events go on the bus after the stream's last` says where the copy starts and how many events it has to copy (`behind`). For more than 1,000, `moving control's events to the bus` follows every 100,000, with how many it `copied` and how many are `left`, and `control's events moved to the bus` says when it is done, and in how many seconds. `control's views built from the events stream` says that control's pages are ready, with the stream's place they hold (`place`), how many rigs they show (`rigs`) and how long it took (`ms`); `listening` follows.
+   `control's records go on from the events stream's place` says where control applies from (`place`), the stream's last place (`last`) and how many messages it has to apply (`behind`). `control's views built from the events stream` says that control's pages are ready, with the stream's place they hold (`place`), how many rigs they show (`rigs`) and how long it took (`ms`); `listening` follows.
 2. Or ask the bus's state, with the owner's token:
 
    ```sh
    curl -fsS -H "Authorization: Bearer $(cat .dev/secrets/control-admin-token)" http://127.0.0.1:8800/v1/bus
    ```
 
-   Under `events`, `behind` falls to 0 while `stream_seq` climbs to `table_seq`; under `events.apply`, `behind` falls to 0 while `place` climbs to `last_place`. After that, each report's events follow within a second. `/metrics` has the same figures, `thermite_events_behind` and `thermite_events_unapplied` among them.
+   Under `events`, `published` counts the events of the reports control took since it started; under `events.apply`, `behind` falls to 0 while `place` climbs to `last_place`. `/metrics` has the same figures, `thermite_events_published_total` and `thermite_events_unapplied` among them.
 
-To tell that it worked: both `behind` are 0, both `stopped` are `null`, and under `streams` the `EVENTS` stream holds as many messages as control has events.
+To tell that it works: `events.apply.behind` is 0, `events.waiting` and `events.apply.stopped` are `null`, and each rig's page shows its newest events.
 
-If `waiting` names a reason, such as `the bus's store is full`, the copy or the apply waits for the bus and tries again every 5 seconds: give the bus more disk (below), or bring its server back. If the copy's `stopped` names an event, with its rig, ledger, seq and size, the copy stopped there: an event control kept before it refused events too large for the bus. Control tries again when it starts again; the events after it wait.
+If `events.waiting` names a reason, such as `the bus's store is full: …`, control refused the last report for now: it took none of it but what the bus had, and the rig sends it again at its next round, as it does after any refusal for now. `events.later` counts them. Give the bus more disk (below), or bring its server back; the next report goes through, and `waiting` is `null` again.
 
 If control stops as it starts, with `control's store is past the events stream's end` in its log and the reason `control's store has applied the EVENTS stream to place …, past its last, …`, its store holds records of events the stream no longer has, as when the bus's volume was restored from a backup older than control's store, or removed. Control does not go on with such a store: the stream's next events would be skipped. Restore the stream from a backup at least as new as the store, or the store from one no newer than the stream, and start control again.
+
+### The first start of a store from before: its events table moved
+
+A store from v0.1.0, or from a control that kept its events in a table and copied them to the bus, holds its events in its events table. At the first start of this version, control moves the table to the stream, checks that the stream holds it whole, and drops it, keeping a copy of the store from just before. It takes no report and serves no page until then: control's routes answer 503, `control is starting: …`. When measured against the bus at 256 MiB, 100,000 events took about 4 seconds to move, check and drop, and the whole first start, with the apply and the views, about 9 seconds.
+
+1. Read control's log as it starts:
+
+   ```sh
+   docker compose logs control | grep "events table"     # or: podman compose logs control | grep "events table"
+   ```
+
+   `moving control's events table to the events stream` says how many rows it has to move (`behind`), and every 100,000 how far it got (`moved`) and how many are `left`. `control's events table moved to the events stream` says when it is done, in how many `seconds`; `the events stream holds control's events table whole` that the check passed; then `control's events table dropped: the events stream keeps every event`, with the copy's path (`copy`).
+2. Find the copy beside the store, in control's state folder, the `control-state` volume:
+
+   ```sh
+   docker compose exec control ls -l /var/lib/thermite-control     # or: podman compose exec control ls -l /var/lib/thermite-control
+   ```
+
+   It is `control.db.v11.<time>.kept`, as large as the store was. Control keeps it until you remove it: it is the last copy of the events table, and the copies a migration makes otherwise (`control.db.v<version>.<time>.copy`, the two newest kept) never remove it. Keep it until you are sure of the stream, as after a backup of the bus's volume, then remove it.
+
+To tell that it worked: control serves its pages, each rig shows the events it showed before, and under `streams` in `GET /v1/bus` the `EVENTS` stream holds at least as many messages as the table had rows. A second start moves nothing: its log has none of the lines above.
+
+If the move can't end with the stream holding the table whole, control stops at start, says why in a `fatal` line, and the table stays: [Troubleshooting](troubleshoot.md#control-stops-at-start-its-events-table-cant-go-to-the-events-stream) says what to do. While the bus is away or its store is full, the move waits and tries again every 5 seconds: its log says `control's events table not moved yet; trying again`.
 
 ## Let rigs on other machines reach it
 
