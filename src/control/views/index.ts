@@ -11,11 +11,21 @@
  */
 
 export { agentEvent, agentRun } from "./agent.ts";
-export { campaignRuns, EARLIER_FOLDS, FoldCache, findRun, keepFolds, rigView } from "./cache.ts";
+export {
+  campaignRuns,
+  EARLIER_FOLDS,
+  FoldCache,
+  findRun,
+  findRunOn,
+  keepFolds,
+  rigChecks,
+  rigView,
+  runMessages,
+} from "./cache.ts";
 export { type CampaignView, campaignModes, campaignViews, newestRun } from "./campaigns.ts";
 export { runDirections } from "./directions.ts";
 export { championsInForce, currentChampion, runCampaign } from "./facts.ts";
-export { foldCheck, type RigCheckView } from "./fold/index.ts";
+export type { RigCheckView } from "./fold/index.ts";
 export { type LeaderEntry, leaderboard } from "./leaderboard.ts";
 export type { MetricValues } from "./metric-values.ts";
 export {

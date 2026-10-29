@@ -1,7 +1,7 @@
 import { harnessConfirmed } from "./issue/index.ts";
 import { sameModel } from "./providers/index.ts";
 import type { CommandRow, ControlStore } from "./store/index.ts";
-import { foldCheck, type RigCheckView, type RigModelView, readModelInfo } from "./views/index.ts";
+import { type RigCheckView, type RigModelView, readModelInfo, rigChecks } from "./views/index.ts";
 
 /**
  * What became of an owner's action that control sent to a rig, in words (goal 080). The
@@ -222,14 +222,11 @@ export const checkWaits = (row: CheckRow): boolean =>
 
 /**
  * Each rig check's row for one rig: its newest run on the rig's current ledger and the newest
- * command for it. Reads only the check events and the commands, so the rows can be followed
- * often without building the rig's whole view.
+ * command for it. Reads only the checks the rig's fold holds and the commands, so the rows can be
+ * followed often without building the rig's whole view.
  */
 export function checkRows(store: ControlStore, rig: string, now: number): Record<string, CheckRow> {
-  const ledger = store.reportedRigs.list().find((x) => x.id === rig)?.ledger_id ?? null;
-  const runs: Record<string, RigCheckView> = {};
-  for (const e of store.rigEvents.rigChecks(rig, ledger)) foldCheck(runs, e);
-  return checkRowsOf(store, rig, runs, now);
+  return checkRowsOf(store, rig, rigChecks(store, rig), now);
 }
 
 /** The rows from the checks' runs a caller has already (the rig's view has them). */

@@ -26,7 +26,10 @@ export function attemptRoutes(app: Hono, dash: Dashboard): void {
   app.get(RUN_ROUTES.champion, (c) => {
     const m = /^(\d+)\.patch$/.exec(c.req.param("file"));
     const x = named(c);
-    const p = m && x ? store.championPatches.get(x.rig.id, x.run.id, Number(m[1])) : undefined;
+    const p =
+      m && x
+        ? store.championPatches.get(x.rig.id, x.rig.ledger_id, x.run.id, Number(m[1]))
+        : undefined;
     if (!m || !x || !p) return c.text("No patch for that champion yet.", 404);
     // A project in a folder: named after the repository's commit, the one its owner has.
     const folder = x.run.seed_folder;
@@ -83,7 +86,7 @@ export function attemptRoutes(app: Hono, dash: Dashboard): void {
     // A champion's patch, once the rig has published it.
     const champ = r.champion.find((y) => y.attempt === a.id && !y.reopened);
     const patch =
-      champ && store.championPatches.get(u.id, r.id, champ.seq)
+      champ && store.championPatches.get(u.id, u.ledger_id, r.id, champ.seq)
         ? `<a href="${championPatchHref(r, champ.seq)}">Download champion #${champ.seq} as a patch</a>`
         : undefined;
     return page(

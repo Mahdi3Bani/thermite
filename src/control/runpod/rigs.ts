@@ -144,6 +144,23 @@ function checkLimits(l: LimitsChange): void {
 const wholeIn = (v: number, lo: number, hi: number) => Number.isInteger(v) && v >= lo && v <= hi;
 const money = (usd: number) => `$${usd.toFixed(2)}`;
 
+/**
+ * Saves a rig's state on its GPU cloud. What its pod cost since control last counted it goes to
+ * the runs the rig is running now, as its view says (goal 075): split evenly between them, or to
+ * none when it runs none.
+ */
+export function saveRunpodRig(
+  store: ControlStore,
+  rig: string,
+  state: unknown,
+  active: boolean,
+): void {
+  const running = (rigView(store, rig)?.runs ?? [])
+    .filter((r) => r.status === "running")
+    .map((r) => ({ run: r.id, campaign: r.campaign || null }));
+  store.runpod.saveRig(rig, state, active, running);
+}
+
 export class RunpodRigs {
   private readonly store: ControlStore;
   private readonly secrets: SecretBox;
@@ -411,7 +428,7 @@ export class RunpodRigs {
       if (s.idle_stop_minutes !== null && this.store.tunnels.get(rig)?.enrolled_at)
         this.noteWork(rig, s, this.now());
     }
-    this.store.runpod.saveRig(rig, s, r.active);
+    saveRunpodRig(this.store, rig, s, r.active);
     this.store.auditLog.add(by, "runpod_rig_limits", {
       rig,
       spend_limit_usd: s.spend_limit_usd,
@@ -481,7 +498,7 @@ export class RunpodRigs {
     const key = this.key(r.cloud);
     if (!key) {
       s.error = `the GPU cloud "${r.cloud}" was deleted, so control can't follow pod ${r.pod}: see RunPod's console`;
-      this.store.runpod.saveRig(rig, s, r.active);
+      saveRunpodRig(this.store, rig, s, r.active);
       return;
     }
     const nowMs = this.now();
@@ -528,7 +545,7 @@ export class RunpodRigs {
     }
     // A refusal stays until a newer step in the rig's history (a full reset, say), not a read.
     if (s.refusal && this.store.rigHistory.list(rig).length > s.refusal.steps) s.refusal = null;
-    this.store.runpod.saveRig(rig, s, active);
+    saveRunpodRig(this.store, rig, s, active);
   }
 
   /** The owner's limits, if set: a pod that reached one is stopped, its results sent out first. */
@@ -589,7 +606,7 @@ export class RunpodRigs {
         await fn(r, s, key);
       } finally {
         if (JSON.stringify(s) !== before)
-          this.store.runpod.saveRig(rig, s, s.status !== "TERMINATED");
+          saveRunpodRig(this.store, rig, s, s.status !== "TERMINATED");
       }
       return this.view(rig) as RunpodRigView;
     });
@@ -639,7 +656,7 @@ export class RunpodRigs {
       try {
         await this.life.start(r, s, key, by, why);
       } finally {
-        if (JSON.stringify(s) !== before) this.store.runpod.saveRig(rig, s, r.active);
+        if (JSON.stringify(s) !== before) saveRunpodRig(this.store, rig, s, r.active);
       }
       return `${rig}'s pod was stopped: control started it. The run starts once the pod runs.`;
     });

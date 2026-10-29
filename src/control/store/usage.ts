@@ -14,6 +14,12 @@ import { type Row, StorePart } from "./part.ts";
  * and the prices the owner set.
  */
 
+/** A run a rig is running now, with its campaign (null: none): what its pod's spend goes to. */
+export interface RunningRun {
+  run: string;
+  campaign: string | null;
+}
+
 /** A model_call row as the usage sums read it (goal 075). */
 function usageRowOf(r: Row): UsageRow {
   const num = (x: SQLInputValue | undefined) => (x === null || x === undefined ? null : Number(x));
@@ -70,7 +76,8 @@ export class UsageRecords extends StorePart {
 
   /**
    * A model call's usage (goal 075) from a rig's report, as columns the sums read, with the
-   * campaign of the run the rig created. A call recorded already is ignored.
+   * campaign of the run the rig created (control's run registry). A call recorded already is
+   * ignored.
    */
   recordCall(
     rig: string,
@@ -84,18 +91,14 @@ export class UsageRecords extends StorePart {
         `insert or ignore into model_call (rig, ledger_id, event_id, run, campaign, trial, round,
            agent, harness, provider, model, calls, at, tokens_in, cached_in, tokens_out, reasoning,
            first_token_ms, call_ms)
-         values (?, ?, ?, ?, (select json_extract(body, '$.campaign') from rig_event
-             where rig = ? and kind in ('run_created', 'instance_created') and subject = ?
-             order by seq desc limit 1),
-           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         rig,
         ledgerId,
         eventId,
         run,
-        rig,
-        run,
+        this.store.runRegistry.campaignOf(run, rig) ?? null,
         u.trial,
         u.round,
         u.agent,
@@ -136,12 +139,12 @@ export class UsageRecords extends StorePart {
   }
 
   /**
-   * A pod's spend since control last counted it (goal 075), for the runs its rig is running now,
-   * split evenly when it runs more than one; for no run when it runs none.
+   * A pod's spend since control last counted it (goal 075), for the runs its rig is running now
+   * (`runs`, as the rig's view says), split evenly when it runs more than one; for no run when it
+   * runs none.
    */
-  notePodSpend(rig: string, usd: number): void {
+  notePodSpend(rig: string, usd: number, runs: RunningRun[]): void {
     if (!(usd > 1e-9)) return;
-    const runs = this.store.rigEvents.runningRuns(rig);
     const at = new Date().toISOString();
     const insert = this.db.prepare(
       "insert into pod_spend (rig, run, campaign, at, usd) values (?, ?, ?, ?, ?)",

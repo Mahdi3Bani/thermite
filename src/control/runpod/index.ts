@@ -26,6 +26,7 @@ export {
   MIN_IDLE_STOP_MINUTES,
   podLogQuery,
   RunpodRigs,
+  saveRunpodRig,
 } from "./rigs.ts";
 export {
   cheapestGpu,

@@ -3,6 +3,7 @@ import { bodyLimit } from "hono/body-limit";
 import { jsonBody } from "../../common/errors.ts";
 import { PROPAGATE } from "../../core/api/control/owner.ts";
 import { CHAMPION_PATCH, KB, KB_NOT_ASSIGNED, REPORTS } from "../../core/api/control/rigs.ts";
+import { keepChampionPatch } from "../champions.ts";
 import { type ExportFiles, mountExports } from "../exports.ts";
 import { propagateChampion } from "../issue/index.ts";
 import { resultsLeft } from "../results-left.ts";
@@ -55,7 +56,7 @@ export function resultRoutes(
       const seq = Number(c.req.param("seq"));
       if (!Number.isInteger(seq) || seq < 1) return c.json({ error: "bad seq" }, 400);
       const patch = Buffer.from(await c.req.arrayBuffer());
-      const r = store.championPatches.put(c.req.param("rig"), c.req.param("run"), seq, patch);
+      const r = keepChampionPatch(store, c.req.param("rig"), c.req.param("run"), seq, patch);
       if (r === "not_published")
         return c.json({ error: "control has no champion_published event for it yet" }, 409);
       if (r === "mismatch")

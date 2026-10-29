@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, type TestContext, test } from "node:test";
+import { runMessages } from "../../../../src/control/views/index.ts";
 import { Scheduler } from "../../../../src/harness/agents/scheduler/index.ts";
 import type { TrialResult, TrialSpec } from "../../../../src/harness/agents/worker/index.ts";
 import { LocalRunner } from "../../../../src/harness/broker/runner.ts";
@@ -276,9 +277,7 @@ describe("the run page's Experiments and Planner tabs", () => {
       /Sent to the rig\. The planner reads it when it next gives out work; Commands shows whether the rig took it\./,
     );
     await s.sync();
-    const sent = [...s.store.rigEvents.runMessages("rig-a", "js-1")].filter(
-      ([, m]) => m.to === "planner",
-    );
+    const sent = [...runMessages(s.store, "rig-a", "js-1")].filter(([, m]) => m.to === "planner");
     const message = sent.find(([, m]) => m.text === "Never touch the timer code.")?.[0];
     assert.ok(message);
     // It waits on the tab until the planner's next round reads it.

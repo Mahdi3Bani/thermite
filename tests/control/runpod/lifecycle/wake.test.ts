@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { issueCommand } from "../../../../src/control/issue/index.ts";
+import { saveRunpodRig } from "../../../../src/control/runpod/index.ts";
 import type { ControlStore } from "../../../../src/control/store/index.ts";
 import { mcpClient, signIn } from "../../../helpers/control-stack.ts";
 import {
@@ -134,7 +135,7 @@ describe("RunPod rigs: a run assigned or resumed on a stopped pod starts it firs
     const limited = await stoppedRig(t, { spend_limit_usd: 1 });
     const stored = t.store.runpod.rig(limited);
     assert.ok(stored);
-    t.store.runpod.saveRig(limited, { ...(stored.state as object), spent_usd: 1.5 }, true);
+    saveRunpodRig(t.store, limited, { ...(stored.state as object), spent_usd: 1.5 }, true);
     const capped = await t.call("/v1/commands", {
       rig: limited,
       kind: "assign_campaign",

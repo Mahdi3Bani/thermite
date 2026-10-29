@@ -1,7 +1,8 @@
 import { logDebug } from "../../common/log.ts";
 import type { ControlStore, RegisteredRun } from "../store/index.ts";
-import { RigFold } from "./fold/index.ts";
+import { type FoldedRig, type RigCheckView, RigFold } from "./fold/index.ts";
 import { eachEvent, type RigRow, readRig, rigInputs, type ViewOptions } from "./rig.ts";
+import { ownCopier } from "./sharing.ts";
 import type { RigView, RunOnRig } from "./types.ts";
 
 /**
@@ -10,7 +11,9 @@ import type { RigView, RunOnRig } from "./types.ts";
  * once, and rigView reads through them wherever it is called. A rig's new ledger (a full reset)
  * starts a new fold; a rig no longer listed (retired) loses its fold. Control never deletes or
  * rewrites an event it holds (ControlStore.ingest only adds them), so a fold is never built again
- * for its own ledger; code that ever removes a rig's events must drop its fold too.
+ * for its own ledger; code that ever removes a rig's events must drop its fold too. A reader that
+ * follows one part of a rig often (rigChecks, runMessages) reads it from the fold, without the
+ * rest of the rig's view.
  *
  * A run is read wherever it ran (goal 170), from control's run registry: its rig and its ledger.
  * A run of an earlier ledger, or of a retired rig, is read from a fold of that ledger's events,
@@ -47,6 +50,20 @@ export class FoldCache {
     return this.read(row, opts);
   }
 
+  /**
+   * What a rig's fold holds now, up to date, without the rest of its view and without a copy: for
+   * a reader of one part that reads it often. Undefined for a rig control does not list. The
+   * reader never changes what it reads.
+   */
+  folded(rig: string): FoldedRig | undefined {
+    const row = this.store.reportedRigs.list().find((x) => x.id === rig);
+    if (!row) {
+      this.drop(rig);
+      return undefined;
+    }
+    return this.upToDate(row).state();
+  }
+
   /** Every rig's view, read now. */
   views(opts: ViewOptions): RigView[] {
     const rows = this.store.reportedRigs.list();
@@ -58,6 +75,12 @@ export class FoldCache {
   /** A run's view wherever it ran, read now; undefined for a run no rig created. */
   run(id: string, opts: ViewOptions): RunOnRig | undefined {
     const r = this.store.runRegistry.created(id);
+    return r ? this.place([r], opts)[0] : undefined;
+  }
+
+  /** The run of this name a rig created, wherever on the rig it ran, read now; or undefined. */
+  runOn(rig: string, id: string, opts: ViewOptions): RunOnRig | undefined {
+    const r = this.store.runRegistry.createdOn(id, rig);
     return r ? this.place([r], opts)[0] : undefined;
   }
 
@@ -215,6 +238,19 @@ export function findRun(
   return foldsOf(store).run(run, opts);
 }
 
+/**
+ * The run of this name a rig created, wherever on the rig it ran (an earlier ledger too), as
+ * findRun reads a run: undefined when the rig created none.
+ */
+export function findRunOn(
+  store: ControlStore,
+  rig: string,
+  run: string,
+  opts: ViewOptions = DEFAULT_VIEW,
+): RunOnRig | undefined {
+  return foldsOf(store).runOn(rig, run, opts);
+}
+
 /** Every run of a campaign a rig created, newest first, earlier ones too, as findRun reads one. */
 export function campaignRuns(
   store: ControlStore,
@@ -222,4 +258,29 @@ export function campaignRuns(
   opts: ViewOptions = DEFAULT_VIEW,
 ): RunOnRig[] {
   return foldsOf(store).campaignRuns(campaign, opts);
+}
+
+/**
+ * A rig's checks, each one's newest run on its current ledger, from its fold without the rest of
+ * its view: what a check's row reads, which the dashboard follows often. None for a rig control
+ * does not list.
+ */
+export function rigChecks(store: ControlStore, rig: string): Record<string, RigCheckView> {
+  return ownCopier()(foldsOf(store).folded(rig)?.checks ?? {});
+}
+
+/**
+ * The owner's messages to one run on a rig's current ledger, by id, from the rig's signed events
+ * as its fold holds them, without the rest of its view: what Live checks a run's message lines
+ * against each time it draws them (a worker's own line can claim anything).
+ */
+export function runMessages(
+  store: ControlStore,
+  rig: string,
+  run: string,
+): Map<number, { to: string; text: string; keep: boolean }> {
+  const r = foldsOf(store)
+    .folded(rig)
+    ?.runs.find((x) => x.id === run);
+  return new Map((r?.messages ?? []).map((m) => [m.id, { to: m.to, text: m.text, keep: m.keep }]));
 }

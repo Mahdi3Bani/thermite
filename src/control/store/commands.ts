@@ -204,7 +204,7 @@ export class IssuedCommands extends StorePart {
       if (!run) continue;
       if (r.status === "pending" && Date.parse(env.expires_at ?? "") < now) continue;
       // Taken: it waits only until the rig reports the run.
-      if (r.status === "delivered" && this.store.rigEvents.campaignOfRun(rig, run) !== undefined)
+      if (r.status === "delivered" && this.store.runRegistry.campaignOf(run, rig) !== undefined)
         continue;
       let of: string | undefined;
       if (r.kind === "assign_campaign") {
@@ -214,7 +214,7 @@ export class IssuedCommands extends StorePart {
             : undefined;
       } else {
         if (!assigned.has(rig)) assigned.set(rig, this.store.runRegistry.assignedCampaigns(rig));
-        of = assigned.get(rig)?.get(run) ?? this.store.rigEvents.campaignOfRun(rig, run);
+        of = assigned.get(rig)?.get(run) ?? this.store.runRegistry.campaignOf(run, rig);
       }
       if (of === campaign) out.push({ rig, run, kind: String(r.kind) });
     }

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { runMessages } from "../../../src/control/views/index.ts";
 import { pushedOf, readPushed } from "../../helpers/sse.ts";
 import { stack } from "./stack.ts";
 
@@ -96,7 +97,7 @@ describe("control dashboard", () => {
     assert.equal(cmd?.issued_by, "owner:ui");
     await s.relay();
     await s.relay();
-    const [id] = [...s.store.rigEvents.runMessages("rig-a", "js-1").keys()];
+    const [id] = [...runMessages(s.store, "rig-a", "js-1").keys()];
     assert.ok(id, "the rig's signed agent_message event reached control");
     const at = new Date().toISOString();
     s.store.liveLines.add(

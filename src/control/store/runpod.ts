@@ -1,4 +1,5 @@
 import { type Row, StorePart } from "./part.ts";
+import type { RunningRun } from "./usage.ts";
 
 /**
  * Rigs and test pods on GPU clouds (goal 125, T6), with their state as runpod/rigs.ts and
@@ -55,7 +56,11 @@ export class RunpodStore extends StorePart {
       .run(t.rig, t.cloud, t.pod, JSON.stringify(t.state), new Date().toISOString(), t.by);
   }
 
-  saveRig(rig: string, state: unknown, active: boolean): void {
+  /**
+   * Saves a rig's state on its GPU cloud. What its pod cost since control last counted it goes to
+   * the runs its rig runs now, `running` (control/runpod's saveRunpodRig gives them).
+   */
+  saveRig(rig: string, state: unknown, active: boolean, running: RunningRun[]): void {
     const spent = (s: unknown) => {
       const n = (s as { spent_usd?: unknown } | null)?.spent_usd;
       return typeof n === "number" && Number.isFinite(n) ? n : 0;
@@ -65,8 +70,7 @@ export class RunpodStore extends StorePart {
       this.db
         .prepare("update runpod_rig set state = ?, active = ? where rig = ?")
         .run(JSON.stringify(state), active ? 1 : 0, rig);
-      // What the pod cost since control last counted it goes to the run its rig runs now.
-      if (before) this.store.usage.notePodSpend(rig, spent(state) - spent(before.state));
+      if (before) this.store.usage.notePodSpend(rig, spent(state) - spent(before.state), running);
     });
   }
 

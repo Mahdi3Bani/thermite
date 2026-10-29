@@ -51,6 +51,7 @@ Decisions that shape the whole product, newest last in each section. A decision 
 | 2026-10-17 | Control sets rigs up itself. Given an SSH key or a kubeconfig, it checks the place, installs what is missing (only when the owner says yes), deploys the rig and manages it. Rigs still report by dialing out. |
 | 2026-10-18 | Control refuses a pre-made Kubernetes slot whose network rules do not keep the harness off the cluster. "Join a rig yourself" is an optional third way to add a rig. |
 | 2026-10-27 | A rig on a machine or a cluster reaches control's NATS server on NATS's own port, over TLS (a second port beside control's HTTPS), with a key the rig's supervisor made and registered over HTTPS; control keeps the server's users file. Secrets go to a rig sealed to its own key, only when they change. The dashboard's push is Server-Sent Events from control. ([168](goals/168-message-bus.goal)) |
+| 2026-10-29 | Control needs its NATS server once its own copy of the rigs' events moves to JetStream (goal [168](goals/168-message-bus.goal)): rigs may still report over HTTP, and control publishes their events. Control's table of commands stays as its own signed record; JetStream snapshots back the streams up. |
 
 ## Providers and models
 

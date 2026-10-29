@@ -1,5 +1,5 @@
 import type { ControlStore } from "../store/index.ts";
-import type { RunView } from "../views/index.ts";
+import { findRun, type RunOnRig, type RunView } from "../views/index.ts";
 import type { QueueSeed } from "./new.ts";
 
 /**
@@ -28,9 +28,9 @@ export function untriedOf(r: RunView): QueueSeed[] {
 
 /**
  * Copied experiments (assign_campaign.queue) as control's records of the rigs' signed events
- * hold them: each one's author and words come from control's record of the experiment it was
- * copied from, never from the caller, and only from a run of a campaign that `campaign` (the new
- * run's) may read. Any other keeps the caller's words, as "copied".
+ * hold them: each one's author and words come from the experiment it was copied from, in its
+ * run's view wherever the run ran, never from the caller, and only from a run of a campaign that
+ * `campaign` (the new run's) may read. Any other keeps the caller's words, as "copied".
  */
 export function copiedFromRecords(
   store: ControlStore,
@@ -39,24 +39,34 @@ export function copiedFromRecords(
 ): unknown[] {
   const kb = store.kb();
   const readable = new Set([campaign, ...(campaign ? kb.reads(campaign) : [])]);
+  // Each run copied from is read once, however many of its experiments are copied.
+  const runs = new Map<string, RunOnRig | undefined>();
+  const runNamed = (run: string) => {
+    if (!runs.has(run)) runs.set(run, findRun(store, run));
+    return runs.get(run);
+  };
   return queue.map((x) => {
     if (!x || typeof x !== "object") return x;
     const { from } = x as { from?: { run?: unknown; id?: unknown } };
     const run = from?.run;
     const id = from?.id;
-    const found =
-      typeof run === "string" && typeof id === "string"
-        ? store.rigEvents.experimentRecord(run, id)
-        : undefined;
+    const at = typeof run === "string" && typeof id === "string" ? runNamed(run) : undefined;
+    const found = at?.run.queue.find((e) => e.id === id);
     // Only from a run of a campaign the new run's campaign may read (its own, or granted).
-    const source = found && typeof run === "string" ? kb.runCampaign(found.rig, run) : undefined;
+    const source = at && found ? kb.runCampaign(at.rig.id, at.run.id) : undefined;
     const rec = found && source && readable.has(source) ? found : undefined;
-    if (!rec || !source || typeof run !== "string" || typeof id !== "string")
+    if (!rec || !at || !source || typeof run !== "string" || typeof id !== "string")
       return { ...x, by: "copied" };
     // What became of it in that run, as Start a run says (queueSeedOf), when the folder has it.
-    const item = kb.byOrigin({ campaign: source, rig: rec.rig, run, kind: "experiment", ref: id });
+    const item = kb.byOrigin({
+      campaign: source,
+      rig: at.rig.id,
+      run,
+      kind: "experiment",
+      ref: id,
+    });
     const result = item ? kb.resultOf(item) : null;
-    const details = [rec.details ?? "", result ? `In ${run} (${source}) it was ${result}.` : ""]
+    const details = [rec.details, result ? `In ${run} (${source}) it was ${result}.` : ""]
       .filter(Boolean)
       .join("\n");
     const { title: _t, details: _d, family: _f, why: _w, ...rest } = x as Record<string, unknown>;

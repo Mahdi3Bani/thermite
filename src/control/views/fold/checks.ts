@@ -16,9 +16,9 @@ export interface RigCheckView {
 
 /**
  * Each check's newest run, from the rig's rig_check_started and rig_check_finished events: the
- * rig's view, and a check's row on the dashboard, which reads only these events (goal 080).
+ * rig's view, and a check's row on the dashboard, which reads only these (goal 080).
  */
-export function foldCheck(
+function foldCheck(
   checks: Record<string, RigCheckView>,
   e: { at: string; kind: string; body: unknown },
 ): void {

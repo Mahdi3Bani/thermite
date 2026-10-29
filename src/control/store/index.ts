@@ -76,6 +76,7 @@ export type { RigRefusal } from "./refusals.ts";
 export type { StoredRunpodRig, StoredRunpodTest } from "./runpod.ts";
 export type { RegisteredRun } from "./runs.ts";
 export type { TunnelRig } from "./tunnels.ts";
+export type { RunningRun } from "./usage.ts";
 export type { IngestReport };
 export { EFFORTS, type Effort, fingerprint, HARNESSES, type Harness, type ProviderType, RIG_ID };
 

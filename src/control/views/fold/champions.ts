@@ -1,5 +1,6 @@
 import { clip } from "../../../core/kb-index.ts";
 import { currentChampion } from "../facts.ts";
+import { frozen } from "../sharing.ts";
 import type { BaselineView } from "../types.ts";
 import type { Handler, Handlers } from "./index.ts";
 
@@ -175,6 +176,14 @@ export const CHAMPIONS: Handlers = {
   promotion_declined: auditEnded,
   champion_published(f, e, b) {
     f.run(String(e.subject)).published_trees[Number(b.seq)] = String(b.tree);
+    f.run(String(e.subject)).published_patches.push(
+      frozen({
+        seq: Number(b.seq),
+        sha256: String(b.sha256 ?? ""),
+        base_commit: String(b.base_commit ?? ""),
+        repo: (b.repo as string | null) ?? null,
+      }),
+    );
     f.run(String(e.subject)).published = {
       seq: Number(b.seq),
       repo: (b.repo as string | null) ?? null,

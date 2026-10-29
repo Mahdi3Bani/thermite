@@ -80,7 +80,7 @@ export function runHelpers(dash: Dashboard) {
     return {
       report: d.report,
       rows: d.rows,
-      roundStarts: store.rigEvents.roundStarts(u.id, i.id),
+      roundStarts: i.round_starts,
       trials: i.agents.trials,
       rounds: i.agents.epochs,
       wallMs: Number.isFinite(start) && Number.isFinite(end) && end >= start ? end - start : null,
@@ -322,7 +322,7 @@ export function runHelpers(dash: Dashboard) {
       ? `applies to the folder ${esc(i.seed_folder.folder)} at ${esc(i.seed_folder.commit.slice(0, 8))}: git apply --directory=${esc(i.seed_folder.folder)}`
       : `applies to ${esc(i.published?.base_commit.slice(0, 8) ?? "")}`;
     const patch =
-      i.published && store.championPatches.get(u.id, i.id, i.published.seq)
+      i.published && store.championPatches.get(u.id, u.ledger_id, i.id, i.published.seq)
         ? `<a href="${championPatchHref(i, i.published.seq)}">download champion #${i.published.seq} as a patch</a> <span class="muted small">(${appliesTo})</span>`
         : "";
     // The champions, newest first: what each one changed and what it gained.

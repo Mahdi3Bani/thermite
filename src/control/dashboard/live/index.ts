@@ -41,6 +41,7 @@ import {
   type RunOnRig,
   type RunView,
   runCampaign,
+  runMessages,
 } from "../../views/index.ts";
 import { type Ctx, type Dashboard, wantsJson } from "../context.ts";
 import { type LiveFeed, type PushedLine, pushLive, pushStart, recheckIds } from "./push.ts";
@@ -234,7 +235,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
         flush: true,
       },
       `<div class="lwrap" id="lwrap">${nav}<section class="lcol">${head}<div data-fw-top></div><div class="lchips">${chips}<span class="grow"></span><span data-part="lkept">${keptBox}</span><button class="lchip on lfollow" type="button" aria-pressed="true" title="Follow new lines">↓ Follow</button></div>
-<div class="transcript lstream" id="transcript" data-stream="${esc(runLiveStreamHref(r))}" data-run="${esc(r.id)}" data-w="${esc(w)}" data-after="${after}">${runLinesHtml(lines, now, store.rigEvents.runMessages(u.id, r.id)) || `<div class="empty">No live lines yet. They appear here as the run's agents and judge work.</div>`}</div>
+<div class="transcript lstream" id="transcript" data-stream="${esc(runLiveStreamHref(r))}" data-run="${esc(r.id)}" data-w="${esc(w)}" data-after="${after}">${runLinesHtml(lines, now, runMessages(store, u.id, r.id)) || `<div class="empty">No live lines yet. They appear here as the run's agents and judge work.</div>`}</div>
 <div data-part="lnotice">${notice}</div>${box}</section></div>`,
       vs,
     );
@@ -258,7 +259,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
   const runFeed = (rig: string, run: string): LiveFeed => {
     const draw = (lines: ReturnType<typeof store.liveLines.ofRun>): PushedLine[] => {
       const now = Date.now();
-      const messages = store.rigEvents.runMessages(rig, run);
+      const messages = runMessages(store, rig, run);
       return lines.map((e) => ({
         id: e.id,
         kind: e.kind,

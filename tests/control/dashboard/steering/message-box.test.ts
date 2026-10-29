@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { runMessages } from "../../../../src/control/views/index.ts";
 import { parseContract } from "../../../../src/core/contract.ts";
 import { Scheduler } from "../../../../src/harness/agents/scheduler/index.ts";
 import { LocalRunner } from "../../../../src/harness/broker/runner.ts";
@@ -142,9 +143,7 @@ describe("Live's message box", () => {
     // The readers, as the rig's harness gives them the text: each lane's Pi worker at its next
     // step, the planner at its next plan, and the advisors in their round or package (the
     // supervisor reports what each read and answered).
-    const ids = new Map(
-      [...s.store.rigEvents.runMessages("rig-a", "js-1")].map(([id, m]) => [m.text, id]),
-    );
+    const ids = new Map([...runMessages(s.store, "rig-a", "js-1")].map(([id, m]) => [m.text, id]));
     const id = (text: string) => ids.get(text) ?? 0;
     const step = (t: typeof t1) => {
       const inbox = env.service.trialInbox(t);

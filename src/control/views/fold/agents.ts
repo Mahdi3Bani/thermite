@@ -41,6 +41,7 @@ export const AGENTS: Handlers = {
         };
       }),
     };
+    v.round_starts.push(e.at);
     const a = v.agents;
     a.epochs++;
     if (b.planner_valid === true) a.planner_valid++;

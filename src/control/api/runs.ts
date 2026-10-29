@@ -106,7 +106,12 @@ export function runRoutes(app: Hono, admin: MiddlewareHandler, deps: RunRoutesDe
     const run = c.req.param("run");
     const found = deps.find(run);
     const p = found
-      ? deps.store.championPatches.get(found.rig.id, run, Number(c.req.param("seq")))
+      ? deps.store.championPatches.get(
+          found.rig.id,
+          found.rig.ledger_id,
+          run,
+          Number(c.req.param("seq")),
+        )
       : undefined;
     if (!p) return c.json({ error: "no patch for that champion" }, 404);
     return c.body(new Uint8Array(p.patch), 200, {

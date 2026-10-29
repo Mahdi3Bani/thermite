@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { saveRunpodRig } from "../../src/control/runpod/index.ts";
 import { ControlStore } from "../../src/control/store/index.ts";
 import { modelUsage } from "../../src/control/usage.ts";
 import { rigView } from "../../src/control/views/index.ts";
@@ -401,10 +402,10 @@ describe("model usage cost on control (goal 075)", () => {
       by: "t",
     });
     // r-1 is the run at work on rig-a.
-    s.store.runpod.saveRig("rig-a", { spent_usd: 0.5 }, true);
+    saveRunpodRig(s.store, "rig-a", { spent_usd: 0.5 }, true);
     // Paused (the stack gave rig-a five events): the pod's spend belongs to no run.
     ingest(s.store, "rig-a", "ledger-a", [["run_status", "r-1", { status: "paused" }]], 6);
-    s.store.runpod.saveRig("rig-a", { spent_usd: 0.8 }, true);
+    saveRunpodRig(s.store, "rig-a", { spent_usd: 0.8 }, true);
     // Two runs running: the spend is split between them.
     ingest(
       s.store,
@@ -416,9 +417,9 @@ describe("model usage cost on control (goal 075)", () => {
       ],
       7,
     );
-    s.store.runpod.saveRig("rig-a", { spent_usd: 1.0 }, true);
+    saveRunpodRig(s.store, "rig-a", { spent_usd: 1.0 }, true);
     // A save that adds nothing counts nothing.
-    s.store.runpod.saveRig("rig-a", { spent_usd: 1.0 }, true);
+    saveRunpodRig(s.store, "rig-a", { spent_usd: 1.0 }, true);
     assert.equal(modelUsage(s.store, { run: "r-1" }).total.cost.pod_usd, 0.6);
     const c = modelUsage(s.store, { campaign: "matmul" });
     assert.equal(c.total.cost.pod_usd, 0.7);

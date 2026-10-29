@@ -75,6 +75,22 @@ export class RunRegistry extends StorePart {
     return row ? registered(row) : undefined;
   }
 
+  /** The run a rig created by this name, on that rig: in its newest ledger that has one. */
+  createdOn(run: string, rig: string): RegisteredRun | undefined {
+    const row = this.db.prepare(`${CREATED} and run = ? and rig = ?`).get(run, rig) as
+      | Record<string, unknown>
+      | undefined;
+    return row ? registered(row) : undefined;
+  }
+
+  /**
+   * The campaign of the run a rig created by this name; undefined while the rig has not reported
+   * creating it, or for a run created without one.
+   */
+  campaignOf(run: string, rig: string): string | undefined {
+    return this.createdOn(run, rig)?.campaign ?? undefined;
+  }
+
   /**
    * Every run of a campaign that a rig created, newest first, one for each name (its newest), on
    * every rig and every ledger: retired rigs and runs from before a full reset too.

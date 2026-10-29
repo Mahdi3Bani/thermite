@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { saveRunpodRig } from "../../../src/control/runpod/index.ts";
 import { SecretBox } from "../../../src/control/secrets.ts";
 import type { ControlStore } from "../../../src/control/store/index.ts";
 import { PRICE_CORE_JS } from "../../../src/control/ui/providers/client.ts";
@@ -363,7 +364,7 @@ describe("model use on the screens (goal 075)", () => {
       state: { spent_usd: 0, price_per_hr: 1.65 },
       by: "t",
     });
-    s.store.runpod.saveRig("rig-a", { spent_usd: 1.65, price_per_hr: 1.65 }, true);
+    saveRunpodRig(s.store, "rig-a", { spent_usd: 1.65, price_per_hr: 1.65 }, true);
     const html = await s.page("/ui/campaigns/matmul/runs/r-1/stats");
     const gpu = rowWith(html, "<b>GPU time on RunPod</b>");
     assert.match(gpu, /1 h 0 m at \$1\.65\/h/);

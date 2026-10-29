@@ -12,7 +12,7 @@ import { RESEARCH } from "./research.ts";
 import { RULES } from "./rules.ts";
 import { emptyRun, RUNS } from "./runs.ts";
 
-export { foldCheck, type RigCheckView } from "./checks.ts";
+export type { RigCheckView } from "./checks.ts";
 export type { GoalChecks, GoalValues } from "./goals.ts";
 
 /**

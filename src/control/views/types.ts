@@ -439,6 +439,12 @@ export interface RunView {
   } | null;
   /** Every champion tree this run published, by seq (cross-verification checks it). */
   published_trees: Record<number, string>;
+  /**
+   * Every champion this run published, oldest first: its seq, and its patch's SHA-256, base commit
+   * and repository. Control keeps a champion's patch only if its SHA-256 is the newest one here
+   * for its seq.
+   */
+  published_patches: { seq: number; sha256: string; base_commit: string; repo: string | null }[];
   /** Champions received from other rigs, and how this rig's judge decided them. */
   propagations: {
     attempt: string | null;
@@ -457,6 +463,8 @@ export interface RunView {
     source: string;
     assignments: { lane: string; family: string; parent: string; focus: string | null }[];
   } | null;
+  /** When each of its rounds started, oldest first: a run page's model calls in each round. */
+  round_starts: string[];
   /** Finished trials, newest last (at most the latest 100). */
   trials: {
     trial: string;

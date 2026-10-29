@@ -1,24 +1,23 @@
-import { sha256Hex } from "../../core/canonical.ts";
 import { StorePart } from "./part.ts";
 
 /**
- * Champions' patches (goal 125, T6), kept only when they are the ones the rig published.
+ * Champions' patches (goal 125, T6), by the rig and ledger of the run that published them. The
+ * caller (control/champions.ts) keeps one only when it is the one the rig published.
  */
 
 export class ChampionPatches extends StorePart {
   /**
-   * A champion's patch from the rig's supervisor, kept only if it is the one the rig published
-   * (the supervisor transports it; it cannot change it).
+   * A champion's patch, which the caller found to be the one the run published in this ledger
+   * as champion `seq`, with its SHA-256 and base commit. One kept already stays.
    */
   put(
     rig: string,
+    ledgerId: string,
     run: string,
     seq: number,
+    published: { sha256: string; base_commit: string },
     patch: Buffer,
-  ): "stored" | "not_published" | "mismatch" {
-    const pub = this.store.rigEvents.publishedChampion(rig, run, seq);
-    if (!pub) return "not_published";
-    if (sha256Hex(patch) !== pub.sha256) return "mismatch";
+  ): void {
     this.db
       .prepare(
         `insert or ignore into champion_patch
@@ -27,30 +26,32 @@ export class ChampionPatches extends StorePart {
       )
       .run(
         rig,
-        pub.ledger_id,
+        ledgerId,
         run,
         seq,
-        pub.sha256,
-        pub.base_commit,
+        published.sha256,
+        published.base_commit,
         patch,
         new Date().toISOString(),
       );
-    return "stored";
   }
 
-  /** The patch of the champion the rig published last as `seq` of `run`: none until it arrives. */
+  /**
+   * The patch of champion `seq` of a run, in the ledger its view gives (RigView.ledger_id): none
+   * until it arrives.
+   */
   get(
     rig: string,
+    ledgerId: string | null,
     run: string,
     seq: number,
   ): { patch: Buffer; sha256: string; base_commit: string } | undefined {
-    const pub = this.store.rigEvents.publishedChampion(rig, run, seq);
     const r = this.db
       .prepare(
         `select patch, sha256, base_commit from champion_patch
            where rig = ? and ledger_id = ? and run = ? and seq = ?`,
       )
-      .get(rig, pub?.ledger_id ?? "", run, seq) as
+      .get(rig, ledgerId ?? "", run, seq) as
       | { patch: Uint8Array; sha256: string; base_commit: string }
       | undefined;
     return r

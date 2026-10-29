@@ -152,7 +152,7 @@ export function archivedRefusal(
       ? p?.contract?.campaign
       : typeof p?.run === "string"
         ? (store.runRegistry.assignedCampaigns(rig).get(p.run) ??
-          store.rigEvents.campaignOfRun(rig, p.run))
+          store.runRegistry.campaignOf(p.run, rig))
         : undefined;
   if (typeof campaign !== "string" || !store.archive.get(campaign)) return "";
   return `${campaign} is archived. Unarchive it first.`;

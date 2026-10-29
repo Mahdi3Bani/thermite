@@ -70,6 +70,40 @@ describe("control's run registry", () => {
     assert.deepEqual(store.runRegistry.assignedCampaigns("rig-b"), new Map());
   });
 
+  test("a run's campaign on a rig is known once the rig reports creating it", () => {
+    const store = new ControlStore(":memory:");
+    store.commands.enqueue(assignment("c-1", "rig-a", "sort-speed-1"));
+    // Assigned, not created yet: the rig has no such run.
+    assert.equal(store.runRegistry.createdOn("sort-speed-1", "rig-a"), undefined);
+    assert.equal(store.runRegistry.campaignOf("sort-speed-1", "rig-a"), undefined);
+    created(store, "rig-a", "sort-speed-1");
+    assert.equal(store.runRegistry.campaignOf("sort-speed-1", "rig-a"), "sort-speed");
+    assert.equal(store.runRegistry.createdOn("sort-speed-1", "rig-a")?.ledger_id, "ledger-rig-a");
+    // Another rig has no run of that name.
+    assert.equal(store.runRegistry.createdOn("sort-speed-1", "rig-b"), undefined);
+    assert.equal(store.runRegistry.campaignOf("sort-speed-1", "rig-b"), undefined);
+    // A run created without a campaign is its own: it has none to give.
+    store.rigEvents.ingest({
+      rig: "rig-b",
+      ledger_id: "ledger-rig-b",
+      cursor: 0,
+      next: 1,
+      events: [
+        {
+          id: 1,
+          at: new Date().toISOString(),
+          actor: "harness",
+          kind: "run_created",
+          subject: "solo-1",
+          body: {},
+        },
+      ],
+      summary: {},
+    });
+    assert.equal(store.runRegistry.createdOn("solo-1", "rig-b")?.campaign, null);
+    assert.equal(store.runRegistry.campaignOf("solo-1", "rig-b"), undefined);
+  });
+
   test("a store from before has its registry made from its commands and its rigs' events", () => {
     const path = join(mkdtempSync(join(tmpdir(), "thermite-store-")), "control.db");
     const old = new ControlStore(path);
