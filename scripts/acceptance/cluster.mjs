@@ -138,7 +138,24 @@ try {
       `THERMITE_RIG_SUPERVISOR_IMAGE=${supervisor}`,
       "docker.io/library/thermite-control:latest",
     ]);
-    await until("control answers", async () => (await fetch(`${control}/v1/health`)).ok, 120_000);
+    // Control answers at once, and serves once it has built its views from its bus's events: the
+    // bus's server waits for control's files, so on the first start it is started after this.
+    await until(
+      "control answers",
+      async () => (await fetch(`${control}/v1/health`).catch(() => undefined)) !== undefined,
+      120_000,
+    );
+  };
+  /** Once the bus is there: control serves, on its bus, and the owner signs in. */
+  const signIn = async () => {
+    await until(
+      "control serves, with its bus connected",
+      async () => {
+        const r = await fetch(`${control}/v1/health`);
+        return r.ok && (await r.json()).bus === "connected";
+      },
+      120_000,
+    );
     const login = await fetch(`${control}/ui/login`, {
       method: "POST",
       body: new URLSearchParams({ token: admin }),
@@ -174,11 +191,7 @@ try {
     nats.image,
     ...nats.command,
   ]);
-  await until(
-    "control's health says the bus is connected",
-    async () => (await (await fetch(`${control}/v1/health`)).json()).bus === "connected",
-    120_000,
-  );
+  await signIn();
   const post = async (path, form) => {
     const r = await fetch(`${control}${path}`, {
       method: "POST",
@@ -443,6 +456,7 @@ try {
   }
   sh("podman", ["rm", "-f", "-t", "10", ctl]);
   await startControl(updated(harnessImage), updated(supervisorImage));
+  await signIn();
   check(
     "after control's own update, the rig's page offers control's new images",
     /Update to these images/.test(await get("/ui/rigs/slot-rig-1")),
