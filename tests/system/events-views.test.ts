@@ -213,7 +213,7 @@ describe("control's views and raw reads from the events stream", () => {
       assert.equal((JSON.parse(new TextDecoder().decode(m?.data)) as { id: number }).id, e.id);
     }
     assert.ok(events.every((e, i) => i === 0 || e.seq > (events[i - 1] as Raw).seq));
-    // Its answer's shape is as before.
+    // Its answer's shape is as before, with when control took each event: when the stream stored it.
     assert.deepEqual(Object.keys(events[0] as Raw), [
       "seq",
       "ledger_id",
@@ -224,7 +224,11 @@ describe("control's views and raw reads from the events stream", () => {
       "subject",
       "body",
       "run",
+      "received_at",
     ]);
+    assert.ok(
+      events.every((e) => typeof (e as { received_at?: unknown }).received_at === "string"),
+    );
     // rig-b's: its own runs, r-1 of its own among them, and nothing of rig-a's.
     assert.deepEqual(
       (await pages("rig-b", 500)).flat().map((e) => [e.id, e.kind, e.run]),

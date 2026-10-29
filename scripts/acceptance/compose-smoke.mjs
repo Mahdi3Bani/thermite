@@ -4,8 +4,8 @@
 // control. Usage: COMPOSE="podman compose" node scripts/acceptance/compose-smoke.mjs (or "docker compose").
 //
 // Control is always on its message bus (goal 168), and keeps every rig's events in its events
-// stream: the smoke checks that control's events table is mirrored there, and that control applied
-// the stream to its end. The rig is on the bus too, as compose.yaml has it by default: its
+// stream: the smoke checks that the rig's events are there, and that control applied the stream to
+// its end. The rig is on the bus too, as compose.yaml has it by default: its
 // supervisor sends its reports and live lines over it, over TLS, and the smoke checks that they
 // reached control that way. With THERMITE_NATS_URL set to nothing (THERMITE_NATS_URL= node …), the
 // rig reports over HTTP, as a deployment that turns its rigs off the bus does, while control stays
@@ -33,13 +33,12 @@ const composeEnv = {
 const stack = (...args) => dc(composeEnv, ...args);
 
 /**
- * Seconds from each event's time at the rig to control holding it, from control's own store, for
- * the events from the run's start on (the rig's start waits for its first report). Both times are
- * from the same machine's clock.
+ * Seconds from each event's time at the rig to control holding it (when the events stream stored
+ * it, as control's raw events route says), for the events from the run's start on (the rig's start
+ * waits for its first report). Both times are from the same machine's clock.
  */
-function eventDelays() {
-  const read = `const {DatabaseSync}=require("node:sqlite");const db=new DatabaseSync("/var/lib/thermite-control/control.db",{readOnly:true});process.stdout.write(JSON.stringify(db.prepare("select kind, at, received_at from rig_event where rig = 'local-1' order by seq").all()))`;
-  const rows = JSON.parse(stack("exec", "-T", "control", "node", "-e", read));
+async function eventDelays() {
+  const rows = (await api("/v1/rigs/local-1/events?limit=5000")).body.events;
   const start = rows.findIndex((r) => r.kind === "run_created");
   return rows
     .slice(Math.max(0, start))
@@ -54,12 +53,6 @@ function streamState(name) {
   return (jsz.account_details ?? [])
     .flatMap((a) => a.stream_detail ?? [])
     .find((s) => s.name === name);
-}
-
-/** Control's events table, from its own store: how many rows it holds, and its last seq. */
-function eventsTable() {
-  const read = `const {DatabaseSync}=require("node:sqlite");const db=new DatabaseSync("/var/lib/thermite-control/control.db",{readOnly:true});process.stdout.write(JSON.stringify(db.prepare("select count(*) as rows, coalesce(max(seq), 0) as last from rig_event").get()))`;
-  return JSON.parse(stack("exec", "-T", "control", "node", "-e", read));
 }
 
 /** The reports stream and control's consumer of it, from the NATS server's own monitoring. */
@@ -154,30 +147,26 @@ try {
     );
     console.log("live lines on the bus:", JSON.stringify(live));
   }
-  // Control's events table is mirrored to the events stream, whichever way the rig reported: as
-  // many messages as the table has rows, and the Thermite-Seq of the stream's last message, as
-  // control's state of the bus reads it from the server, is the table's last seq. And control
-  // applied the stream to its end: its records (a command's outcome, the model calls, the
-  // knowledge base) come from there.
-  const mirrored = await until(
-    "control's events table mirrored to the events stream, and applied",
+  // The rig's events are on the events stream, whichever way the rig reported: control published
+  // each report's events there first, and applied the stream to its end, where its records (a
+  // command's outcome, the model calls, the knowledge base) come from. The stream holds as many of
+  // the rig's events as control's raw events route gives.
+  const onBus = await until(
+    "the rig's events on the events stream, and applied",
     async () => {
-      const table = eventsTable();
       const stream = streamState("EVENTS")?.state;
       const messages = stream?.messages ?? 0;
       const { events: e } = (await api("/v1/bus")).body;
-      return table.rows > 0 &&
-        messages === table.rows &&
-        e?.stream_seq === table.last &&
-        e.behind === 0 &&
-        e.stopped === null &&
+      const rigs = (await api("/v1/rigs/local-1/events?limit=5000")).body.events.length;
+      return messages > 0 &&
+        rigs === messages &&
+        e?.published > 0 &&
         e.apply?.place === stream?.last_seq &&
         e.apply.behind === 0 &&
         e.apply.stopped === null
         ? {
-            table,
             messages,
-            stream_seq: e.stream_seq,
+            rigs,
             published: e.published,
             applied_place: e.apply.place,
             applied: e.apply.applied,
@@ -187,8 +176,8 @@ try {
     60_000,
     1000,
   );
-  console.log("events on the bus:", JSON.stringify(mirrored));
-  const delays = eventDelays();
+  console.log("events on the bus:", JSON.stringify(onBus));
+  const delays = await eventDelays();
   const at = (q) => delays[Math.min(delays.length - 1, Math.floor(q * delays.length))] ?? 0;
   console.log(
     `seconds from an event to control holding it, over ${bus ? "the bus" : "HTTP"} (${delays.length} events): median ${at(0.5).toFixed(2)}, 90th percentile ${at(0.9).toFixed(2)}, max ${(delays.at(-1) ?? 0).toFixed(2)}`,

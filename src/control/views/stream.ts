@@ -28,6 +28,8 @@ export type EventBus = Pick<Bus, "read">;
 export interface StreamEvent {
   place: number;
   read: EventRead;
+  /** When the stream stored it: when control published it, as it took the rig's report. */
+  at?: string | undefined;
 }
 
 /** One read of the stream: its events, where the next read starts, and whether it is at the end. */
@@ -43,7 +45,7 @@ export interface StreamPage {
  */
 export function streamEvent(m: BusMessage): StreamEvent | undefined {
   try {
-    return { place: m.seq, read: readEventMessage(m) };
+    return { place: m.seq, read: readEventMessage(m), at: m.at };
   } catch {
     return undefined;
   }
@@ -123,6 +125,8 @@ export interface RawEvent {
   subject: string | null;
   body: unknown;
   run: string | null;
+  /** When control took it: when the stream stored it; null where the stream did not say. */
+  received_at: string | null;
 }
 
 /**
@@ -144,7 +148,7 @@ export async function rigEventsAfter(
       from,
       limit: BUS_READ_MAX,
     });
-    for (const { place, read } of page.events) {
+    for (const { place, read, at } of page.events) {
       if (place > o.through || out.length >= o.limit) return out;
       const { event: e, ledger } = read;
       const raw: RawEvent = {
@@ -157,6 +161,7 @@ export async function rigEventsAfter(
         subject: e.subject,
         body: e.body,
         run: e.run ?? null,
+        received_at: at ?? null,
       };
       out.push(currentEvent(raw));
     }

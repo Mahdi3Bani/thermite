@@ -25,6 +25,8 @@ export interface Kept {
   id: string | undefined;
   data: string;
   headers: Record<string, string>;
+  /** When the stream stored it. */
+  at?: string | undefined;
 }
 
 /** A subject as a stream's pattern reads it: `*` stands for one token, `>` for the rest. */
@@ -155,7 +157,15 @@ export class FakeBus
     const seq = this.lastOf(stream) + 1;
     this.seqs.set(stream, seq);
     const { subject, id, data } = m;
-    this.kept.push({ stream, subject, seq, id, data, headers: m.headers ?? {} });
+    this.kept.push({
+      stream,
+      subject,
+      seq,
+      id,
+      data,
+      headers: m.headers ?? {},
+      at: new Date().toISOString(),
+    });
     return { seq, duplicate: false };
   }
 
@@ -339,6 +349,7 @@ export function asMessage(m: Kept): BusMessage {
     seq: m.seq,
     data: new TextEncoder().encode(m.data),
     header: (name) => headers[name],
+    at: m.at,
   };
 }
 

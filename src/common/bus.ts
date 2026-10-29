@@ -117,6 +117,8 @@ export interface BusMessage {
   seq: number;
   data: Uint8Array;
   header(name: string): string | undefined;
+  /** When the stream stored it, by its server's clock; undefined where nothing says. */
+  at?: string | undefined;
 }
 
 /**
@@ -406,6 +408,7 @@ const asBusMessage = (m: JsMsg | StoredMsg, h: MsgHdrs | undefined): BusMessage 
   seq: m.seq,
   data: m.data,
   header: (k) => h?.get(k) || undefined,
+  at: m.time.toISOString(),
 });
 
 /** Whether a message has each of these headers with this value. */
