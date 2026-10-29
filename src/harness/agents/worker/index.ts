@@ -71,6 +71,7 @@ export function piTrialPrompt(
     maxTurns: spec.maxTurns,
     endsAt: spec.wallMs !== undefined ? startedAt + spec.wallMs : undefined,
     fit,
+    addition: spec.addition,
   });
 }
 

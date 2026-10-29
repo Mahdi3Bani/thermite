@@ -1,10 +1,17 @@
 /**
  * The campaigns control keeps: a new one from the new-campaign page (new.ts, with builder.ts), a
  * copy (copy.ts), Start a run (start-run.ts) and the queue it copies from a past run
- * (queue-copy.ts), a campaign's context settings (context.ts), and archive and folders
- * (folders.ts).
+ * (queue-copy.ts), a campaign's context settings (context.ts), the owner's additions to its roles
+ * (additions.ts), and archive and folders (folders.ts).
  */
 
+export {
+  CampaignAdditionsBody,
+  campaignAdditionsAnswer,
+  campaignAdditionsFields,
+  contractAdditions,
+  setCampaignAdditions,
+} from "./additions.ts";
 export {
   CampaignContextBody,
   campaignContextAnswer,

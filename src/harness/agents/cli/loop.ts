@@ -177,6 +177,7 @@ export async function runCliTrial<T extends CliTally>(
         maxTurns: spec.maxTurns,
         endsAt: deadline,
         fit,
+        addition: spec.addition,
       })
     : renderResearchWorker({
         program: p,
@@ -186,6 +187,7 @@ export async function runCliTrial<T extends CliTally>(
         limits,
         minutes,
         fit,
+        addition: spec.addition,
       });
   deps.sent?.(sent);
   let message = messageText(sent);

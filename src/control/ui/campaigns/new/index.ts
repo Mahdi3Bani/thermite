@@ -1,9 +1,11 @@
 import type { AgentsContext } from "../../../../core/compaction.ts";
+import type { RoleAdditions } from "../../../../core/role-additions.ts";
 import type { OwnModel } from "../../../campaigns/index.ts";
 import type { McpServer } from "../../../mcp-servers/index.ts";
 import type { GitAccess } from "../../../store/index.ts";
 import { podStopped, type RigView } from "../../../views/index.ts";
 import { esc, infoLabel } from "../../components/index.ts";
+import { additionsDraftPart } from "../additions.ts";
 import { type BriefDraft, briefPane } from "../brief.ts";
 import { contextFields, fieldValues } from "../context/index.ts";
 import { kitMcpSection } from "./mcp.ts";
@@ -96,8 +98,10 @@ export function newCampaignBody(p: NewCampaignPage): string {
       description?: string;
       verify?: { type?: string; cells?: string[]; verifier?: string };
     }[];
-  } & BriefDraft;
+  } & BriefDraft & { role_additions?: RoleAdditions };
   const mode = d.mode ?? "hill_climb";
+  // The owner's additions to the roles, as a draft sent back holds them (goal 166).
+  const adds = d.role_additions;
   const cases: CaseDraft[] = d.kit?.cases?.length ? d.kit.cases : [{ name: "default" }];
   const caseRow = (c: CaseDraft) =>
     `<tr><td><input aria-label="case name" value="${esc(c.name ?? "")}" placeholder="light"></td><td><input class="mono" aria-label="arguments" value="${esc(c.args ?? "")}" placeholder="--users 10"></td><td><input class="mono" aria-label="input file" list="nc-inputs" value="${esc(c.input ?? "")}" placeholder="none"></td><td data-score="time"><input class="mono" aria-label="work done" value="${esc(c.work === undefined ? "" : String(c.work))}" placeholder="—"></td><td><input type="checkbox" aria-label="hidden test"${c.hidden ? " checked" : ""}></td><td><button class="sm" data-del>×</button></td></tr>`;
@@ -252,6 +256,7 @@ ${field("When a change is confirmed better", "What happens when the judge confir
 ${field("Ask me first about", "Thermite is hands-off by default: when the judge confirms a change is better, it becomes the champion with no step of yours (after the auditor clears it, when the rig has an auditor and the campaign calls for an audit). A review panel's pass is accepted, and a goal campaign the evidence shows is not possible ends. Choose here what you want to decide yourself; it then waits for you in Needs you.", `<span class="act" style="display:grid;gap:4px"><input name="ask_above_gain" inputmode="decimal" placeholder="a gain above this %, such as 15 (empty: never)" aria-label="Ask me about a gain above this percent"><label class="small" title="A change whose agent declared flaws in it waits for you."><input type="checkbox" name="ask_declared_flaws" value="1"> a change whose agent declared flaws</label><label class="small" title="A review goal is met, and a research run writes its paper and ends, only after you accept the review panel's pass."><input type="checkbox" name="ask_reviews" value="1"> a review panel's pass of a goal or of a research run's questions</label><label class="small" title="A goal campaign the evidence shows is not possible ends only after you accept."><input type="checkbox" name="ask_not_possible" value="1"> ending a goal campaign as not possible</label></span>`)}
 </div>
 <div class="sec cc-sec" data-cc-rigs="${esc(JSON.stringify(p.agentModels ?? {}))}"><h2>Agents' context</h2>${contextFields("new", fieldValues((d as { agents_context?: AgentsContext }).agents_context))}</div>
+<div class="sec" id="role-additions"><div data-modes="hill_climb goal">${additionsDraftPart("hill_climb", adds)}</div><div data-modes="research">${additionsDraftPart("research", adds)}</div></div>
 <details class="adv"><summary>Advanced</summary><div class="g3">
 ${field("One try lasts (minutes)", "How long an agent works on one idea before it must submit; then it starts fresh on its next idea. Empty: the rig's default.", `<input name="trial_minutes" placeholder="the rig's default">`)}
 ${field("Memory per agent (MiB)", "Memory for everything one agent runs at once. A command that goes over is stopped. Empty: 2048.", `<input name="run_rss_mib" placeholder="2048">`)}

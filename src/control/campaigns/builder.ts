@@ -13,6 +13,7 @@ import {
 import { CampaignId } from "../../core/ids.ts";
 import { KitSchema, kitProblems } from "../../core/kit.ts";
 import { type McpUse, McpUses } from "../../core/mcp.ts";
+import { requestedAdditions } from "../../core/role-additions.ts";
 
 /**
  * The new-campaign page's answers, turned into a contract and, for a kit described on the
@@ -222,6 +223,12 @@ export const CampaignDraft = z.strictObject({
     .strictObject({ context_window: z.number().optional(), compact_at: z.number().optional() })
     .optional(),
   /**
+   * The owner's additions to the roles of the campaign's agents (goal 166), by role id, in its
+   * contract as `role_additions`. An empty one is left out; the contract's own check refuses a
+   * role the mode never runs, in words.
+   */
+  role_additions: z.record(z.string(), z.string()).optional(),
+  /**
    * The MCP servers the campaign's agents use (goal 068), by their names in Settings, with the
    * agents that get each and, only when narrowed, their tools. A kit described here or uploaded
    * gets them in its kit.json; a kit in a repository has its own (give what its kit.json names:
@@ -349,6 +356,7 @@ export function buildCampaign(
     ...(context?.context_window !== undefined ? { context_window: context.context_window } : {}),
     ...(context?.compact_at !== undefined ? { compact_at: context.compact_at } : {}),
   };
+  const additions = requestedAdditions(d.role_additions);
   // The brief's lists: entries trimmed, empty ones left out (goal 078).
   const entries = (xs: string[] | undefined) => (xs ?? []).map((x) => x.trim()).filter(Boolean);
   const ideas = entries(d.ideas);
@@ -394,6 +402,7 @@ export function buildCampaign(
     ...(d.mode !== "research" && d.links?.length ? { links: d.links } : {}),
     ...(d.wall_hours ? { budget: { wall_hours: d.wall_hours } } : {}),
     ...(Object.keys(own).length ? { agents_context: own } : {}),
+    ...(additions ? { role_additions: additions } : {}),
   };
 
   if (d.mode === "research") {

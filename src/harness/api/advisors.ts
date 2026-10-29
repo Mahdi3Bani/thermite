@@ -37,6 +37,7 @@ import {
 } from "../../core/api/harness/advisors.ts";
 import { RESEARCH_KINDS } from "../../core/api/harness/research.ts";
 import { ADVISORS, KB } from "../../core/api/harness/supervisor.ts";
+import { additionsOf } from "../../core/role-additions.ts";
 import { type ApiContext, limitOf } from "./context.ts";
 
 /**
@@ -69,6 +70,8 @@ export function advisorRoutes(app: Hono, { service, supervisor }: ApiContext): v
         // The campaign's own context settings, which the advisors' calls for the run take too
         // (goal 070); null: none.
         agents_context: service.ledger.contracts.get(i.campaign, i.version)?.agents_context ?? null,
+        // The owner's additions to its roles, which the advisors' prompts carry (goal 166).
+        role_additions: additionsOf(service.ledger.contracts.get(i.campaign, i.version)),
         // The planner's round left the queue below its target (goal 081): the teachers' round
         // starts at once, not on the clock. Null: the queue is at its target, or none applies.
         queue_low: service.queueLow(i.id),

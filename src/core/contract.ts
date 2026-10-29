@@ -4,6 +4,7 @@ import { AgentsContext } from "./compaction.ts";
 import { DURATION_PATTERN, parseDuration } from "./duration.ts";
 import { CampaignId } from "./ids.ts";
 import { McpUses } from "./mcp.ts";
+import { additionRefusals, RoleAdditions } from "./role-additions.ts";
 
 /**
  * Campaign contract, schema version 1.
@@ -179,6 +180,13 @@ const Common = {
    * rig's. Optional and without a default, so contracts written before it keep their hash.
    */
   agents_context: AgentsContext.optional(),
+  /**
+   * The owner's additions to a role's instructions for this campaign (goal 166): one text for
+   * each role, by its id, added to every prompt of that role and labelled as the owner's; the
+   * role's own text stays whole. Optional and without a default, so contracts written before it
+   * keep their hash.
+   */
+  role_additions: RoleAdditions.optional(),
 };
 
 const EditPolicy = {
@@ -431,6 +439,8 @@ export const ContractSchema = z
         message: `rubrics has ${c.rubrics.length} entries for ${c.questions.length} questions: give one for each question, in order`,
       });
     }
+    for (const why of additionRefusals(c.mode, c.role_additions))
+      ctx.addIssue({ code: "custom", path: ["role_additions"], message: why });
     if (c.mode === "hill_climb" && !c.target) {
       ctx.addIssue({ code: "custom", message: "hill_climb campaigns need a target" });
     }

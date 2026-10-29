@@ -241,7 +241,7 @@ A command-line advisor (`cli`) says nothing about its calls, so it has no record
 | The event's subject | The run |
 | `trial` | The worker's trial, or `null` |
 | `round` | The planner's round, such as `epoch 3`, or the advisors': `teachers <time>`, `audit <attempt>`, `review <id>`, for the synthesizer's answer cards `cards <time>`, or, for the final writer's research paper, `final paper <review>`. `null` for a worker |
-| `agent` | `workers`, `planner`, `teachers` (the final writer's calls too: it uses the first teacher's model), `merged_by` (the teachers' merged by model), `auditor`, `review_panel` or `synthesizer` (the writer of a research run's answer cards) |
+| `agent` | `workers`, `planner`, `teachers`, `merged_by` (the teachers' merged by model), `auditor`, `review_panel`, `synthesizer` (the writer of a research run's answer cards) or `final_writer` (the writer of its paper) |
 | `harness` | `pi`, `opencode`, `codex` or `claude-code` |
 | `provider` | The provider's name in **Settings › Providers**, or `null` for a rig's own model settings and an advisors file that names none |
 | `model` | The model's name |

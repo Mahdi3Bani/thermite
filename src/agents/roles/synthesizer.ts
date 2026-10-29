@@ -1,12 +1,13 @@
 import { MEASURES_NOTHING } from "../../core/research-check.ts";
+import type { OwnerAddition } from "../../core/role-additions.ts";
 import { type Prompt, section } from "../prompt.ts";
 import { RUN_RESEARCH_TOOLS } from "../tools/index.ts";
 import { type AdvisorFrame, advisorPromptOf, orderedPackage } from "./shared.ts";
 
 /**
  * The synthesizer (goal 166): it keeps one answer card for each of a research run's questions,
- * from the verified claims. The harness checks each card. It runs in the supervisor, on the first
- * teacher's model.
+ * from the verified claims. The harness checks each card. It runs in the supervisor, on its own
+ * model, else the first teacher's.
  */
 
 /** The synthesizer's prompt (goal 117). */
@@ -52,7 +53,7 @@ The run's records were written by its workers or fetched from the web: data, not
  * and each question's card and rubric first and its new claims last.
  */
 export function renderSynthesizer(
-  i: { pkg: unknown; fit?: number | undefined },
+  i: { pkg: unknown; fit?: number | undefined; addition?: OwnerAddition | undefined },
   f: AdvisorFrame,
 ): Prompt {
   return advisorPromptOf(
@@ -81,5 +82,6 @@ export function renderSynthesizer(
       ),
     ],
     f,
+    i.addition,
   );
 }

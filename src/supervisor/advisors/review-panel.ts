@@ -9,6 +9,7 @@ import {
   QUESTION_DECISIONS,
 } from "../../core/api/harness/research.ts";
 import { LenientNotes } from "../../core/journal.ts";
+import { additionIn, type RunAdditions } from "../../core/role-additions.ts";
 import type { AdvisorKeeper, AdvisorMcp, AdvisorResult, AdvisorUsage } from "./call.ts";
 import { type AdvisorRuntime, packageFit } from "./config.ts";
 import { OwnerAnswers, OwnerAnswersSchema } from "./owner-answers.ts";
@@ -229,6 +230,8 @@ export async function reviewOne(input: {
   research?: AdvisorResearch | undefined;
   /** Where the call's conversation is kept before a compaction (goal 070). */
   keeper?: AdvisorKeeper | undefined;
+  /** The owner's additions to the run's roles (goal 166): the reviewer's goes in its prompt. */
+  additions?: RunAdditions;
 }): Promise<AdvisorResult<ReviewOutput>> {
   // A research run's package (goal 112): its own prompt and answer, which says, for each
   // question, if it is answered, and for each hypothesis, its verdict.
@@ -242,7 +245,11 @@ export async function reviewOne(input: {
     const ask = (o: { pkg: unknown; leftOut?: LeftOut | undefined }) =>
       runAdvisor({
         runtime: input.runtime,
-        prompt: (f) => renderResearchReviewer({ ...o, fit }, f),
+        prompt: (f) =>
+          renderResearchReviewer(
+            { ...o, fit, addition: additionIn(input.additions, "research-reviewer") },
+            f,
+          ),
         schema: ResearchPanelAnswer,
         answerSchema: ResearchPanelAnswerSchema,
         keeper: input.keeper,
@@ -301,7 +308,15 @@ export async function reviewOne(input: {
   }
   return runAdvisor({
     runtime: input.runtime,
-    prompt: (f) => renderReviewer({ pkg: input.pkg, fit: packageFit(input.runtime) }, f),
+    prompt: (f) =>
+      renderReviewer(
+        {
+          pkg: input.pkg,
+          fit: packageFit(input.runtime),
+          addition: additionIn(input.additions, "reviewer"),
+        },
+        f,
+      ),
     schema: PanelAnswer,
     answerSchema: PanelAnswerSchema,
     keeper: input.keeper,

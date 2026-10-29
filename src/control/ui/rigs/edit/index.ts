@@ -10,7 +10,8 @@ export { EDIT_RIG_JS } from "./client.ts";
 /**
  * Edit rig's section "2 · The agents" (goals 070, 073 and 074, as the owner approved the revised
  * mockup on 2026-10-21): the agents in two groups, The work (the workers and the planner) and The
- * advisors (the teachers, the auditor and the review panel), each with its job on one line. Every
+ * advisors (the teachers, the auditor, the review panel, and a research run's synthesizer and
+ * final writer, goal 166), each with its job on one line. Every
  * line has a Model, an Effort, a Runs in and a Context cell (the window and the compaction point,
  * changed in a small panel that opens under the cell). The teachers take one model or two; with
  * two, a merged by line joins their suggestions.
@@ -19,7 +20,9 @@ export { EDIT_RIG_JS } from "./client.ts";
  * default of default?"): the workers the rig's own settings, the planner the workers' model, an
  * advisor the model in the rig's advisors file, as the supervisor reports it ("rig's file:
  * opus-5.5"), or none, and then the advisor is off ("none: off"). Until the supervisor has said,
- * "rig's file". The greyed Runs in and Context cells show the file's harness and window.
+ * "rig's file". The greyed Runs in and Context cells show the file's harness and window. The
+ * synthesizer and the final writer with no model use the first teacher's ("same as the first
+ * teacher"), as the planner uses the workers'.
  *
  * Every field has a form name, so the form posts without the page's script
  * (/ui/assets/edit-rig.js, edit/client.ts): the workers' `choice`, `effort`, `harness`,
@@ -80,6 +83,8 @@ interface LineSpec {
   kind: "workers" | "planner" | "advisor";
   /** A later line of the Teachers row. */
   sub?: "teacher2" | "merged_by";
+  /** An advisor that uses the first teacher's model when it has none of its own (goal 166). */
+  follows?: "teachers";
 }
 
 const LINES: LineSpec[] = [
@@ -166,6 +171,30 @@ const LINES: LineSpec[] = [
     s: "s",
     kind: "advisor",
   },
+  {
+    id: "synthesizer",
+    name: "Synthesizer",
+    job: "Writes each research question's answer card.",
+    tip: "In a research run, it rewrites the answer card of each question whose evidence changed, from the run's verified claims. Code checks each card before it is kept. With no model here, it uses the first teacher's model, harness and context. With no teacher at all, there is no synthesizer, and the cards wait.",
+    empty: "same as the first teacher",
+    who: "the synthesizer",
+    poss: "the synthesizer's",
+    s: "s",
+    kind: "advisor",
+    follows: "teachers",
+  },
+  {
+    id: "final_writer",
+    name: "Final writer",
+    job: "Writes a research run's paper when it ends.",
+    tip: "When a research run ends, it writes the run's research paper in Simplified Technical English. Code checks the paper before it is kept. With no model here, it uses the first teacher's model, harness and context. With no teacher at all, there is no final writer, and the paper waits.",
+    empty: "same as the first teacher",
+    who: "the final writer",
+    poss: "the final writer's",
+    s: "s",
+    kind: "advisor",
+    follows: "teachers",
+  },
 ];
 
 /** The harnesses, as Runs in offers them on every line (goal 073). */
@@ -179,7 +208,7 @@ const HARNESS_CHOICES: [string, string][] = [
 const AGENT_TIP =
   "Each agent, with its job under its name. The work runs in the rig's harness. The advisors run in the supervisor and never judge: code measures each change and decides.";
 const MODEL_TIP =
-  "The model of each agent, from Settings › Providers. A subscription's models show as claude-code:…; control gives the rig a subscription's login only while one of its agents uses it. The empty choice says what the agent uses with no model here. The workers: the model in the rig's own settings. The planner: the workers' model. An advisor: the model in the rig's advisors file, such as \"rig's file: opus-5.5\". \"none: off\": the file has none, so that advisor does not run. \"rig's file\" alone: the rig's supervisor has not reported its file yet.";
+  "The model of each agent, from Settings › Providers. A subscription's models show as claude-code:…; control gives the rig a subscription's login only while one of its agents uses it. The empty choice says what the agent uses with no model here. The workers: the model in the rig's own settings. The planner: the workers' model. The synthesizer and the final writer: the first teacher's model. Another advisor: the model in the rig's advisors file, such as \"rig's file: opus-5.5\". \"none: off\": the file has none, so that advisor does not run. \"rig's file\" alone: the rig's supervisor has not reported its file yet.";
 const EFFORT_TIP =
   "How long the model thinks before it answers. More effort: better answers, slower, and more of a subscription's window. Providers other than a Claude subscription take up to high. \"model's default\": Thermite sends no effort, and the model (or Claude Code) uses its own.";
 const RUNS_TIP =
@@ -263,8 +292,45 @@ function fileSetups(id: AgentLineId, file: AdvisorsFileView): AdvisorSetupView[]
   return one ? [one] : [];
 }
 
+/** A setup's harness, as Runs in shows it. */
+const harnessWords = (a: AdvisorSetupView) =>
+  (Object.hasOwn(HARNESS_WORDS, a.harness) && HARNESS_WORDS[a.harness]) || a.harness;
+
+/**
+ * What a line that uses the first teacher's model shows with none of its own: the first teacher
+ * of the rig's advisors file, as the page opens (the page's script follows the Teachers line).
+ */
+function followerFallback(spec: LineSpec, d: AgentDefaults): LineFallback {
+  const say = "the first teacher's model";
+  if (!d.advisors)
+    return {
+      model: spec.empty,
+      runs: "as the first teacher",
+      ctx: "as the first teacher",
+      say,
+      off: false,
+    };
+  const first = d.advisors.teachers[0];
+  if (!first)
+    return {
+      model: spec.empty,
+      runs: "—",
+      ctx: "—",
+      say: `${say}: none, as the rig's advisors file has no teachers, so it is off until it or the teachers have a model`,
+      off: true,
+    };
+  return {
+    model: spec.empty,
+    runs: harnessWords(first),
+    ctx: setupContext(first),
+    say: `${say} (rig's file: ${first.model ?? "a command-line agent"})`,
+    off: false,
+  };
+}
+
 /** What a line with no model shows: the real default, as far as control knows it. */
 function lineFallback(spec: LineSpec, d: AgentDefaults): LineFallback {
+  if (spec.follows) return followerFallback(spec, d);
   if (spec.kind === "workers") {
     if (d.workers === null)
       return {
@@ -312,28 +378,30 @@ function lineFallback(spec: LineSpec, d: AgentDefaults): LineFallback {
   const models = distinct(set.map((a) => a.model ?? "a command-line agent"));
   return {
     model: `rig's file: ${models}`,
-    runs: distinct(
-      set.map(
-        (a) => (Object.hasOwn(HARNESS_WORDS, a.harness) && HARNESS_WORDS[a.harness]) || a.harness,
-      ),
-    ),
+    runs: distinct(set.map(harnessWords)),
     ctx: distinct(set.map(setupContext)),
     say: `the one in the rig's advisors file (${models})`,
     off: false,
   };
 }
 
-/** The Context cell's text as the page opens: the window and the point, bold where set here. */
+/**
+ * The Context cell's text as the page opens: the window and the point, bold where set here.
+ * `followed`: the summary of the line one with no model follows (the workers' for the planner,
+ * the first teacher's for the synthesizer and the final writer); "" when that line has no model.
+ */
 function contextSummary(
   spec: LineSpec,
   now: AgentLineNow,
   window: number,
-  workers: string,
+  followed: string,
   fb: LineFallback,
 ): string {
   if (!now.picked) {
     if (spec.kind === "planner")
-      return `<span class="muted">as the workers${workers ? `: ${workers}` : ""}</span>`;
+      return `<span class="muted">as the workers${followed ? `: ${followed}` : ""}</span>`;
+    if (spec.follows && followed)
+      return `<span class="muted">as the first teacher: ${followed}</span>`;
     return `<span class="muted">${esc(fb.ctx)}</span>`;
   }
   const win = now.cap ?? window;
@@ -372,11 +440,12 @@ export interface AgentsTableInput {
 export function agentsTable(o: AgentsTableInput): string {
   const windowOf = (picked: string) =>
     o.groups.flatMap((g) => g.options).find((x) => x.value === picked)?.window ?? 0;
-  const w = o.now.workers;
-  const wWindow = w.cap ?? windowOf(w.picked);
-  const workersSummary = w.picked
-    ? `${wWindow ? tokens(wWindow) : "no window"} · ${w.at ?? COMPACT_AT_DEFAULT}%`
-    : "";
+  /** A line's window and point in short, when it has a model; "" when it has none. */
+  const summaryOf = (n: AgentLineNow) => {
+    const win = n.cap ?? windowOf(n.picked);
+    return n.picked ? `${win ? tokens(win) : "no window"} · ${n.at ?? COMPACT_AT_DEFAULT}%` : "";
+  };
+  const followed = { workers: summaryOf(o.now.workers), teachers: summaryOf(o.now.teachers) };
   const defaults = o.defaults ?? { workers: undefined, advisors: undefined };
   const line = (spec: LineSpec) => {
     const now = o.now[spec.id];
@@ -405,21 +474,23 @@ export function agentsTable(o: AgentsTableInput): string {
       )
       .join("")}</select>`;
     const runs = spec.kind === "workers" ? "run" : "runs";
+    // A line that follows the Teachers line, which has a model: where the first teacher runs.
+    const runsWith = spec.follows && o.now.teachers.picked ? "as the first teacher" : fb.runs;
     const firstRun =
       spec.kind === "workers"
         ? ""
-        : `<option value=""${now.harness ? "" : " selected"}>${esc(fb.runs)}</option>`;
+        : `<option value=""${now.harness ? "" : " selected"}>${esc(runsWith)}</option>`;
     const harness = `<select name="${f.harness}" data-runs-in="${spec.id}" data-label="where ${esc(spec.who)} ${runs}" aria-label="where ${esc(spec.who)} ${runs}">${firstRun}${HARNESS_CHOICES.map(
       ([v, t]) =>
         `<option value="${v}"${(now.harness ?? (spec.kind === "workers" ? "pi" : "")) === v ? " selected" : ""}>${t}</option>`,
     ).join("")}</select>`;
-    const ctx = `<details class="ctx-w" data-ctx="${spec.id}"><summary class="ctx-b" title="Press to change the context window and the compaction point" aria-label="${label} context"><span class="ctx-v"><span class="ctx-k">Context: </span><span data-ctx-sum="${spec.id}">${contextSummary(spec, now, windowOf(now.picked), workersSummary, fb)}</span></span><span class="ctx-car" aria-hidden="true"></span></summary>
+    const ctx = `<details class="ctx-w" data-ctx="${spec.id}"><summary class="ctx-b" title="Press to change the context window and the compaction point" aria-label="${label} context"><span class="ctx-v"><span class="ctx-k">Context: </span><span data-ctx-sum="${spec.id}">${contextSummary(spec, now, windowOf(now.picked), spec.follows ? followed.teachers : followed.workers, fb)}</span></span><span class="ctx-car" aria-hidden="true"></span></summary>
 <div class="ctx-pop" role="group" aria-label="${label} context">
 <label class="ctx-f">${infoLabel("Context window", WINDOW_TIP)}<input name="${f.window}" data-cap value="${now.cap ?? ""}" placeholder="${now.picked && windowOf(now.picked) ? esc(tokens(windowOf(now.picked))) : "none"}" inputmode="numeric" autocomplete="off" spellcheck="false"><span class="muted">tokens</span></label>
 <label class="ctx-f">${infoLabel("Compact at", POINT_TIP)}<input name="${f.point}" data-at value="${now.at ?? ""}" placeholder="${COMPACT_AT_DEFAULT}" inputmode="numeric" autocomplete="off" spellcheck="false"><span class="muted">%</span></label>
 <div class="ctx-msg" data-ctx-msg aria-live="polite"></div>
 </div></details>`;
-    return `<div class="ln${spec.sub ? " sub" : ""}" data-line="${spec.id}" data-kind="${spec.kind}" data-who="${esc(spec.who)}" data-poss="${esc(spec.poss)}" data-s="${spec.s}" data-fb-ctx="${esc(fb.ctx)}" data-fb-say="${esc(fb.say)}"${fb.off ? ` data-fb-off="1"` : ""}${spec.sub ? ` data-sub="${spec.sub}"` : ""}${hidden ? " hidden" : ""}>${first}${modelCell}${effort}${harness}${ctx}</div><div class="row-say" data-row-say="${spec.id}" hidden></div>`;
+    return `<div class="ln${spec.sub ? " sub" : ""}" data-line="${spec.id}" data-kind="${spec.kind}" data-who="${esc(spec.who)}" data-poss="${esc(spec.poss)}" data-s="${spec.s}" data-fb-ctx="${esc(fb.ctx)}" data-fb-say="${esc(fb.say)}"${fb.off ? ` data-fb-off="1"` : ""}${spec.sub ? ` data-sub="${spec.sub}"` : ""}${spec.follows ? ` data-follows="${spec.follows}" data-fb-runs="${esc(fb.runs)}"` : ""}${hidden ? " hidden" : ""}>${first}${modelCell}${effort}${harness}${ctx}</div><div class="row-say" data-row-say="${spec.id}" hidden></div>`;
   };
   const byId = (id: AgentLineId) => LINES.find((l) => l.id === id) as LineSpec;
   const grp = (name: string, sub: string, tip: string) =>
@@ -434,5 +505,7 @@ ${line(byId("second_teacher"))}
 <div class="ln add" data-t2-addline${o.two || !o.now.teachers.picked ? " hidden" : ""}><div class="ag-sp"></div><div class="t2-add-c"><a class="btn sm ghost" href="${esc(o.href)}?teachers=2#agents" data-t2-add>+ second teacher</a></div></div>
 ${line(byId("merged_by"))}
 ${line(byId("auditor"))}
-${line(byId("review_panel"))}</div><div class="flag" id="share" hidden></div>`;
+${line(byId("review_panel"))}
+${line(byId("synthesizer"))}
+${line(byId("final_writer"))}</div><div class="flag" id="share" hidden></div>`;
 }

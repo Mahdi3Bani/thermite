@@ -16,6 +16,7 @@ import {
 } from "../../../agents/tools/index.ts";
 import { errorText } from "../../../common/errors.ts";
 import { type LaneLimitValues, laneLimits } from "../../../core/contract.ts";
+import type { OwnerAddition } from "../../../core/role-additions.ts";
 import type { CallUsage } from "../../../core/usage.ts";
 import { linkSession, type SessionLink } from "../live-session.ts";
 import { type FailureCount, failingOf, ProviderWatch } from "../provider-errors.ts";
@@ -63,6 +64,8 @@ export interface ResearchTrialSpec {
   folder?: ResearchFolderPaths | undefined;
   /** The MCP servers the run's kit gives its workers (goal 068), by name (see TrialSpec). */
   mcpServers?: string[] | undefined;
+  /** The owner's addition to the research worker for the campaign (goal 166; see TrialSpec). */
+  addition?: OwnerAddition | undefined;
 }
 
 export interface ResearchDeps {
@@ -100,6 +103,7 @@ export function piResearchPrompt(
     ...o,
     folder: spec.folder,
     limits: spec.limits ?? laneLimits({ lanes: { count: 1, trials_per_epoch: 1 } }),
+    addition: spec.addition,
   });
 }
 

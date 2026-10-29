@@ -2,6 +2,7 @@ import { Type } from "@earendil-works/pi-ai";
 import { z } from "zod";
 import { renderFinalWriter } from "../../agents/roles/index.ts";
 import { PAPER_EXPERIMENT_FIELDS, PAPER_MAX } from "../../core/api/harness/research.ts";
+import { additionIn, type RunAdditions } from "../../core/role-additions.ts";
 import type { AdvisorKeeper, AdvisorResult } from "./call.ts";
 import { type AdvisorRuntime, packageFit } from "./config.ts";
 import { runAdvisor } from "./run.ts";
@@ -65,11 +66,21 @@ export async function writePaper(input: {
   guide?: string | undefined;
   accept?: ((output: WriterAnswer) => Promise<string | undefined>) | undefined;
   keeper?: AdvisorKeeper | undefined;
+  /** The owner's additions to the run's roles (goal 166): the final writer's goes in its prompt. */
+  additions?: RunAdditions;
 }): Promise<AdvisorResult<WriterAnswer>> {
   return runAdvisor({
     runtime: input.runtime,
     prompt: (f) =>
-      renderFinalWriter({ pkg: input.pkg, fit: packageFit(input.runtime), guide: input.guide }, f),
+      renderFinalWriter(
+        {
+          pkg: input.pkg,
+          fit: packageFit(input.runtime),
+          guide: input.guide,
+          addition: additionIn(input.additions, "final-writer"),
+        },
+        f,
+      ),
     schema: WriterAnswer,
     answerSchema: WriterAnswerSchema,
     keeper: input.keeper,

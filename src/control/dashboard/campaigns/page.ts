@@ -8,15 +8,18 @@ import {
   type CopyCampaignOutcome,
   type CopyCampaignRequest,
   campaignContract,
+  contractAdditions,
   contractContext,
   copiedFromWords,
   copyACampaign,
   ownModels,
   rigContext,
   type StartRunRequest,
+  setCampaignAdditions,
   setCampaignContext,
   startARun,
 } from "../../campaigns/index.ts";
+import { additionsBlock, postedAdditions } from "../../ui/campaigns/additions.ts";
 import { campaignBriefBlock } from "../../ui/campaigns/brief.ts";
 import {
   CAMPAIGN_CONTEXT_JS,
@@ -287,6 +290,47 @@ export function campaignPageRoutes(app: Hono, dash: Dashboard): void {
       ok: said ? c.req.query("ok") : undefined,
     });
   };
+  /**
+   * The campaign's block of the owner's additions to its roles (goal 166); none for a rig check,
+   * or a campaign with no contract.
+   */
+  const additionsSection = (c: Ctx, name: string) => {
+    if (isRigCheck(name)) return "";
+    const contract = campaignContract(store, name) as { mode?: unknown } | undefined;
+    if (!contract) return "";
+    const said = c.req.query("on") === "additions";
+    return additionsBlock({
+      campaign: name,
+      mode: String(contract.mode ?? ""),
+      csrf: csrf(c),
+      additions: contractAdditions(contract),
+      error: said ? c.req.query("error") : undefined,
+      ok: said ? c.req.query("ok") : undefined,
+    });
+  };
+  app.post("/ui/campaigns/:campaign/additions", async (c) => {
+    const campaign = c.req.param("campaign");
+    const f = await c.req.parseBody();
+    const back = (k: "ok" | "error", m: string) =>
+      c.redirect(
+        `${campaignHref(campaign)}?on=additions&${k}=${encodeURIComponent(m)}#role-additions`,
+        303,
+      );
+    const out = setCampaignAdditions(
+      store,
+      { campaign, additions: postedAdditions(f) },
+      "owner:ui",
+    );
+    if (out.state === "refused")
+      return out.status === 404 ? c.text(out.error, 404) : back("error", out.error);
+    if (out.state === "unchanged")
+      return back("ok", `Nothing changed: version ${out.version} has these additions already.`);
+    const roles = Object.keys(out.additions ?? {});
+    return back(
+      "ok",
+      `Saved as version ${out.version}: ${roles.length ? `additions for ${listText(roles)}` : "no additions"}. New runs of ${campaign} take it.`,
+    );
+  });
   app.get("/ui/assets/campaign-context.js", (c) =>
     c.body(CAMPAIGN_CONTEXT_JS, 200, {
       "content-type": "text/javascript; charset=utf-8",
@@ -360,12 +404,13 @@ export function campaignPageRoutes(app: Hono, dash: Dashboard): void {
     // A refused grant shows in the Knowledge section, not as a run that did not start.
     const kbFailed = c.req.query("on") === "kb" ? c.req.query("error") : undefined;
     // So does what the Agents' context's Save did, in its own block.
-    const onContext = c.req.query("on") === "context";
+    // So do the owner's additions' (goal 166).
+    const onContext = c.req.query("on") === "context" || c.req.query("on") === "additions";
     // Archive and Move to folder (on=shelf) say what they refused at the top of every page.
     const failed =
       kbFailed || onContext || c.req.query("on") === "shelf" ? undefined : c.req.query("error");
     const okNote = onContext ? undefined : c.req.query("ok");
-    const context = () => contextSection(c, name, vs, onContext);
+    const context = () => contextSection(c, name, vs, c.req.query("on") === "context");
     // The campaign's brief from its contract (goal 078): what its agents know.
     const brief = () => (isRigCheck(name) ? "" : campaignBriefBlock(campaignContract(store, name)));
     const note = `${
@@ -411,7 +456,7 @@ export function campaignPageRoutes(app: Hono, dash: Dashboard): void {
           active: "campaigns",
           actions: buttons,
         },
-        `${note}${copiedLine(name)}<div class="card" style="margin-bottom:16px"><div class="empty">${saved.length ? "Saved on control, with no run yet." : "Assigned to a rig over the API, MCP or the CLI; no run of it reports now."}${canStart ? ` <a class="btn sm primary" href="${campaignHref(name)}?start=1" data-open="#start" style="margin-left:6px">${icon.play}Start a run of ${esc(name)}</a>` : ""}</div></div>${savedGoals}${brief()}${context()}${queueTargetSection(name)}${knowledgeSection(c, name, vs, kbFailed)}${drawer}`,
+        `${note}${copiedLine(name)}<div class="card" style="margin-bottom:16px"><div class="empty">${saved.length ? "Saved on control, with no run yet." : "Assigned to a rig over the API, MCP or the CLI; no run of it reports now."}${canStart ? ` <a class="btn sm primary" href="${campaignHref(name)}?start=1" data-open="#start" style="margin-left:6px">${icon.play}Start a run of ${esc(name)}</a>` : ""}</div></div>${savedGoals}${brief()}${context()}${additionsSection(c, name)}${queueTargetSection(name)}${knowledgeSection(c, name, vs, kbFailed)}${drawer}`,
         vs,
       );
     }
@@ -530,7 +575,7 @@ ${waitingRuns.map((w) => `<div class="kneed">${icon.warn}<span class="grow"><b>$
                     now,
                   )}</div>`
                 : ""
-            }</div>${brief()}${context()}${queueTargetSection(name)}${knowledgeSection(c, name, vs, kbFailed)}
+            }</div>${brief()}${context()}${additionsSection(c, name)}${queueTargetSection(name)}${knowledgeSection(c, name, vs, kbFailed)}
 </div><div class="side">${campaignUsage(k)}</div></div>`
       }${drawer}`,
       vs,

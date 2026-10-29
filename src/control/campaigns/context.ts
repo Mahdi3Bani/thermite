@@ -10,11 +10,10 @@ import {
   CONTEXT_WINDOW_MIN,
   contextApplied,
 } from "../../core/compaction.ts";
-import { parseContract } from "../../core/contract.ts";
 import { isRigCheck } from "../../core/ids.ts";
 import { cappedWindow } from "../providers/index.ts";
-import type { AgentRole, CampaignSources, ControlStore } from "../store/index.ts";
-import { RUN_FIELDS } from "./copy.ts";
+import type { AgentRole, ControlStore } from "../store/index.ts";
+import { saveWithField } from "./saved-version.ts";
 
 /**
  * A campaign's own context settings for all its runs (goal 070): a context window and a
@@ -110,88 +109,39 @@ const same = (a: AgentsContext | undefined, b: AgentsContext | undefined) =>
 
 /**
  * Sets a campaign's own context settings, or (none given) removes them: a new version of its
- * contract, saved as the New campaign page saves one, with the same sources. Each call sets them
- * anew: what it leaves out, the new version does not have. A campaign control knows only by an
- * assignment gets its first saved version, from that assignment. Refused in words.
+ * contract, saved as the New campaign page saves one, with the same sources (saveWithField). Each
+ * call sets them anew: what it leaves out, the new version does not have. A campaign control knows
+ * only by an assignment gets its first saved version, from that assignment. Refused in words.
  */
 export function setCampaignContext(
   store: ControlStore,
   req: CampaignContextRequest,
   by: string,
 ): CampaignContextOutcome {
-  const refuse = (error: string, status: 400 | 404 | 409 = 409): CampaignContextOutcome => ({
-    state: "refused",
-    error,
-    status,
-  });
   const { campaign } = req;
   if (isRigCheck(campaign))
-    return refuse(
-      `${campaign} is a rig check's campaign. Its agents keep the rig's settings.`,
-      400,
-    );
+    return {
+      state: "refused",
+      error: `${campaign} is a rig check's campaign. Its agents keep the rig's settings.`,
+      status: 400,
+    };
   const why = agentsContextRefusal({
     context_window: req.contextWindow,
     compact_at: req.compactAt,
   });
-  if (why) return refuse(why, 400);
-  const saved = store.campaigns.versions(campaign)[0];
-  const assigned = store.commands.latestAssignments().get(campaign);
-  const source = (saved?.contract ?? assigned?.payload.contract) as
-    | Record<string, unknown>
-    | undefined;
-  if (!source)
-    return refuse(
-      `Control has no saved version or earlier assignment of ${campaign}. Save it on the New campaign page first.`,
-      404,
-    );
+  if (why) return { state: "refused", error: why, status: 400 };
   const want = requestedContext(req);
-  if (saved && same(contractContext(saved.contract), want))
-    return {
-      state: "unchanged",
-      campaign,
-      version: saved.version,
-      sha: saved.sha,
-      context: want,
-    };
-  // Newer than every version a rig may hold: the harness refuses a version that is not newer.
-  const assignedVersion = Number((assigned?.payload.contract as { version?: unknown })?.version);
-  const version = Math.max(
-    store.campaigns.nextVersion(campaign),
-    Number.isInteger(assignedVersion) ? assignedVersion + 1 : 1,
-  );
-  const { agents_context: _old, ...rest } = source;
-  const parsed = parseContract({ ...rest, version, ...(want ? { agents_context: want } : {}) });
-  if (!parsed.ok)
-    return refuse(
-      `The contract of ${campaign} is not valid, so control cannot save a new version: ${parsed.errors.join("; ")}`,
-    );
-  const sources: CampaignSources = saved
-    ? saved.sources
-    : {
-        assignment: Object.fromEntries(
-          Object.entries((assigned as NonNullable<typeof assigned>).payload).filter(
-            ([k]) => !RUN_FIELDS.has(k),
-          ),
-        ),
-      };
-  store.campaigns.put({
+  const out = saveWithField(store, {
     campaign,
-    version,
-    contract: parsed.contract,
-    sha: parsed.sha,
-    sources,
-    // A copy's later versions still say where it came from.
-    copiedFrom: saved?.copied_from ?? undefined,
+    field: "agents_context",
+    value: want,
+    same: (contract) => same(contractContext(contract), want),
+    what: "the rig's settings",
     by,
+    action: "campaign_context_set",
+    audit: { agents_context: want ?? null },
   });
-  store.auditLog.add(by, "campaign_context_set", {
-    campaign,
-    version,
-    sha: parsed.sha,
-    agents_context: want ?? null,
-  });
-  return { state: "saved", campaign, version, sha: parsed.sha, context: want };
+  return out.state === "refused" ? out : { ...out, context: want };
 }
 
 /** The answer REST and MCP give: the campaign's version with the settings, and what it says. */
@@ -218,12 +168,13 @@ export type AgentPlace = "workers" | AgentRole;
 
 /**
  * The places of a campaign's runs' agents, by mode: a research run has no auditor or review
- * panel here; its planner plans its rounds from the answer cards (goals 047 and 117).
+ * panel here; its planner plans its rounds from the answer cards (goals 047 and 117), and its
+ * synthesizer and final writer write its cards and its paper (goal 166).
  */
 export function agentsOfMode(mode: unknown): AgentPlace[] {
   const teachers: AgentPlace[] = ["teachers", "second_teacher", "merged_by"];
   return mode === "research"
-    ? ["workers", "planner", ...teachers]
+    ? ["workers", "planner", ...teachers, "synthesizer", "final_writer"]
     : ["workers", "planner", ...teachers, "auditor", "review_panel"];
 }
 
@@ -236,6 +187,8 @@ export const AGENT_NAMES: Record<AgentPlace, string> = {
   merged_by: "Teachers (merged by)",
   auditor: "Auditor",
   review_panel: "Review panel",
+  synthesizer: "Synthesizer",
+  final_writer: "Final writer",
 };
 
 /** What one agent of a run works with: its model, window and compaction point. */
@@ -310,6 +263,12 @@ export function contextApplies(
     if (agent === "second_teacher" && (!own || !ownModel(store, rig, "teachers"))) continue;
     if (agent === "workers" || (agent === "planner" && !own)) {
       agents[agent] = workers();
+      continue;
+    }
+    // The synthesizer and the final writer with no model of their own use the first teacher's.
+    const first = agents.teachers;
+    if (!own && (agent === "synthesizer" || agent === "final_writer") && first) {
+      agents[agent] = first;
       continue;
     }
     if (!own) {
@@ -394,6 +353,8 @@ const AGENT_ROLE_PLACES: AgentPlace[] = [
   "merged_by",
   "auditor",
   "review_panel",
+  "synthesizer",
+  "final_writer",
 ];
 
 /**

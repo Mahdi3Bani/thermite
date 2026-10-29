@@ -14,7 +14,7 @@ import { currentAgent } from "./names.ts";
  * The agents a record names: `merged_by` is the teachers' merged by model, `review_panel` the
  * review panel (goal 074's names), `synthesizer` the writer of a research run's answer cards
  * (goal 117) and `final_writer` the writer of its paper (goal 112), each recorded under its own
- * name (goal 166), on the first teacher's model. Records from before v0.1.1 named the first two
+ * name (goal 166), on its own model, else the first teacher's. Records from before v0.1.1 named the first two
  * `combiner` and `panel`; core/names.ts reads them under these names.
  */
 export const USAGE_AGENTS = [

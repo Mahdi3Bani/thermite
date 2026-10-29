@@ -1,8 +1,9 @@
 import { CONVERT_PER_ROUND } from "../../core/directions.ts";
 import { NOTES_GUIDE } from "../../core/journal.ts";
+import type { OwnerAddition } from "../../core/role-additions.ts";
 import { mcpLine } from "../mcp/index.ts";
 import { type Prompt, prompt, section } from "../prompt.ts";
-import { advisorPackage } from "./shared.ts";
+import { advisorPackage, ownerAdditionSection } from "./shared.ts";
 
 /**
  * The planner (goal 166): it coordinates a hill-climb or goal run's lanes, round by round. Each
@@ -117,6 +118,8 @@ export interface PlannerInput {
   mcpServers: readonly string[];
   /** The most characters its run's state may take (windowFit); none: the window is unknown. */
   fit?: number | undefined;
+  /** The owner's addition to the planner for the campaign (decision 1); none: no section. */
+  addition?: OwnerAddition | undefined;
 }
 
 /** The hill climb's and goal campaign's planner call (goal 166). */
@@ -125,10 +128,10 @@ export function renderPlanner(i: PlannerInput): Prompt {
 }
 
 /**
- * A planner's prompt (goal 166). In Pi: its instructions and the MCP line as the system text, and
- * the run's state as the first message, then, on a second try, why the first plan was refused. In
- * a program, one message: its instructions, which tools it may use (none, the past research's
- * folder, or MCP servers), the run's state, and the refusal.
+ * A planner's prompt (goal 166). In Pi: its instructions, the MCP line and the owner's addition as
+ * the system text, and the run's state as the first message, then, on a second try, why the first
+ * plan was refused. In a program, one message: its instructions, which tools it may use (none, the
+ * past research's folder, or MCP servers), the owner's addition, the run's state, and the refusal.
  */
 export function plannerPrompt(
   role: string,
@@ -155,6 +158,7 @@ export function plannerPrompt(
       system: [
         section("instructions", "role", texts.pi),
         section("mcp", "kit", mcpLine(i.mcpServers), "\n\n"),
+        ...ownerAdditionSection(i.addition),
       ],
       message: [section("context", "ledger", context), refused],
     });
@@ -170,6 +174,7 @@ export function plannerPrompt(
     message: [
       section("instructions", "role", texts.ask),
       section("tools", "role", tools, " "),
+      ...ownerAdditionSection(i.addition),
       section("context", "ledger", `The campaign, as JSON:\n${context}`, "\n\n"),
       refused,
     ],

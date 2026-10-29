@@ -2,6 +2,7 @@ import type { ModelConfig } from "../../../agents/model/index.ts";
 import { messageText, type Prompt } from "../../../agents/prompt.ts";
 import { windowFit } from "../../../agents/roles/index.ts";
 import { LenientNotes, type NoteInput } from "../../../core/journal.ts";
+import type { OwnerAddition } from "../../../core/role-additions.ts";
 import type { CallUsage } from "../../../core/usage.ts";
 import { causeOf, causeWords, PlannerCallError, type PlanTry } from "./causes.ts";
 import type { PlannerPast } from "./context.ts";
@@ -50,6 +51,8 @@ export interface PlannerTries<T> {
  */
 export async function plannerTries<T>(o: {
   context: string;
+  /** The owner's addition to the role for the campaign (goal 166). */
+  addition?: OwnerAddition | undefined;
   model: ModelConfig;
   spec: PlannerCallSpec;
   check: (raw: unknown) => { errors: string[]; plan?: T | undefined };
@@ -82,6 +85,7 @@ export async function plannerTries<T>(o: {
       mcpServers: o.ask ? (o.mcp?.servers ?? []) : o.mcp?.tools.length ? o.mcp.servers : [],
       // Cut to the model's window, when the route says it (decision 8).
       fit: windowFit(o.model.contextWindow, o.model.compactAt),
+      addition: o.addition,
     });
     o.sent?.(sent);
     let raw: unknown;

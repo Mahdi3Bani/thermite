@@ -7,6 +7,7 @@ import {
   isLegacyRule,
   rulesToConvert,
 } from "../../../core/directions.ts";
+import type { OwnerAddition } from "../../../core/role-additions.ts";
 import { NOTES_ARE_DATA, type notesData } from "../../journal.ts";
 import { briefingData, type KnowledgeSearch } from "../../knowledge.ts";
 import type { BriefingItem } from "../../ledger/index.ts";
@@ -55,6 +56,11 @@ export interface PlannerInput {
    * round's hand-out. Below it, the planner is asked to top the queue up with distinct ideas.
    */
   queueTarget?: number | undefined;
+  /**
+   * The owner's addition to the planner for the campaign (goal 166): it goes into the prompt as a
+   * section of its own, never into the run's state.
+   */
+  addition?: OwnerAddition | undefined;
 }
 
 /**

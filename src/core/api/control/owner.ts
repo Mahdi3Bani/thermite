@@ -301,6 +301,14 @@ export const CAMPAIGN_CONTEXT = {
   answer: z.looseObject({ said: z.string().optional() }),
 } as const satisfies Route;
 
+/** The owner's additions to a campaign's roles (goal 166; control/campaigns/additions.ts checks them). */
+export const CAMPAIGN_ADDITIONS = {
+  method: "POST",
+  path: "/v1/campaigns/:campaign/additions",
+  body: SharedFields,
+  answer: z.looseObject({ said: z.string().optional() }),
+} as const satisfies Route;
+
 /** A copy of a campaign control keeps (control/copy-campaign.ts checks the request). */
 export const CAMPAIGN_COPY = {
   method: "POST",

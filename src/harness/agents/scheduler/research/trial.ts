@@ -4,6 +4,7 @@ import { log } from "../../../../common/log.ts";
 import type { ResearchContract } from "../../../../core/contract.ts";
 import { newTrialId } from "../../../../core/ids.ts";
 import { questionLabel } from "../../../../core/research-check.ts";
+import { additionOf } from "../../../../core/role-additions.ts";
 import type { Experiment, TaskYield } from "../../../queue.ts";
 import { briefCards, briefGaps, type Research } from "../../../research/index.ts";
 import { focusOf, limitsInForce, PLANNER } from "../../coordinator.ts";
@@ -120,6 +121,8 @@ export function startResearchTrial(
           maxTurns: sched.o.maxTurns,
           limits,
           mcpServers: sched.o.service.mcp.given(run, "workers").map((g) => g.name),
+          // The owner's addition to the research worker, from the run's contract (goal 166).
+          addition: additionOf(contract, "research-worker"),
         },
         abort.signal,
       );

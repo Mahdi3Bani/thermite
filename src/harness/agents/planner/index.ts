@@ -118,6 +118,7 @@ export async function plan(
   if (model) {
     r = await plannerTries({
       context: plannerContext(input),
+      addition: input.addition,
       model,
       spec: PLAN_SPEC,
       check: (raw) => validatePlan(raw, input),

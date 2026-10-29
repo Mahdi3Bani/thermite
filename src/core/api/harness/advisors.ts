@@ -39,8 +39,8 @@ const OwnerMessages = z.array(OwnerMessage).optional();
 
 /**
  * A run as the harness lists it for the advisors: the owner's messages each role has not read, the
- * MCP servers its kit names, the campaign's own context settings, and whether the planner's round
- * left its queue below its target (goal 081).
+ * MCP servers its kit names, the campaign's own context settings and the owner's additions to its
+ * roles, and whether the planner's round left its queue below its target (goal 081).
  */
 export const RunRow = z.looseObject({
   id: z.string(),
@@ -50,6 +50,15 @@ export const RunRow = z.looseObject({
   owner_messages_waiting: z.partialRecord(z.enum(ADVISOR_ROLES), z.array(z.number())).optional(),
   mcp_servers: z.array(McpUse).optional(),
   agents_context: AgentsContext.nullable().optional(),
+  /**
+   * The owner's additions to the roles for the run's campaign (goal 166), by role id, with the
+   * version of the contract they are in; null: none. Read loosely: a role this build does not
+   * know is never asked for.
+   */
+  role_additions: z
+    .object({ version: z.number(), roles: z.record(z.string(), z.string()) })
+    .nullable()
+    .optional(),
   queue_low: z
     .looseObject({
       event: z.number(),

@@ -1,0 +1,194 @@
+import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, test } from "node:test";
+import type { CampaignDraft } from "../../../src/control/campaigns/builder.ts";
+import { startCampaign } from "../../../src/control/campaigns/new.ts";
+import { KitRepos } from "../../../src/control/kits/repos.ts";
+import { parseContract } from "../../../src/core/contract.ts";
+import { ADMIN, controlOnly, mcpClient, signIn } from "../../helpers/control-stack.ts";
+
+/**
+ * The owner's additions to a campaign's roles (goal 166, decision 1): New campaign puts them in
+ * the first version's contract; REST's POST /v1/campaigns/<name>/additions, MCP's
+ * set_campaign_additions and the campaign's page save a new version with them, set anew each
+ * time; a role the campaign's mode never runs is refused in words.
+ */
+
+const TOKENS = {
+  admin: ADMIN,
+  operator: "operator-token-abcdef",
+  read: "read-token-abcdef",
+  rigs: {},
+};
+
+const draft: CampaignDraft = {
+  mode: "hill_climb",
+  campaign: "matmul-speed",
+  title: "Make the matrix multiply faster",
+  target: { type: "x", class: "x" },
+  project: {
+    url: "https://git.example.com/team/fastmat.git",
+    commit: "9a41c07e0d1f2a3b4c5d6e7f8091a2b3c4d5e6f7",
+    repo: "fastmat",
+    editable_paths: ["src/kernels/**"],
+  },
+  kit: {
+    source: "here",
+    build: "make bench",
+    outputs: ["bench"],
+    cases: [{ name: "small", params: { n: 64 }, work: 524288 }],
+    run: "{build}/bench --n {n} --out {out}/result.txt",
+    check: "test -s {out}/result.txt",
+  },
+  score: { name: "throughput", unit: "FLOP/s" },
+};
+
+async function stack() {
+  const kits = new KitRepos(mkdtempSync(join(tmpdir(), "thermite-kits-")));
+  const { keys, store, control, api } = controlOnly({
+    tokens: TOKENS,
+    options: { staleAfterMs: 600_000, kits },
+  });
+  const saved = await startCampaign(
+    { store, kits, privateKeyPem: keys.privateKeyPem },
+    {
+      draft: { ...draft, role_additions: { worker: "  Keep each change small.  ", planner: "" } },
+      rig: "rig-a",
+      target: { type: "cpu", class: "generic-cpu" },
+      start: false,
+      by: "owner:ui",
+    },
+  );
+  assert.ok(saved.ok && saved.version === 1, JSON.stringify(saved));
+  const newest = () =>
+    store.campaigns.versions("matmul-speed")[0]?.contract as Record<string, unknown>;
+  const set = (body: unknown, token?: string) =>
+    api("POST", "/v1/campaigns/matmul-speed/additions", body, token);
+  return { store, control, newest, set };
+}
+
+const json = async (r: Response) => (await r.json()) as Record<string, unknown>;
+
+describe("the owner's additions to a campaign's roles (goal 166)", () => {
+  test("New campaign puts them in the first version, trimmed, with an empty one left out", async () => {
+    const s = await stack();
+    assert.deepEqual(s.newest().role_additions, { worker: "Keep each change small." });
+    assert.ok(parseContract(s.newest()).ok);
+  });
+
+  test("REST and MCP save a new version with them, set anew; the same again changes nothing; refusals in words", async () => {
+    const s = await stack();
+    const r = await s.set({ additions: { planner: "Give each lane its own direction." } });
+    assert.equal(r.status, 201);
+    const out = await json(r);
+    assert.equal(out.version, 2);
+    assert.deepEqual(out.role_additions, { planner: "Give each lane its own direction." });
+    assert.equal(
+      out.said,
+      "Version 2 of matmul-speed is saved, with additions for planner. Runs started from now take it.",
+    );
+    // Set anew: the worker's addition of version 1 is gone, and nothing else changed.
+    const v2 = s.newest();
+    assert.deepEqual(v2.role_additions, { planner: "Give each lane its own direction." });
+    assert.equal(v2.version, 2);
+    const again = await s.set({ additions: { planner: "Give each lane its own direction." } });
+    assert.equal(again.status, 200);
+    assert.match(
+      String((await json(again)).said),
+      /^Version 2 of matmul-speed has these additions already/,
+    );
+
+    const client = await mcpClient(s.control, TOKENS.operator);
+    const viaMcp = JSON.parse(
+      (
+        (await client.callTool({
+          name: "set_campaign_additions",
+          arguments: { campaign: "matmul-speed", additions: { auditor: "Look at the cache." } },
+        })) as { content: { text: string }[] }
+      ).content[0]?.text ?? "{}",
+    ) as Record<string, unknown>;
+    assert.equal(viaMcp.version, 3);
+    assert.deepEqual(s.newest().role_additions, { auditor: "Look at the cache." });
+    for (const [args, error] of [
+      [
+        { campaign: "matmul-speed", additions: { "research-worker": "x" } },
+        /matmul-speed is a hill climb campaign: it runs no research-worker\. Its roles are worker, planner, teacher, merged-by, auditor, reviewer\./,
+      ],
+      [
+        { campaign: "matmul-speed", additions: { worker: "x".repeat(20_001) } },
+        /at most 20,000 characters/,
+      ],
+      [{ campaign: "no-such", additions: {} }, /no saved version or earlier assignment of no-such/],
+      [{ campaign: "rig-check-smoke-cpu-1" }, /a rig check's campaign/],
+    ] as const) {
+      const bad = await client.callTool({ name: "set_campaign_additions", arguments: args });
+      assert.equal(bad.isError, true, JSON.stringify(args).slice(0, 80));
+      assert.match(JSON.stringify(bad), error);
+    }
+    await client.close();
+    const reader = await mcpClient(s.control, TOKENS.read);
+    assert.ok(!(await reader.listTools()).tools.some((t) => t.name === "set_campaign_additions"));
+    await reader.close();
+
+    // An empty body removes them; a body with other fields is refused.
+    const none = await s.set({});
+    assert.equal(none.status, 201);
+    assert.equal((await json(none)).role_additions, null);
+    assert.equal("role_additions" in s.newest(), false);
+    assert.equal((await s.set({ roles: {} })).status, 400);
+    const operator = await s.set({}, TOKENS.operator);
+    assert.ok(operator.status === 401 || operator.status === 403, "REST takes the owner's token");
+    assert.deepEqual(
+      s.store.auditLog
+        .list(50, { action: "campaign_additions_set" })
+        .map((e) => [
+          (e.body as { version: number }).version,
+          (e.body as { roles: string[] }).roles,
+        ])
+        .reverse(),
+      [
+        [2, ["planner"]],
+        [3, ["auditor"]],
+        [4, []],
+      ],
+    );
+  });
+
+  test("the campaign's page shows a box for each role of its mode, and Save keeps them", async () => {
+    const s = await stack();
+    const session = await signIn(s.control);
+    const html = await session.page("/ui/campaigns/matmul-speed");
+    const block = html.slice(html.indexOf('id="role-additions"'));
+    for (const role of ["worker", "planner", "teacher", "merged-by", "auditor", "reviewer"])
+      assert.match(block, new RegExp(`name="addition_${role}"`), role);
+    assert.doesNotMatch(block.slice(0, block.indexOf("</form>")), /addition_research-worker/);
+    assert.match(
+      block,
+      /<textarea name="addition_worker"[^>]*>Keep each change small\.<\/textarea>/,
+    );
+    const r = await session.post("/ui/campaigns/matmul-speed/additions", {
+      csrf: session.csrfOf(html),
+      addition_worker: "Keep each change small.",
+      addition_reviewer: "Read the criteria twice.",
+      addition_planner: "",
+    });
+    assert.equal(r.status, 303);
+    assert.match(
+      decodeURIComponent(r.headers.get("location") ?? ""),
+      /on=additions&ok=Saved as version 2: additions for worker and reviewer\. New runs of matmul-speed take it\.#role-additions/,
+    );
+    assert.deepEqual(s.newest().role_additions, {
+      worker: "Keep each change small.",
+      reviewer: "Read the criteria twice.",
+    });
+    // Its message shows in its own block, not at the top of the page or in Agents' context.
+    const after = await session.page("/ui/campaigns/matmul-speed?on=additions&ok=Saved");
+    assert.match(after.slice(after.indexOf('id="role-additions"')), /<b class="ok">Saved<\/b>/);
+    assert.doesNotMatch(
+      after.slice(0, after.indexOf('id="role-additions"')),
+      /<b class="ok">Saved<\/b>/,
+    );
+  });
+});

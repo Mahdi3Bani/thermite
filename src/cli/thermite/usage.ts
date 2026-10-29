@@ -136,6 +136,13 @@ export const USAGE = `usage: thermite <command> [options]
                                       rig's compaction point. Control saves a new version of the
                                       campaign; runs started from then take it. Without either
                                       option, the settings are removed. It prints the version
+  campaign additions CAMPAIGN [--add ROLE=FILE]... --control URL --token-file F
+                                      set the owner's additions to a campaign's roles (owner's
+                                      token): each --add gives ROLE's text, from FILE, added to
+                                      that role's own instructions in every prompt of the
+                                      campaign's runs. Control saves a new version of the
+                                      campaign; runs started from then take it. Without --add, the
+                                      additions are removed. It prints the version
   kit add NAME BUNDLE [--ref REF] [--force] --control URL --token-file F
                                       give control a kit repository written elsewhere, as a git
                                       bundle file (owner's token; at most 64 MiB): control keeps

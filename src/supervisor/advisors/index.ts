@@ -5,9 +5,10 @@
  * the harness: the teachers' portfolio of opportunities becomes experiments in the run's queue
  * (goal 081); directives (with citations) steer the planner; an auditor's clear is the last step
  * before a promotion and its block stops it; a pass of the review panel is accepted unless the
- * run asks the owner (goal 079: hands-off by default). The final writer (goal 112), with the
- * first teacher's model, writes an answered research run's paper, which the harness checks and
- * accepts or refuses.
+ * run asks the owner (goal 079: hands-off by default). The synthesizer (goal 117) writes a
+ * research run's answer cards, and the final writer (goal 112) its paper, which the harness
+ * checks and accepts or refuses; each with its own model from control, else the first teacher's
+ * (goal 166).
  *
  * Runtimes (the operator's choice, per role, or the model and harness control gives the role): an
  * OpenAI-compatible or Anthropic model route run here in Pi with read-only tools (the campaign
@@ -52,6 +53,7 @@ export {
   advisorsFileReport,
   advisorWindow,
   packageFit,
+  type RunningAdvisors,
   withRunContext,
 } from "./config.ts";
 export { advisorFetcher } from "./fetcher.ts";

@@ -38,9 +38,10 @@ import {
 } from "../../../core/api/harness/research.ts";
 import type { NoteInput } from "../../../core/journal.ts";
 import type { LiveKind } from "../../../core/live.ts";
+import type { RunAdditions } from "../../../core/role-additions.ts";
 import { type AdvisorAgent, AGENT_WORDS } from "../../../core/usage.ts";
 import type { AdvisorKeeper, AdvisorMcp, AdvisorTools, AdvisorUsage } from "../call.ts";
-import { type AdvisorsConfig, withRunContext } from "../config.ts";
+import { type RunningAdvisors, withRunContext } from "../config.ts";
 import { advisorFetcher } from "../fetcher.ts";
 import type { AdvisorCode, AdvisorResearch, PastSearch } from "../tools/index.ts";
 import { kbSearchFor } from "./kb.ts";
@@ -142,7 +143,7 @@ export function adviseContext(cfg: AdviseConfig, state: AdviseState) {
   };
   // A run's advisors with the campaign's own context settings (goal 070): each runtime's window
   // is the lower of its own and the campaign's, and the campaign's point replaces its own.
-  const configFor = async (run: string | undefined): Promise<AdvisorsConfig> => {
+  const configFor = async (run: string | undefined): Promise<RunningAdvisors> => {
     const ctx = run ? (await runsNow()).find((r) => r.id === run)?.agents_context : undefined;
     if (!ctx) return cfg.advisors;
     const a = cfg.advisors;
@@ -152,8 +153,14 @@ export function adviseContext(cfg: AdviseConfig, state: AdviseState) {
       merged_by: a.merged_by ? withRunContext(a.merged_by, ctx) : undefined,
       auditor: a.auditor ? withRunContext(a.auditor, ctx) : undefined,
       review_panel: a.review_panel.map((p) => withRunContext(p, ctx)),
+      synthesizer: a.synthesizer ? withRunContext(a.synthesizer, ctx) : undefined,
+      final_writer: a.final_writer ? withRunContext(a.final_writer, ctx) : undefined,
     };
   };
+  // The owner's additions to the roles of a run's campaign (goal 166), from the harness's list of
+  // runs: each advisor's goes in its prompt.
+  const additionsFor = async (run: string | undefined): Promise<RunAdditions> =>
+    run ? ((await runsNow()).find((r) => r.id === run)?.role_additions ?? undefined) : undefined;
   // Each call's conversation before a compaction, kept with the supervisor's records (goal 070).
   const keeperFor = (run: string | undefined): AdvisorKeeper =>
     advisorKeeper(cfg.home, run, (text) => say(run, "status", text));
@@ -385,6 +392,7 @@ export function adviseContext(cfg: AdviseConfig, state: AdviseState) {
     codeFor,
     researchFor,
     configFor,
+    additionsFor,
     keeperFor,
     mcpFor,
     limit,

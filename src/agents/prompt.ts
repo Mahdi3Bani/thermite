@@ -21,6 +21,7 @@ export type Source =
   | "ledger"
   | "field notes and past research"
   | "owner"
+  | "owner's addition"
   | "kit"
   | "rig"
   | "package"

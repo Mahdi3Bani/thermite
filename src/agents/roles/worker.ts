@@ -1,6 +1,7 @@
 import type { LaneLimitValues } from "../../core/contract.ts";
 import { endWords } from "../../core/duration.ts";
 import { notesInstruction } from "../../core/journal.ts";
+import type { OwnerAddition } from "../../core/role-additions.ts";
 import { mcpLine } from "../mcp/index.ts";
 import { linesSection, type Prompt, prompt, type Section, section } from "../prompt.ts";
 import {
@@ -9,7 +10,7 @@ import {
   NOTE_USAGE,
   researchCommands,
 } from "../tools/index.ts";
-import { fitToWindow, limitsNote } from "./shared.ts";
+import { fitToWindow, limitsNote, ownerAdditionSection } from "./shared.ts";
 
 /**
  * The worker (goal 166): one trial on one experiment in a hill-climb or goal run. It changes the
@@ -253,6 +254,8 @@ export interface WorkerInput extends TrialBudget {
   editablePaths: readonly string[];
   /** The most characters its first message may take (windowFit); none: the window is unknown. */
   fit?: number | undefined;
+  /** The owner's addition to the worker for the run's campaign (decision 1); none: no section. */
+  addition?: OwnerAddition | undefined;
 }
 
 /** Where what a cut to the window left out of a trial's first message is (decision 8). */
@@ -266,9 +269,10 @@ export function briefSections(brief: string | readonly Section[]): Section[] {
 
 /**
  * A code trial's prompt (goal 166): the worker's whole prompt for one trial in its program. In Pi,
- * its instructions, field notes and sources, and the MCP line are the system text, and the brief
- * and the trial's budget the first message. Another program gets one message: the instructions
- * for that program, the MCP line, the lane's limits, the brief, the editable paths and the budget.
+ * its instructions, field notes and sources, the MCP line and the owner's addition are the system
+ * text, and the brief and the trial's budget the first message. Another program gets one message:
+ * the instructions for that program, the MCP line, the owner's addition, the lane's limits, the
+ * brief, the editable paths and the budget.
  */
 export function renderWorker(i: WorkerInput): Prompt {
   const [first, ...rest] = briefSections(i.brief);
@@ -281,6 +285,7 @@ export function renderWorker(i: WorkerInput): Prompt {
         section("instructions", "role", WORKER_PI_SYSTEM),
         section("notes-and-sources", "role", WORKER_PI_NOTES, "\n\n"),
         mcp,
+        ...ownerAdditionSection(i.addition),
       ],
       message: fitToWindow(
         [...brief, section("budget", "rig", budget, "\n\n")],
@@ -293,6 +298,7 @@ export function renderWorker(i: WorkerInput): Prompt {
       [
         section("instructions", "role", workerProgramText(i.program.id)),
         mcp,
+        ...ownerAdditionSection(i.addition),
         section("limits", "rig", limitsNote(i.limits, i.program.name, i.program.memory), "\n\n"),
         ...brief,
         section(

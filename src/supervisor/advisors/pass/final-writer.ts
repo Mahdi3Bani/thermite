@@ -18,6 +18,7 @@ export async function writePapers(ctx: AdviseContext): Promise<void> {
     retryMs,
     researchFor,
     configFor,
+    additionsFor,
     keeperFor,
     overBudget,
     count,
@@ -27,12 +28,13 @@ export async function writePapers(ctx: AdviseContext): Promise<void> {
     usageOut,
     promptsOut,
   } = ctx;
-  // The final writer (goal 112): the rig's first teacher's model writes the research paper of
-  // each research run that ended (goal 117: its review's pass accepted, or the progress rule). The supervisor runs the
-  // STE checker itself on the paper it posts; the harness checks the rest and accepts or refuses
-  // it. A refused paper is written again at the next round, with the problems in its package; a
-  // try that gave no paper, after retryMs. No cap on tries.
-  const writer = cfg.advisors.teachers[0];
+  // The final writer (goal 112): its own model from control (goal 166), else the rig's first
+  // teacher's, writes the research paper of each research run that ended (goal 117: its review's
+  // pass accepted, or the progress rule). The supervisor runs the STE checker itself on the paper
+  // it posts; the harness checks the rest and accepts or refuses it. A refused paper is written
+  // again at the next round, with the problems in its package; a try that gave no paper, after
+  // retryMs. No cap on tries.
+  const writer = cfg.advisors.final_writer ?? cfg.advisors.teachers[0];
   if (writer && !overBudget()) {
     const ste = steCheckerAt(cfg.steChecker);
     let papers: AnswerOf<typeof PAPERS_PENDING>["papers"] = [];
@@ -54,7 +56,8 @@ export async function writePapers(ctx: AdviseContext): Promise<void> {
         fail(`the research paper of ${run}`, err, run);
       };
       // With the campaign's own context settings, when it sets any (goal 070).
-      const runtime = (await configFor(run)).teachers[0] ?? writer;
+      const own = await configFor(run);
+      const runtime = own.final_writer ?? own.teachers[0] ?? writer;
       // The harness's checks of a draft; with its next experiments when the writer gives them, so
       // a missing kind or measure (goal 119) comes back within the call.
       const checkDraft = (markdown: string, experiments?: z.input<typeof PaperExperiment>[]) =>
@@ -73,6 +76,7 @@ export async function writePapers(ctx: AdviseContext): Promise<void> {
           pkg,
           keeper: keeperFor(run),
           research: researchFor(run),
+          additions: await additionsFor(run),
           guide: ste?.guide,
           paper: {
             check: checkDraft,

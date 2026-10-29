@@ -1,13 +1,13 @@
 import type { McpGateway } from "../../../agents/mcp/index.ts";
 import type { LiveKind } from "../../../core/live.ts";
 import type { McpUse } from "../../../core/mcp.ts";
-import type { AdvisorsConfig } from "../config.ts";
+import type { RunningAdvisors } from "../config.ts";
 
 export interface AdviseConfig {
   harnessUrl: string;
   harnessToken: string;
   home: string;
-  advisors: AdvisorsConfig;
+  advisors: RunningAdvisors;
   fetchImpl?: typeof fetch | undefined;
   /** Retry spacing for an audit or review whose advisor failed. */
   retryMs?: number | undefined;

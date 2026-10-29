@@ -2,12 +2,19 @@ import type { Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import type { z } from "zod";
 import { redact } from "../../common/env.ts";
-import { CAMPAIGN_CONTEXT, CAMPAIGN_COPY, START_RUN } from "../../core/api/control/owner.ts";
+import {
+  CAMPAIGN_ADDITIONS,
+  CAMPAIGN_CONTEXT,
+  CAMPAIGN_COPY,
+  START_RUN,
+} from "../../core/api/control/owner.ts";
 import {
   archiveCampaign,
   bodyRefusal,
+  CampaignAdditionsBody,
   CampaignContextBody,
   CopyCampaignBody,
+  campaignAdditionsAnswer,
   campaignContextAnswer,
   campaignFoldersAnswer,
   copyACampaign,
@@ -20,6 +27,7 @@ import {
   renameFolder,
   type ShelfOutcome,
   StartRunBody,
+  setCampaignAdditions,
   setCampaignContext,
   startARun,
   startRunAnswer,
@@ -104,6 +112,26 @@ export function campaignRoutes(app: Hono, api: ApiContext): void {
       return c.json({ error: out.error }, out.status);
     }
     return c.json(campaignContextAnswer(out), out.state === "saved" ? 201 : 200);
+  });
+
+  // The owner's additions to a campaign's roles (goal 166): the twin of MCP's
+  // set_campaign_additions. A new version of its contract; an empty body removes them. 201 with a
+  // new version, 200 when the newest version has them already.
+  app.post(CAMPAIGN_ADDITIONS.path, admin, bodyLimit({ maxSize: 512 * 1024 }), async (c) => {
+    const campaign = c.req.param("campaign");
+    const raw: unknown = await c.req.json().catch(() => undefined);
+    const body = CampaignAdditionsBody.safeParse(raw);
+    const out = body.success
+      ? setCampaignAdditions(store, { campaign, additions: body.data.additions }, "owner:api")
+      : ({ state: "refused", error: bodyRefusal(body.error), status: 400 } as const);
+    if (out.state === "refused") {
+      store.auditLog.add("owner:api", "refused", {
+        path: `/v1/campaigns/${campaign}/additions`,
+        why: redact(out.error),
+      });
+      return c.json({ error: out.error }, out.status);
+    }
+    return c.json(campaignAdditionsAnswer(out), out.state === "saved" ? 201 : 200);
   });
 
   // Archive a campaign, and the left navigation's folders (goal 077): the same functions as the

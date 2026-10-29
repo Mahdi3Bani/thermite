@@ -3,6 +3,7 @@ import { copyBeforeMigration, newerSchemaWords } from "../../common/db-copy.ts";
 import { transaction } from "../../common/sqlite.ts";
 import { busKeyTables, busSealKeyColumn } from "./bus.ts";
 import { eventsInOrderIndex } from "./events.ts";
+import { synthesizerAndWriterSlots } from "./models.ts";
 import { runRegistryTable } from "./runs.ts";
 
 /**
@@ -708,6 +709,8 @@ const STORE_MIGRATIONS: readonly ((db: DatabaseSync) => void)[] = [
   eventsInOrderIndex,
   // The key control seals a rig's config to on the message bus, beside its user key (goal 168).
   busSealKeyColumn,
+  // The synthesizer's and the final writer's own models (goal 166).
+  synthesizerAndWriterSlots,
 ];
 
 /**

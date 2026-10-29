@@ -1,3 +1,4 @@
+import type { OwnerAddition } from "../../core/role-additions.ts";
 import { type Prompt, section } from "../prompt.ts";
 import {
   ADVISOR_NOTES,
@@ -34,7 +35,7 @@ ${ADVISOR_NOTES}`;
 
 /** The auditor's prompt for one audit (goal 166): its text, then the audit package. */
 export function renderAuditor(
-  i: { pkg: unknown; fit?: number | undefined },
+  i: { pkg: unknown; fit?: number | undefined; addition?: OwnerAddition | undefined },
   f: AdvisorFrame,
 ): Prompt {
   return advisorPromptOf(
@@ -48,5 +49,6 @@ export function renderAuditor(
       ),
     ],
     f,
+    i.addition,
   );
 }

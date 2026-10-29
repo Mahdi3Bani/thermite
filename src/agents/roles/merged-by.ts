@@ -69,5 +69,6 @@ export function renderMergedBy(i: TeacherInput & { reviews: unknown }, f: Adviso
       section("reviews", "package", `Reviews:\n${reviews}`, "\n\n"),
     ],
     f,
+    i.addition,
   );
 }

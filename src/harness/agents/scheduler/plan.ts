@@ -2,6 +2,7 @@ import { briefData } from "../../../core/brief.ts";
 import type { Contract } from "../../../core/contract.ts";
 import { asToken } from "../../../core/directions.ts";
 import { queueTarget } from "../../../core/queue-target.ts";
+import { additionOf } from "../../../core/role-additions.ts";
 import { notesData } from "../../journal.ts";
 import { messageText } from "../../messages.ts";
 import { type Experiment, inFamily } from "../../queue.ts";
@@ -310,5 +311,7 @@ export function plannerInput(
     briefing: sched.ledger.runs.briefing(run),
     // The queue's target (goal 081): the planner tops the queue up to it with distinct ideas.
     queueTarget: queueTarget(contract, laneCount),
+    // The owner's addition to the planner, from the run's contract (goal 166).
+    addition: additionOf(contract, "planner"),
   };
 }

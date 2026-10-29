@@ -19,7 +19,7 @@ export const promptHref = (r: RunRef, id: number) => `${runHref(r)}/prompts/${id
 
 /** What a section's source means, on the info icon of the Prompts tab's Sections. */
 const SOURCES_TIP =
-  "Where each part of the prompt comes from: role, the role's own text (the same for every run); assignment, the trial's assignment; contract, the campaign's contract; campaign brief, the brief its author wrote; queue, the experiment from the run's queue; planner, the planner's round; judge, what the judge found; ledger, the run's record; field notes and past research; owner, the owner's messages; kit, the MCP servers the kit gives; rig, the rig's and the lane's limits; package, what an advisor is given to read; check, what code's check of the last answer found.";
+  "Where each part of the prompt comes from: role, the role's own text (the same for every run); assignment, the trial's assignment; contract, the campaign's contract; campaign brief, the brief its author wrote; queue, the experiment from the run's queue; planner, the planner's round; judge, what the judge found; ledger, the run's record; field notes and past research; owner, the owner's messages; owner's addition, the owner's addition to the role for this campaign, from its contract; kit, the MCP servers the kit gives; rig, the rig's and the lane's limits; package, what an advisor is given to read; check, what code's check of the last answer found.";
 
 /** Every role: what it does, where it runs, its model and programs, and its render function. */
 export function rolesPage(roles: readonly RoleInfo[]): string {

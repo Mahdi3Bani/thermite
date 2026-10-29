@@ -455,6 +455,8 @@ describe("every agent's own cap and compaction point (goal 070)", () => {
         planner: [65_536, 70],
         auditor: [16_384, null],
         review_panel: [null, 90],
+        synthesizer: null,
+        final_writer: null,
       },
     );
     assert.deepEqual(

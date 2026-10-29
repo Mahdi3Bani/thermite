@@ -4,6 +4,7 @@ import { log } from "../../../common/log.ts";
 import type { Contract } from "../../../core/contract.ts";
 import { newTrialId } from "../../../core/ids.ts";
 import type { LiveKind } from "../../../core/live.ts";
+import { additionOf } from "../../../core/role-additions.ts";
 import type { Role } from "../../broker/index.ts";
 import type { Experiment, TaskYield } from "../../queue.ts";
 import { focusOf, limitsInForce, PLANNER, resultOf } from "../coordinator.ts";
@@ -181,6 +182,8 @@ export function startTrial(
           limits,
           // The MCP servers the run's kit gives its workers (goal 068).
           mcpServers: sched.o.service.mcp.given(run, "workers").map((g) => g.name),
+          // The owner's addition to the worker, from the run's contract (goal 166).
+          addition: additionOf(contract, "worker"),
         },
         abort.signal,
       );

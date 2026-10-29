@@ -12,6 +12,7 @@ export async function writeCards(ctx: AdviseContext): Promise<void> {
     s,
     researchFor,
     configFor,
+    additionsFor,
     keeperFor,
     overBudget,
     count,
@@ -21,13 +22,13 @@ export async function writeCards(ctx: AdviseContext): Promise<void> {
     usageOut,
     promptsOut,
   } = ctx;
-  // The synthesizer (goal 117): the rig's first teacher's model, as the final writer's, rewrites
-  // the answer card of each question of a running research run whose evidence changed since its
-  // card, from the card and the new verified claims, with the run's research read only. The
-  // harness checks each card, and keeps it or refuses it with its problems, which come back with
-  // the question's next request. A failed call, or a question that got no card, is tried again at
-  // the next round. No cap on tries.
-  const synthesizer = cfg.advisors.teachers[0];
+  // The synthesizer (goal 117): its own model from control (goal 166), else the rig's first
+  // teacher's, rewrites the answer card of each question of a running research run whose evidence
+  // changed since its card, from the card and the new verified claims, with the run's research
+  // read only. The harness checks each card, and keeps it or refuses it with its problems, which
+  // come back with the question's next request. A failed call, or a question that got no card, is
+  // tried again at the next round. No cap on tries.
+  const synthesizer = cfg.advisors.synthesizer ?? cfg.advisors.teachers[0];
   if (synthesizer && !overBudget()) {
     let requests: AnswerOf<typeof CARDS_PENDING>["runs"] = [];
     try {
@@ -41,7 +42,8 @@ export async function writeCards(ctx: AdviseContext): Promise<void> {
       const run = pkg.run;
       const asked = pkg.questions ?? [];
       // With the campaign's own context settings, when it sets any (goal 070).
-      const runtime = (await configFor(run)).teachers[0] ?? synthesizer;
+      const own = await configFor(run);
+      const runtime = own.synthesizer ?? own.teachers[0] ?? synthesizer;
       const words = (xs: number[]) =>
         `${xs.length === 1 ? "question" : "questions"} ${xs.map((i) => i + 1).join(", ")}`;
       say(
@@ -56,6 +58,7 @@ export async function writeCards(ctx: AdviseContext): Promise<void> {
           pkg: { ...pkg, questions: asked.map(({ through: _, ...q }) => q) },
           research: researchFor(run),
           keeper: keeperFor(run),
+          additions: await additionsFor(run),
         });
         count(r);
         const call = `cards ${new Date().toISOString()}`;

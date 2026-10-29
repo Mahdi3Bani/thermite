@@ -2,6 +2,7 @@ import { COMPACT_AT_DEFAULT } from "../../core/compaction.ts";
 import type { LaneLimitValues } from "../../core/contract.ts";
 import { NOTES_GUIDE } from "../../core/journal.ts";
 import { MEASURES_NOTHING } from "../../core/research-check.ts";
+import type { OwnerAddition } from "../../core/role-additions.ts";
 import { mcpLine } from "../mcp/index.ts";
 import {
   type Prompt,
@@ -67,6 +68,23 @@ export function renderOwnerMessages(
 }
 
 /**
+ * The owner's addition to a role for one campaign (goal 166, decision 1), as a section of its own
+ * after the role's text: labelled as the owner's, with the contract's version, and said to add to
+ * the role's instructions, never to replace them. None: no section, and the prompt is as before.
+ */
+export function ownerAdditionSection(a: OwnerAddition | undefined): Section[] {
+  if (!a) return [];
+  return [
+    section(
+      "owner-addition",
+      "owner's addition",
+      `# The campaign owner's addition (contract version ${a.version})\nThe campaign's owner adds this to your instructions for this campaign. It adds to them and replaces none of them: where the two differ, the instructions above come first.\n\n${a.text}`,
+      "\n\n",
+    ),
+  ];
+}
+
+/**
  * The lane's limits, as an agent in a program must know them: the program and its commands share
  * them. `memory`: what the program itself uses, in words, when it is known.
  */
@@ -85,17 +103,22 @@ export interface AdvisorFrame {
 }
 
 /**
- * An advisor's prompt (goal 166): its role's text and the MCP line, then its package. Pi gets them
- * as the system text and the first message, and answers with its answer tool; a program gets one
- * text, which ends with the answer's shape.
+ * An advisor's prompt (goal 166): its role's text, the MCP line and the owner's addition for the
+ * campaign, then its package. Pi gets them as the system text and the first message, and answers
+ * with its answer tool; a program gets one text, which ends with the answer's shape.
  */
 export function advisorPromptOf(
   role: string,
   own: readonly Section[],
   pkg: readonly Section[],
   f: AdvisorFrame,
+  addition?: OwnerAddition | undefined,
 ): Prompt {
-  const system = [...own, section("mcp", "kit", mcpLine(f.mcpServers), "\n\n")];
+  const system = [
+    ...own,
+    section("mcp", "kit", mcpLine(f.mcpServers), "\n\n"),
+    ...ownerAdditionSection(addition),
+  ];
   if (f.program === "pi") return prompt(role, f.program, { system, message: pkg });
   const [first, ...rest] = pkg;
   return prompt(role, f.program, {
@@ -185,7 +208,16 @@ export function windowFit(window: number | undefined, compactAt?: number): numbe
 }
 
 /** The sections a cut to the window keeps whole: the role's and the program's, and the owner's. */
-const WHOLE: readonly Source[] = ["role", "program", "owner", "kit", "rig", "check", "left out"];
+const WHOLE: readonly Source[] = [
+  "role",
+  "program",
+  "owner",
+  "owner's addition",
+  "kit",
+  "rig",
+  "check",
+  "left out",
+];
 
 /** The least of a section a cut keeps. */
 const KEPT_AT_LEAST = 400;

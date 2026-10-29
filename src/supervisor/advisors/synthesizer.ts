@@ -10,6 +10,7 @@ import {
   CERTAINTIES,
   GAP_KINDS,
 } from "../../core/api/harness/research.ts";
+import { additionIn, type RunAdditions } from "../../core/role-additions.ts";
 import type { AdvisorKeeper, AdvisorResult } from "./call.ts";
 import { type AdvisorRuntime, packageFit } from "./config.ts";
 import { leniently } from "./review-panel.ts";
@@ -144,8 +145,8 @@ export function synthesisProblems(
 }
 
 /**
- * The synthesizer writes a research run's answer cards (goal 117), on the first teacher's model,
- * with the run's research read only. The request's keys it must answer come first, and a cut is
+ * The synthesizer writes a research run's answer cards (goal 117), on its own model, else the
+ * first teacher's (goal 166), with the run's research read only. The request's keys it must answer come first, and a cut is
  * said, as a research review's is. In Pi, the problems synthesisProblems finds go back to it once
  * within its call; its next answer is taken as it is, so one card it cannot fix never holds back
  * the others: the harness refuses that card alone, and it is asked again at the next round.
@@ -155,12 +156,22 @@ export async function synthesizeCards(input: {
   pkg: unknown;
   research?: AdvisorResearch | undefined;
   keeper?: AdvisorKeeper | undefined;
+  /** The owner's additions to the run's roles (goal 166): the synthesizer's goes in its prompt. */
+  additions?: RunAdditions;
 }): Promise<AdvisorResult<SynthesizerAnswer>> {
   const pkg = input.pkg as { questions?: { index: number }[] };
   let refusedOnce = false;
   return runAdvisor({
     runtime: input.runtime,
-    prompt: (f) => renderSynthesizer({ pkg: input.pkg, fit: packageFit(input.runtime) }, f),
+    prompt: (f) =>
+      renderSynthesizer(
+        {
+          pkg: input.pkg,
+          fit: packageFit(input.runtime),
+          addition: additionIn(input.additions, "synthesizer"),
+        },
+        f,
+      ),
     schema: SynthesizerAnswer,
     answerSchema: SynthesizerAnswerSchema,
     keeper: input.keeper,

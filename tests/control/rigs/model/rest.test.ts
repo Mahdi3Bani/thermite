@@ -121,6 +121,9 @@ describe("each agent's model over REST and MCP", () => {
         },
         auditor: roleOf("sub", "gpt-sol"),
         review_panel: roleOf("lab", "wide-model"),
+        // Neither has a model of its own: each uses the first teacher's (goal 166).
+        synthesizer: null,
+        final_writer: null,
       },
       // The rig's supervisor has not reported its advisors file.
       advisors_file: null,

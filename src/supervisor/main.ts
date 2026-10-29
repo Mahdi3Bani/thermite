@@ -398,10 +398,12 @@ async function main(): Promise<void> {
           auditor: on.auditor ? advisors.auditor : undefined,
           review_panel: on.review ? advisors.review_panel : [],
         };
+        // The final writer: its own model, else the first teacher's (goal 166). With its own,
+        // the synthesizer and it run with the teachers switched off too.
         await tellAdvisors({
           auditor: Boolean(active.auditor),
           review_panel: active.review_panel.length,
-          writer: active.teachers.length > 0,
+          writer: Boolean(active.final_writer) || active.teachers.length > 0,
         });
         adviseState = await adviseOnce(
           {

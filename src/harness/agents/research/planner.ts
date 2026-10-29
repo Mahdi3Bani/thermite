@@ -21,6 +21,7 @@ import {
   questionLabel,
   SATURATION_TASKS,
 } from "../../../core/research-check.ts";
+import type { OwnerAddition } from "../../../core/role-additions.ts";
 import type { CallUsage } from "../../../core/usage.ts";
 import { NOTES_ARE_DATA, type notesData } from "../../journal.ts";
 import { briefingData } from "../../knowledge.ts";
@@ -167,6 +168,8 @@ export interface ResearchPlannerInput {
   notes?: ReturnType<typeof notesData> | undefined;
   briefing?: BriefingItem[] | undefined;
   pastResearch?: string | undefined;
+  /** The owner's addition to the research planner (goal 166; see PlannerInput). */
+  addition?: OwnerAddition | undefined;
 }
 
 /** A research task the planner adds, checked: its words and where it goes. */
@@ -716,6 +719,7 @@ export async function planResearch(
   if (!model) return { source: "fallback", tries: 0, valid: false, rawViolations: [] };
   const r = await plannerTries({
     context: researchPlannerContext(input),
+    addition: input.addition,
     model,
     spec: RESEARCH_PLAN_SPEC,
     check: (raw) => validateResearchPlan(raw, input),

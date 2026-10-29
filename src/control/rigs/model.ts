@@ -23,7 +23,7 @@ import {
 } from "../store/index.ts";
 
 /**
- * Each agent's model on a rig, from outside the dashboard (goals 029, 070 and 074): REST's
+ * Each agent's model on a rig, from outside the dashboard (goals 029, 070, 074 and 166): REST's
  * `POST /v1/rigs/<rig>/model` and MCP's `set_rig_model` set one agent's model, or clear it, as a
  * row of Edit rig's section "2 · The agents" does; `GET /v1/rigs/<rig>/model` and MCP's
  * `rig_models` read them all. Both call Edit rig's own code (setRigModel and rigModels in
@@ -35,14 +35,22 @@ import {
  * for a second teacher), and with two a `merged_by` model that merges their advice.
  */
 
-/** The agents, as REST, MCP and the pages name them (goal 074). */
-export const MODEL_AGENTS = ["workers", "planner", "teachers", "auditor", "review_panel"] as const;
+/** The agents, as REST, MCP and the pages name them (goals 074 and 166). */
+export const MODEL_AGENTS = [
+  "workers",
+  "planner",
+  "teachers",
+  "auditor",
+  "review_panel",
+  "synthesizer",
+  "final_writer",
+] as const;
 export type ModelAgent = (typeof MODEL_AGENTS)[number];
 
 /**
  * Each model control keeps for a rig's agents but the workers (AgentRole: the planner, each of
- * the teachers' models, the auditor, the review panel), with the words Edit rig and its twins say
- * for it.
+ * the teachers' models, the auditor, the review panel, the synthesizer, the final writer), with
+ * the words Edit rig and its twins say for it.
  */
 export const ROLE_WORDS: Record<
   AgentRole,
@@ -89,6 +97,20 @@ export const ROLE_WORDS: Record<
     given: "a model for the review panel",
     cleared: "the review panel back to the rig's advisors file",
     whose: "The review panel's",
+  },
+  synthesizer: {
+    label: "synthesizer",
+    who: "the synthesizer",
+    given: "a model for the synthesizer",
+    cleared: "the synthesizer back to the first teacher's model",
+    whose: "The synthesizer's",
+  },
+  final_writer: {
+    label: "final writer",
+    who: "the final writer",
+    given: "a model for the final writer",
+    cleared: "the final writer back to the first teacher's model",
+    whose: "The final writer's",
   },
 };
 
@@ -154,13 +176,18 @@ export interface TeachersModels {
   models: AgentModel[];
   merged_by: AgentModel | null;
 }
-/** Each agent's model on control; null: its default (Edit rig's first choice in its row). */
+/**
+ * Each agent's model on control; null: its default (Edit rig's first choice in its row). The
+ * synthesizer's and the final writer's default is the first teacher's model (goal 166).
+ */
 export interface AgentModels {
   workers: WorkersModel | null;
   planner: AgentModel | null;
   teachers: TeachersModels;
   auditor: AgentModel | null;
   review_panel: AgentModel | null;
+  synthesizer: AgentModel | null;
+  final_writer: AgentModel | null;
 }
 
 /** What a call did: Edit rig's words, the window the agent's route carries, and every agent's model. */
@@ -212,14 +239,16 @@ export const rigModelFields = {
   agent: z
     .enum(MODEL_AGENTS)
     .optional()
-    .describe("Whose model: workers (default), planner, teachers, auditor or review_panel"),
+    .describe(
+      "Whose model: workers (default), planner, teachers, auditor, review_panel, synthesizer or final_writer",
+    ),
   provider: providerField.optional(),
   model: modelField.optional(),
   clear: z
     .boolean()
     .optional()
     .describe(
-      "true: the agent goes back to its default, with no provider or model: the workers to the rig's own settings, the planner to the workers' model, an advisor to the one in the rig's advisors file (off when the file names none); the teachers with their second and merged by models",
+      "true: the agent goes back to its default, with no provider or model: the workers to the rig's own settings, the planner to the workers' model, the synthesizer and the final writer to the first teacher's model, another advisor to the one in the rig's advisors file (off when the file names none); the teachers with their second and merged by models",
     ),
   harness: harnessField.optional(),
   effort: effortField.optional(),
@@ -423,6 +452,8 @@ export function agentModelsOf(store: ControlStore, rig: string): AgentModels {
     },
     auditor: of("auditor"),
     review_panel: of("review_panel"),
+    synthesizer: of("synthesizer"),
+    final_writer: of("final_writer"),
   };
 }
 

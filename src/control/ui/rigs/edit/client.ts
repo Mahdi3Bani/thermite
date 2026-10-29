@@ -10,7 +10,9 @@ import { judgeGpusByDefault } from "../../../../core/hardware.ts";
  * line, says in the two fields' info icons what the line's harness does at the compaction point,
  * and counts the agents on each subscription. Save is off while a line is refused. A line with no
  * model shows, and its sentences say, what its agent uses then: the words the page gives each
- * line (data-fb-ctx, data-fb-say, data-fb-off; goal 074). For a rig control set up on a cluster
+ * line (data-fb-ctx, data-fb-say, data-fb-off; goal 074). The synthesizer and the final writer with
+ * no model follow the Teachers line (data-follows, data-fb-runs; goal 166), as the planner follows
+ * the workers. For a rig control set up on a cluster
  * (goal 118), its GPUs, CPUs and memory are said with the restart of its pods (data-moves,
  * data-moves-say), and GPUs for the judge follows a new number of GPUs. Without the script the
  * form still posts, and control checks the same.
@@ -103,7 +105,7 @@ export const EDIT_RIG_JS = `
   const R = {};
   for (const line of table ? $$("[data-line]", table) : []) {
     const id = line.dataset.line, p = $('[data-ctx="' + id + '"]');
-    const r = { id, kind: line.dataset.kind, who: line.dataset.who, poss: line.dataset.poss, s: line.dataset.s, sub: line.dataset.sub || "" };
+    const r = { id, kind: line.dataset.kind, who: line.dataset.who, poss: line.dataset.poss, s: line.dataset.s, sub: line.dataset.sub || "", follows: line.dataset.follows || "" };
     const x = (R[id] = {
       r, line, p, m: $('[data-role="' + id + '"]'), e: $('[data-effort="' + id + '"]'), h: $('[data-runs-in="' + id + '"]'),
       sum: $('[data-ctx-sum="' + id + '"]'), say: $('[data-row-say="' + id + '"]'),
@@ -182,7 +184,7 @@ export const EDIT_RIG_JS = `
     if (opt && opt.value) { s.model = opt.dataset.model; s.listed = Number(opt.dataset.window || 0); }
     if (!s.model) {
       if (r.sub === "teacher2") { s.off = "pick"; s.errs.push("Choose its model, or remove it."); return s; }
-      s.off = r.kind === "workers" ? "own" : r.kind === "planner" ? "follows" : "default";
+      s.off = r.kind === "workers" ? "own" : r.kind === "planner" ? "follows" : r.follows ? "teacher" : "default";
       return s;
     }
     s.hErr = harnessErr(opt, s.h, r);
@@ -252,6 +254,12 @@ export const EDIT_RIG_JS = `
       const w = S.workers;
       return '<span class="muted">as the workers' + (w.model && !w.cwErr && !w.caErr ? ": " + (w.win ? fmt(w.win) : "no window") + " · " + w.P + "%" : "") + "</span>";
     }
+    // The first teacher's context; with no model on its line, the advisors file's first teacher.
+    if (s.off === "teacher") {
+      const t = S.teachers;
+      if (!t.model) return '<span class="muted">' + escH(s.x.line.dataset.fbCtx || "") + "</span>";
+      return '<span class="muted">as the first teacher' + (!t.cwErr && !t.caErr ? ": " + (t.win ? fmt(t.win) : "no window") + " · " + t.P + "%" : "") + "</span>";
+    }
     if (s.cwErr || s.caErr) return '<span class="bad">✕ not valid</span>';
     const win = s.win ? fmt(s.win) : "no window";
     return (s.cap ? "<b>" + win + "</b>" : win) + " · " + (s.at ? "<b>" + s.P + "%</b>" : s.P + "%");
@@ -262,6 +270,7 @@ export const EDIT_RIG_JS = `
     if (first) {
       first.hidden = first.disabled = !off;
       if (r.kind === "planner") first.textContent = "as the workers" + (S.workers.model ? " (" + HN[S.workers.h] + ")" : "");
+      if (r.follows) first.textContent = S.teachers.model ? "as the first teacher (" + HN[S.teachers.h] + ")" : x.line.dataset.fbRuns || "";
     }
     x.h.disabled = off;
     x.h.classList.toggle("bad", !!s.hErr);
@@ -348,7 +357,7 @@ export const EDIT_RIG_JS = `
     const wKind = kindOf(R.workers);
     let claude = 0, chatgpt = 0;
     for (const id in R) {
-      const x = R[id], kind = kindOf(x) || (id === "planner" ? wKind : "");
+      const x = R[id], kind = kindOf(x) || (id === "planner" ? wKind : x.r.follows ? kindOf(R.teachers) : "");
       const n = id === "workers" ? lanes : id === "review_panel" ? 3 : 1;
       if (kind === "claude") claude += n;
       if (kind === "chatgpt") chatgpt += n;
@@ -376,7 +385,7 @@ export const EDIT_RIG_JS = `
       said.push(...general(false));
       for (const id of ["workers", "planner", "teachers"]) said.push(...sentences(S[id], S));
       said.push(...subSentences(S));
-      for (const id of ["auditor", "review_panel"]) said.push(...sentences(S[id], S));
+      for (const id of ["auditor", "review_panel", "synthesizer", "final_writer"]) if (R[id]) said.push(...sentences(S[id], S));
       said.push(...general(true));
       const movesSay = ($("[data-moves-say]") || { dataset: {} }).dataset.movesSay;
       if (said.length && said[said.length - 1] !== movesSay) said[said.length - 1] += " The rig takes it within a minute.";

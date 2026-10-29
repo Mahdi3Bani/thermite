@@ -1,3 +1,4 @@
+import type { DatabaseSync } from "node:sqlite";
 import {
   EFFORTS,
   type Effort,
@@ -23,7 +24,8 @@ export const codexTakes = (type: ProviderType): boolean => reaches("codex", type
  * A rig's agents other than its workers, each of which may have its own model (goal 074): the
  * planner; the teachers' first model (`teachers`), their second (`second_teacher`: a second
  * teacher) and the model that merges two teachers' advice (`merged_by`); the auditor; the review
- * panel.
+ * panel; and a research run's synthesizer and final writer (goal 166), which use the first
+ * teacher's model when they have none of their own.
  */
 export type AgentRole =
   | "planner"
@@ -31,7 +33,9 @@ export type AgentRole =
   | "second_teacher"
   | "merged_by"
   | "auditor"
-  | "review_panel";
+  | "review_panel"
+  | "synthesizer"
+  | "final_writer";
 
 export const AGENT_ROLES: AgentRole[] = [
   "planner",
@@ -40,7 +44,35 @@ export const AGENT_ROLES: AgentRole[] = [
   "merged_by",
   "auditor",
   "review_panel",
+  "synthesizer",
+  "final_writer",
 ];
+
+/**
+ * The synthesizer's and the final writer's model slots (goal 166), made by the store's migration
+ * to schema version 10: the table of the agents' models is made again with them in its check of
+ * roles, and keeps every row.
+ */
+export function synthesizerAndWriterSlots(db: DatabaseSync): void {
+  const cols = "rig, role, provider, model, effort, assigned_at, harness, context_cap, compact_at";
+  // Written out, not AGENT_ROLES: a migration that has run never changes.
+  db.exec(`create table rig_role_model_166 (
+  rig text not null,
+  role text not null check (role in ('planner', 'teachers', 'second_teacher', 'merged_by',
+    'auditor', 'review_panel', 'synthesizer', 'final_writer')),
+  provider text not null,
+  model text not null,
+  effort text,
+  assigned_at text not null,
+  harness text,
+  context_cap integer,
+  compact_at integer,
+  primary key (rig, role)
+)`);
+  db.exec(`insert into rig_role_model_166 (${cols}) select ${cols} from rig_role_model`);
+  db.exec("drop table rig_role_model");
+  db.exec("alter table rig_role_model_166 rename to rig_role_model");
+}
 
 export class ModelAssignments extends StorePart {
   /**

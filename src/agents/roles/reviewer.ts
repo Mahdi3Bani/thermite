@@ -1,4 +1,5 @@
 import { MEASURES_NOTHING } from "../../core/research-check.ts";
+import type { OwnerAddition } from "../../core/role-additions.ts";
 import { type Prompt, section } from "../prompt.ts";
 import { RUN_RESEARCH_TOOLS } from "../tools/index.ts";
 import {
@@ -80,7 +81,7 @@ ${ADVISOR_NOTES}`;
 
 /** A reviewer's prompt for a goal's review (goal 166): its text, then the review package. */
 export function renderReviewer(
-  i: { pkg: unknown; fit?: number | undefined },
+  i: { pkg: unknown; fit?: number | undefined; addition?: OwnerAddition | undefined },
   f: AdvisorFrame,
 ): Prompt {
   return advisorPromptOf(
@@ -94,6 +95,7 @@ export function renderReviewer(
       ),
     ],
     f,
+    i.addition,
   );
 }
 
@@ -112,7 +114,12 @@ export interface LeftOut {
  * what its first answer left out only.
  */
 export function renderResearchReviewer(
-  i: { pkg: unknown; fit?: number | undefined; leftOut?: LeftOut | undefined },
+  i: {
+    pkg: unknown;
+    fit?: number | undefined;
+    leftOut?: LeftOut | undefined;
+    addition?: OwnerAddition | undefined;
+  },
   f: AdvisorFrame,
 ): Prompt {
   return advisorPromptOf(
@@ -145,6 +152,7 @@ export function renderResearchReviewer(
       ),
     ],
     f,
+    i.addition,
   );
 }
 

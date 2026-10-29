@@ -4,6 +4,7 @@ import { renderAuditor } from "../../agents/roles/index.ts";
 import { JOURNAL_FIELD } from "../../agents/tools/index.ts";
 import { CITATION_MAX, CITATIONS_MAX, REASONS_MAX } from "../../core/api/harness/advisors.ts";
 import { LenientNotes } from "../../core/journal.ts";
+import { additionIn, type RunAdditions } from "../../core/role-additions.ts";
 import type { AdvisorKeeper, AdvisorResult, AdvisorTools } from "./call.ts";
 import { type AdvisorsConfig, packageFit } from "./config.ts";
 import { OwnerAnswers, OwnerAnswersSchema } from "./owner-answers.ts";
@@ -52,13 +53,23 @@ export async function auditOne(input: {
   tools: AdvisorTools;
   /** Where the call's conversation is kept before a compaction (goal 070). */
   keeper?: AdvisorKeeper | undefined;
+  /** The owner's additions to the run's roles (goal 166): the auditor's goes in its prompt. */
+  additions?: RunAdditions;
 }): Promise<AdvisorResult<z.infer<typeof AuditAnswer>>> {
   if (!input.config.auditor)
     return { output: undefined, error: "no auditor", tokensIn: 0, tokensOut: 0, usd: 0 };
   const auditor = input.config.auditor;
   return runAdvisor({
     runtime: auditor,
-    prompt: (f) => renderAuditor({ pkg: input.pkg, fit: packageFit(auditor) }, f),
+    prompt: (f) =>
+      renderAuditor(
+        {
+          pkg: input.pkg,
+          fit: packageFit(auditor),
+          addition: additionIn(input.additions, "auditor"),
+        },
+        f,
+      ),
     schema: AuditAnswer,
     answerSchema: AuditAnswerSchema,
     keeper: input.keeper,

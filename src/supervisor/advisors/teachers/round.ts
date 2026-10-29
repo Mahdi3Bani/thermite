@@ -4,6 +4,7 @@ import { renderMergedBy, renderTeacher } from "../../../agents/roles/index.ts";
 import { StructuredDirective } from "../../../core/commands.ts";
 import type { NoteInput } from "../../../core/journal.ts";
 import { ideaWords, ruleRefusal } from "../../../core/queue-target.ts";
+import { additionIn, type RunAdditions } from "../../../core/role-additions.ts";
 import type { AdvisorAgent } from "../../../core/usage.ts";
 import type {
   AdvisorCompaction,
@@ -98,6 +99,8 @@ export async function teacherRound(input: {
    * those. A hill climb's and a goal campaign's teachers give opportunities, as before.
    */
   research?: boolean | undefined;
+  /** The owner's additions to the run's roles (goal 166): each teacher's and the merged by's. */
+  additions?: RunAdditions;
 }): Promise<TeacherRun> {
   const research = input.research === true;
   type Item = Opportunity | ResearchOpportunity;
@@ -137,7 +140,15 @@ export async function teacherRound(input: {
     input.config.teachers.map((t) =>
       runAdvisor({
         runtime: t,
-        prompt: (f) => renderTeacher({ ...brief, fit: packageFit(t) }, f),
+        prompt: (f) =>
+          renderTeacher(
+            {
+              ...brief,
+              fit: packageFit(t),
+              addition: additionIn(input.additions, research ? "research-teacher" : "teacher"),
+            },
+            f,
+          ),
         schema: TeacherReview,
         answerSchema: research ? ResearchTeacherAnswer : TeacherAnswer,
         tools: input.tools,
@@ -198,7 +209,16 @@ export async function teacherRound(input: {
     }));
     const r = await runAdvisor({
       runtime: mergedBy,
-      prompt: (f) => renderMergedBy({ ...brief, fit: packageFit(mergedBy), reviews }, f),
+      prompt: (f) =>
+        renderMergedBy(
+          {
+            ...brief,
+            fit: packageFit(mergedBy),
+            reviews,
+            addition: additionIn(input.additions, research ? "research-merged-by" : "merged-by"),
+          },
+          f,
+        ),
       schema: DirectiveSet,
       answerSchema: research ? ResearchDirectiveAnswer : DirectiveAnswer,
       keeper: input.keeper,

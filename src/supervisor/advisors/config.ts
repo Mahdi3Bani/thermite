@@ -252,6 +252,16 @@ export const AdvisorsConfig = AdvisorsFile;
 export type AdvisorsConfig = z.output<typeof AdvisorsConfig>;
 
 /**
+ * What the supervisor runs: the advisors file, with the synthesizer's and the final writer's own
+ * models when control gives them (goal 166). The file has no place for those two: with none of
+ * its own, each uses the first teacher's model.
+ */
+export type RunningAdvisors = AdvisorsConfig & {
+  synthesizer?: AdvisorRuntime | undefined;
+  final_writer?: AdvisorRuntime | undefined;
+};
+
+/**
  * An advisor's window in tokens, where Thermite knows it: an API route's, or the one control or the
  * advisors file gives Claude Code, OpenCode or Codex; 0 when unknown, as for a command-line agent.
  */

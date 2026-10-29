@@ -1,6 +1,7 @@
 import type { LaneLimitValues } from "../../core/contract.ts";
 import { notesInstruction } from "../../core/journal.ts";
 import { HYPOTHESES_RULE, MEASURES_NOTHING } from "../../core/research-check.ts";
+import type { OwnerAddition } from "../../core/role-additions.ts";
 import { mcpLine } from "../mcp/index.ts";
 import { type Prompt, prompt, type Section, section } from "../prompt.ts";
 import {
@@ -9,7 +10,7 @@ import {
   researchCommands,
   researchFolderNote,
 } from "../tools/index.ts";
-import { fitToWindow, limitsNote } from "./shared.ts";
+import { fitToWindow, limitsNote, ownerAdditionSection } from "./shared.ts";
 import { briefSections, TRIAL_CUT_WHERE, type TrialProgram } from "./worker.ts";
 
 /**
@@ -55,13 +56,16 @@ export interface ResearchWorkerInput {
   minutes?: number | undefined;
   /** The most characters its first message may take (windowFit); none: the window is unknown. */
   fit?: number | undefined;
+  /** The owner's addition to the research worker for the campaign (decision 1); none: no section. */
+  addition?: OwnerAddition | undefined;
 }
 
 /**
  * A research trial's prompt (goal 166). In Pi: its instructions, its folder and file tools, the
- * idea tool and the MCP line as the system text, and the brief and its field notes as the first
- * message. In OpenCode, one message: the instructions, its research commands, the folder, the
- * limits, the brief and the trial's length, then the MCP line.
+ * idea tool, the MCP line and the owner's addition as the system text, and the brief and its field
+ * notes as the first message. In OpenCode, one message: the instructions, its research commands,
+ * the folder, the owner's addition, the limits, the brief and the trial's length, then the MCP
+ * line.
  */
 export function renderResearchWorker(i: ResearchWorkerInput): Prompt {
   const brief = briefSections(i.brief);
@@ -87,6 +91,7 @@ export function renderResearchWorker(i: ResearchWorkerInput): Prompt {
           "\n\n",
         ),
         mcp,
+        ...ownerAdditionSection(i.addition),
       ],
       // With the note tool, the brief says how to keep field notes, and how they differ from
       // research notes.
@@ -108,6 +113,7 @@ export function renderResearchWorker(i: ResearchWorkerInput): Prompt {
           `${i.folder ? researchFolderNote(i.folder) : ""} Your shell starts in your working area; use grep, rg and your file tools on the folder.`,
           "\n\n",
         ),
+        ...ownerAdditionSection(i.addition),
         section("limits", "rig", limitsNote(i.limits, i.program.name, i.program.memory), "\n\n"),
         ...(first ? [{ ...first, sep: "\n\n" }, ...rest] : []),
         section(

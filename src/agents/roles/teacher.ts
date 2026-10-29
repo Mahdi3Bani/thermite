@@ -1,4 +1,5 @@
 import { MEASURES_NOTHING } from "../../core/research-check.ts";
+import type { OwnerAddition } from "../../core/role-additions.ts";
 import { type Prompt, section } from "../prompt.ts";
 import {
   ADVISOR_NOTES,
@@ -122,6 +123,8 @@ export interface TeacherInput {
   brief: unknown;
   /** The most characters of package that fit the teacher's window (packageFit). */
   fit?: number | undefined;
+  /** The owner's addition to the role for the campaign (decision 1); none: no section. */
+  addition?: OwnerAddition | undefined;
 }
 
 /** The line before a teachers' round's brief. */
@@ -135,5 +138,6 @@ export function renderTeacher(i: TeacherInput, f: AdvisorFrame): Prompt {
     [section("system", "role", i.research ? RESEARCH_TEACHER_SYSTEM : TEACHER_SYSTEM)],
     [section("brief", "package", advisorPackage(briefHead(i), i.brief, 120_000, i.fit))],
     f,
+    i.addition,
   );
 }

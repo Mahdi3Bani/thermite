@@ -4,7 +4,7 @@ import { EFFORTS } from "../../core/agents.ts";
 import { ADVISOR_ROUTES, type AdvisorRoute, TEACHERS_MAX } from "../../core/api/control/rigs.ts";
 import type { AnswerOf } from "../../core/api/route.ts";
 import { COMPACT_AT_MAX, COMPACT_AT_MIN } from "../../core/compaction.ts";
-import { type AdvisorRuntime, AdvisorsConfig } from "./config.ts";
+import { type AdvisorRuntime, AdvisorsConfig, type RunningAdvisors } from "./config.ts";
 
 /**
  * The advisors' models that control gives a rig (the owner's choice for each role on the rig's
@@ -16,7 +16,8 @@ import { type AdvisorRuntime, AdvisorsConfig } from "./config.ts";
  * the message bus, taken as control writes them.
  *
  * The roles (goal 074): the teachers (one or two models), their merged by model, the auditor and
- * the review panel.
+ * the review panel; and (goal 166) the synthesizer and the final writer, which with no model from
+ * control use the first teacher's.
  */
 
 /** A route as control hands it (core/api/control/rigs.ts); its key stays in memory. */
@@ -27,6 +28,8 @@ export interface ControlAdvisors {
   merged_by?: AdvisorRuntime | undefined;
   auditor?: AdvisorRuntime | undefined;
   review_panel?: AdvisorRuntime[] | undefined;
+  synthesizer?: AdvisorRuntime | undefined;
+  final_writer?: AdvisorRuntime | undefined;
 }
 
 /** A compaction point a route carries, when it is a whole percent in range. */
@@ -153,7 +156,8 @@ export async function fetchControlAdvisors(o: {
 /**
  * Control's advisors' routes (from the poll, or from the rig's config on the message bus) as
  * runtimes by role: each teacher's model (teacher-1 and teacher-2), the merged by model, the
- * auditor, and the review panel three times (reviewer-1 to reviewer-3).
+ * auditor, the review panel three times (reviewer-1 to reviewer-3), the synthesizer and the final
+ * writer.
  */
 export function advisorsOf(r: AnswerOf<typeof ADVISOR_ROUTES>): ControlAdvisors {
   const many = (route: AdvisorRoute | null | undefined, base: string, n: number) => {
@@ -172,6 +176,8 @@ export function advisorsOf(r: AnswerOf<typeof ADVISOR_ROUTES>): ControlAdvisors 
     merged_by: r.merged_by ? runtimeOf(r.merged_by, "merged-by") : undefined,
     auditor: r.auditor ? runtimeOf(r.auditor, "auditor") : undefined,
     review_panel: many(r.review_panel, "reviewer", 3),
+    synthesizer: r.synthesizer ? runtimeOf(r.synthesizer, "synthesizer") : undefined,
+    final_writer: r.final_writer ? runtimeOf(r.final_writer, "final-writer") : undefined,
   };
 }
 
@@ -179,16 +185,24 @@ export function advisorsOf(r: AnswerOf<typeof ADVISOR_ROUTES>): ControlAdvisors 
 export function mergeAdvisors(
   file: AdvisorsConfig | undefined,
   control: ControlAdvisors,
-): AdvisorsConfig | undefined {
+): RunningAdvisors | undefined {
   const base = file ?? AdvisorsConfig.parse({});
-  const merged: AdvisorsConfig = {
+  const merged: RunningAdvisors = {
     ...base,
     teachers: control.teachers ?? base.teachers,
     merged_by: control.merged_by ?? base.merged_by,
     auditor: control.auditor ?? base.auditor,
     review_panel: control.review_panel ?? base.review_panel,
+    // Only from control: with none, each uses the first teacher's model.
+    synthesizer: control.synthesizer,
+    final_writer: control.final_writer,
   };
-  return merged.teachers.length || merged.merged_by || merged.auditor || merged.review_panel.length
+  return merged.teachers.length ||
+    merged.merged_by ||
+    merged.auditor ||
+    merged.review_panel.length ||
+    merged.synthesizer ||
+    merged.final_writer
     ? merged
     : undefined;
 }

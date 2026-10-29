@@ -1,5 +1,6 @@
 import { briefData } from "../../../../core/brief.ts";
 import type { ResearchContract } from "../../../../core/contract.ts";
+import { additionOf } from "../../../../core/role-additions.ts";
 import { notesData } from "../../../journal.ts";
 import { LedgerError } from "../../../ledger/index.ts";
 import { messageText } from "../../../messages.ts";
@@ -66,6 +67,8 @@ export async function planResearchEpoch(
       campaignBrief: briefData(contract),
       notes: notesData(sched.o.service.journal.newest(run, 20)),
       briefing: sched.ledger.runs.briefing(run),
+      // The owner's addition to the research planner, from the run's contract (goal 166).
+      addition: additionOf(contract, "research-planner"),
     };
     const ctrl = new AbortController();
     sched.planning = { run, ctrl };

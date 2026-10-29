@@ -19,6 +19,7 @@ export async function answerAudits(ctx: AdviseContext): Promise<void> {
     toolsFor,
     pastSearchFor,
     configFor,
+    additionsFor,
     keeperFor,
     mcpFor,
     overBudget,
@@ -111,6 +112,7 @@ export async function answerAudits(ctx: AdviseContext): Promise<void> {
           config: await configFor(pkg.run),
           pkg: { ...pkg, owner_messages: owner },
           keeper: keeperFor(pkg.run),
+          additions: await additionsFor(pkg.run),
           tools: {
             ...toolsFor(),
             mcp: await mcpFor(pkg.run),

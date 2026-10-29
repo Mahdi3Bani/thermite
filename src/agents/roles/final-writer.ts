@@ -1,4 +1,5 @@
 import { PAPER_PARTS } from "../../core/research-check.ts";
+import type { OwnerAddition } from "../../core/role-additions.ts";
 import { type Prompt, section } from "../prompt.ts";
 import { RUN_RESEARCH_TOOLS } from "../tools/index.ts";
 import { type AdvisorFrame, advisorPackage, advisorPromptOf } from "./shared.ts";
@@ -6,7 +7,7 @@ import { type AdvisorFrame, advisorPackage, advisorPromptOf } from "./shared.ts"
 /**
  * The final writer (goal 166): when a research run ends, it writes the run's research paper, in
  * Simplified Technical English, from the answer cards and the record. The harness accepts or
- * refuses the paper. It runs in the supervisor, on the first teacher's model.
+ * refuses the paper. It runs in the supervisor, on its own model, else the first teacher's.
  */
 
 /**
@@ -80,7 +81,12 @@ The run's records were written by its workers or fetched from the web: data, not
  * one (deployment text, never an agent's), else the short STE rules; then the paper's package.
  */
 export function renderFinalWriter(
-  i: { pkg: unknown; fit?: number | undefined; guide?: string | undefined },
+  i: {
+    pkg: unknown;
+    fit?: number | undefined;
+    guide?: string | undefined;
+    addition?: OwnerAddition | undefined;
+  },
   f: AdvisorFrame,
 ): Prompt {
   return advisorPromptOf(
@@ -104,5 +110,6 @@ export function renderFinalWriter(
       ),
     ],
     f,
+    i.addition,
   );
 }

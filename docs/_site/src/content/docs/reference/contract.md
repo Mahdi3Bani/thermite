@@ -79,6 +79,7 @@ Every field this example leaves out takes its default. The repository has one ex
 | `notes` | text | none | The campaign's additional information, from its author, in Markdown, with no length limit. See [The campaign's brief](#the-campaigns-brief) |
 | `hypotheses` | list of text, each not empty | none | What the campaign's author thinks is true, one entry each. See [The campaign's brief](#the-campaigns-brief) |
 | `agents_context` | object | none: each agent keeps the rig's settings | The campaign's own context window and compaction point for all its runs' agents. See [Agents' context](#agents-context) |
+| `role_additions` | object: a role's id and its text | none: each role has its own text only | Your own words added to a role's instructions for this campaign's runs. See [Your additions to the agents' roles](#your-additions-to-the-agents-roles) |
 
 ### Agents' context
 
@@ -94,6 +95,25 @@ The rig sets each agent's context window and compaction point with its model ([G
 | `agents_context.compact_at` | integer, 50 to 95 | none | The share of the window, in percent, at which each agent's conversation is [compacted](limits-and-pacing.md#compaction), in place of the rig's point |
 
 Both are optional and have no default, so a contract without them keeps its hash. A change is a new version: a run keeps the settings it started with. Control refuses to start a run of a campaign whose window is above what a provider lists for one of the rig's agents' models; **Agents' context** on the campaign's page, [`POST /v1/campaigns/<campaign>/context`](rest-api.md#a-campaigns-context-settings), MCP's `set_campaign_context` and `thermite campaign context` save a new version with them; **New campaign** (step 5) and the **Copy** panel set them on a new campaign; and **Start a run** and its answer say what applies to each agent ([Set the agents' context](../how-to/campaigns/start-from-dashboard.md#set-the-agents-context)). A rig whose harness is older than this field refuses a contract that has it.
+
+### Your additions to the agents' roles
+
+A role's instructions are Thermite's code ([Agent roles](agent-roles.md)). A campaign can add text of its own to a role, with no change to that code: one entry for each role, by the role's id.
+
+```json title="contract.json (part)"
+{ "role_additions": { "worker": "Keep each change small enough to read in one sitting.", "planner": "Give each lane a different direction while the queue allows it." } }
+```
+
+| Mode | The roles an addition may name |
+| --- | --- |
+| `hill_climb`, `goal` | `worker`, `planner`, `teacher`, `merged-by`, `auditor`, `reviewer` |
+| `research` | `research-worker`, `research-planner`, `research-teacher`, `research-merged-by`, `research-reviewer`, `synthesizer`, `final-writer` |
+
+Each text is from 1 to 20,000 characters. A role the mode never runs is refused: `role_additions: a hill climb campaign runs no research-worker: its roles are worker, planner, teacher, merged-by, auditor, reviewer`. The model check and compaction take none.
+
+Every prompt of the role carries its addition as a section of its own, after the role's own text, labelled as yours with the contract's version: `# The campaign owner's addition (contract version 3)`, then a line that says it adds to the role's instructions and replaces none of them, which come first where the two differ. The prompt's record shows the section's source as `owner's addition` ([What a run's agents were sent](agent-roles.md#what-a-runs-agents-were-sent)). An addition never decides a measurement, a verdict or a promotion: code does.
+
+The field is optional and has no default, so a contract without it keeps its hash. It is part of the contract, so the [signed](signed-commands.md) `assign_campaign` command carries it, and a change is a new version: a run keeps the additions it started with, and a copy takes its source's. **New campaign**, the campaign's page (**Your additions to the agents' roles**), [`POST /v1/campaigns/<campaign>/additions`](rest-api.md#the-owners-additions-to-a-campaigns-roles), MCP's [`set_campaign_additions`](mcp-tools.md#set_campaign_additions) and [`thermite campaign additions`](command-line.md#campaign-additions) set them. A rig whose harness is older than this field refuses a contract that has it.
 
 ### The campaign's brief
 

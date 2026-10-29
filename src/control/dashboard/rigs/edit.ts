@@ -285,7 +285,7 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
 <form id="edit-rig" method="post" action="/ui/rigs/${rName}/edit"><input type="hidden" name="csrf" value="${t}">
 <div class="sec"><h2>1 · Parts of the rig</h2><div class="card flat">${PARTS.map(sw).join("")}
 <div class="pt locked"><label class="sw"><input type="checkbox" checked disabled><span class="knob"></span></label><div><div><b>Supervisor</b> <span class="pt-state on">on</span></div><div class="muted small">It relays reports to control, fetches projects and kits, and does all git work for the rig.</div><div class="small pt-off"><b>Always on.</b> It connects the rig to control. Without it, control cannot see or steer the rig.</div></div></div></div></div>
-<div class="sec" id="agents"><h2>2 · The agents</h2><p class="lead">Each agent runs in the harness you choose, with its own context. With no model here, the workers use the rig's own settings, and the planner uses the workers' model. An advisor uses the model in the rig's advisors file. If the file has none, that advisor is off.</p>
+<div class="sec" id="agents"><h2>2 · The agents</h2><p class="lead">Each agent runs in the harness you choose, with its own context. With no model here, the workers use the rig's own settings, the planner uses the workers' model, and the synthesizer and the final writer use the first teacher's. Another advisor uses the model in the rig's advisors file. If the file has none, that advisor is off.</p>
 <div class="card">${agents}</div>
 <div class="g3" style="margin-top:14px">
 <label class="fd">${infoLabel("One trial lasts (minutes)", "How long a worker can work on one idea before it must submit, when the campaign sets no limit. Empty: no limit; a trial lasts until the worker submits or stops.")}<input name="trial_minutes" type="number" min="1" value="${s?.trial_minutes ?? ""}" placeholder="no limit"${s ? "" : " disabled"}></label>
@@ -374,6 +374,8 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       merged_by: "Merged by",
       auditor: "Auditor",
       review_panel: "Review panel",
+      synthesizer: "Synthesizer",
+      final_writer: "Final writer",
     };
     const refuse = (id: AgentLineId, why: string) => back("error", `${LINE[id]}: ${why}`);
 

@@ -316,7 +316,8 @@ export type AdvisorRoute = z.infer<typeof AdvisorRoute>;
 
 /**
  * The advisors' routes, by role, when the owner gave them models: the teachers' one or two, their
- * merged by model, the auditor and the review panel (null: the rig's advisors file decides).
+ * merged by model, the auditor and the review panel (null: the rig's advisors file decides), and
+ * the synthesizer and the final writer (goal 166; null: the first teacher's model).
  */
 export const ADVISOR_ROUTES = {
   method: "GET",
@@ -327,6 +328,8 @@ export const ADVISOR_ROUTES = {
     merged_by: AdvisorRoute.nullable().optional(),
     auditor: AdvisorRoute.nullable().optional(),
     review_panel: AdvisorRoute.nullable().optional(),
+    synthesizer: AdvisorRoute.nullable().optional(),
+    final_writer: AdvisorRoute.nullable().optional(),
   }),
 } as const satisfies Route;
 

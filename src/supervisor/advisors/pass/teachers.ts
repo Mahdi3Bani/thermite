@@ -178,6 +178,8 @@ export async function teachRuns(ctx: AdviseContext): Promise<void> {
           keeper: keeperFor(inst.id),
           // A research run's teachers give research tasks, each for one question's gap (goal 117).
           research: inst.mode === "research",
+          // The owner's additions to the teacher and the merged by model (goal 166).
+          additions: inst.role_additions ?? undefined,
           tools: {
             ...toolsFor(),
             // A research run has no code: its seed is a placeholder, with no repository on the

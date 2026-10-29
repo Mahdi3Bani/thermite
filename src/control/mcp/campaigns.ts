@@ -5,9 +5,12 @@ import {
   CONTEXT_WINDOW_MAX,
   CONTEXT_WINDOW_MIN,
 } from "../../core/compaction.ts";
+import { ROLE_ADDITION_MAX_CHARS } from "../../core/role-additions.ts";
 import {
   archiveCampaign,
   type CopyCampaignRequest,
+  campaignAdditionsAnswer,
+  campaignAdditionsFields,
   campaignContextAnswer,
   campaignContextFields,
   campaignFoldersAnswer,
@@ -21,6 +24,7 @@ import {
   renameFolder,
   type ShelfOutcome,
   type StartRunBody,
+  setCampaignAdditions,
   setCampaignContext,
   startARun,
   startRunAnswer,
@@ -136,6 +140,30 @@ export function registerCampaignSettings(tools: ToolContext): void {
           );
           if (out.state === "refused") throw new Error(out.error);
           return campaignContextAnswer(out);
+        },
+      ),
+    );
+    // The owner's additions to a campaign's roles (goal 166): a new version of its contract.
+    server.registerTool(
+      "set_campaign_additions",
+      {
+        title: "Add the owner's text to a campaign's roles",
+        description: `Sets the owner's additions to a campaign's agent roles: text added to a role's own instructions for this campaign's runs, without a change to Thermite's code. additions: each role's text, by the role's id (agent_roles lists the roles): worker, planner, teacher, merged-by, auditor or reviewer for a hill-climb or goal campaign; research-worker, research-planner, research-teacher, research-merged-by, research-reviewer, synthesizer or final-writer for a research campaign; each at most ${ROLE_ADDITION_MAX_CHARS} characters. Each prompt of the role carries its addition as a section of its own after the role's text, labelled as the owner's, with the contract's version; it adds to the role's text and replaces none of it, and the role's text comes first where the two differ. An addition never decides a measurement, a verdict or a promotion: code does. Each call sets them anew: a role left out, or an empty text, has none. Control saves a new version of the campaign's contract (its role_additions), signed into each assignment; runs started from then take it, and a run keeps what it started with. A rig's harness older than this change refuses a contract with role_additions. Returns {campaign, version, contract_sha, role_additions, said}. Refused in words: a role the campaign's mode never runs, an unknown role, a text too long, a campaign with no saved version and no assignment, a rig check's campaign.`,
+        inputSchema: {
+          campaign: z.string().min(1).describe("The campaign, as on its page"),
+          ...campaignAdditionsFields,
+        },
+      },
+      audited(
+        "set_campaign_additions",
+        (a: { campaign: string; additions?: Record<string, string> }) => {
+          const out = setCampaignAdditions(
+            store,
+            { campaign: a.campaign, additions: a.additions },
+            actor,
+          );
+          if (out.state === "refused") throw new Error(out.error);
+          return campaignAdditionsAnswer(out);
         },
       ),
     );

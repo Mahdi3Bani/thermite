@@ -212,7 +212,8 @@ export async function modelRoutesOf(
  * The advisors' routes, by role, when the owner gave them models (each with its key or a
  * subscription's token). A role with none keeps the rig's advisors file: the supervisor's own
  * configuration. Goal 074: the teachers' one or two models (a second only with a first), their
- * merged by model, the auditor and the review panel.
+ * merged by model, the auditor and the review panel. Goal 166: the synthesizer and the final
+ * writer, which with none use the first teacher's model.
  */
 export async function advisorRoutesOf(parts: RouteParts, rig: string) {
   const first = await roleRouteOf(parts, rig, "teachers");
@@ -222,5 +223,7 @@ export async function advisorRoutesOf(parts: RouteParts, rig: string) {
     merged_by: await roleRouteOf(parts, rig, "merged_by"),
     auditor: await roleRouteOf(parts, rig, "auditor"),
     review_panel: await roleRouteOf(parts, rig, "review_panel"),
+    synthesizer: await roleRouteOf(parts, rig, "synthesizer"),
+    final_writer: await roleRouteOf(parts, rig, "final_writer"),
   };
 }

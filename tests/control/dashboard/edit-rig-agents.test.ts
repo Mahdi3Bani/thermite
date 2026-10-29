@@ -136,7 +136,7 @@ describe("Edit rig's agents (goals 070, 073 and 074)", () => {
     const table = agentsOf(html);
     assert.match(
       html,
-      /<h2>2 · The agents<\/h2><p class="lead">Each agent runs in the harness you choose, with its own context\. With no model here, the workers use the rig's own settings, and the planner uses the workers' model\. An advisor uses the model in the rig's advisors file\. If the file has none, that advisor is off\.<\/p>/,
+      /<h2>2 · The agents<\/h2><p class="lead">Each agent runs in the harness you choose, with its own context\. With no model here, the workers use the rig's own settings, the planner uses the workers' model, and the synthesizer and the final writer use the first teacher's\. Another advisor uses the model in the rig's advisors file\. If the file has none, that advisor is off\.<\/p>/,
     );
     // The two groups, then each agent with its job on one line, in order.
     const order = [
@@ -153,6 +153,10 @@ describe("Edit rig's agents (goals 070, 073 and 074)", () => {
       "Checks a win before it is kept.",
       "Review panel",
       "Scores goals that code can&#39;t measure.".replace("&#39;", "'"),
+      "Synthesizer",
+      "Writes each research question&#39;s answer card.".replace("&#39;", "'"),
+      "Final writer",
+      "Writes a research run&#39;s paper when it ends.".replace("&#39;", "'"),
     ];
     let from = 0;
     for (const t of order) {
@@ -168,7 +172,7 @@ describe("Edit rig's agents (goals 070, 073 and 074)", () => {
       table.match(
         /<span class="lb">[^<]*<i class="ii" tabindex="0" data-tip="[^"]+">i<\/i><\/span>/g,
       ) ?? [];
-    assert.equal(labels.length, 5 + 2 + 5 + 1 + 7 * 2);
+    assert.equal(labels.length, 5 + 2 + 7 + 1 + 9 * 2);
     assert.equal(withIcon.length, labels.length);
     // Each line's fields, by the form names the server reads.
     for (const id of [
@@ -178,6 +182,8 @@ describe("Edit rig's agents (goals 070, 073 and 074)", () => {
       "merged_by",
       "auditor",
       "review_panel",
+      "synthesizer",
+      "final_writer",
     ])
       for (const k of ["role", "effort", "harness", "context", "compact"])
         assert.match(lineOf(html, id), new RegExp(`name="${k}_${id}"`));

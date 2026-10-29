@@ -1,6 +1,7 @@
 import { withAgentsContext } from "../../../agents/model/index.ts";
 import type { Prompt } from "../../../agents/prompt.ts";
 import { renderPlanner, renderWorker, windowFit } from "../../../agents/roles/index.ts";
+import { additionOf } from "../../../core/role-additions.ts";
 import { LedgerError } from "../../ledger/index.ts";
 import type { PreviewAsk } from "../../prompts.ts";
 import { focusOf, limitsInForce } from "../coordinator.ts";
@@ -36,6 +37,7 @@ export function previewPrompt(sched: SchedulerContext, run: string, ask: Preview
       read: isCliProgram(via) && past ? sched.o.service.knowledge.dir(run) : undefined,
       mcpServers: sched.o.service.mcp.given(run, "planner").map((g) => g.name),
       fit: windowFit((own ?? m)?.contextWindow, (own ?? m)?.compactAt),
+      addition: input.addition,
     });
   }
   const lane = ask.lane ?? "lane-1";
@@ -84,5 +86,6 @@ export function previewPrompt(sched: SchedulerContext, run: string, ask: Preview
     maxTurns: sched.o.maxTurns,
     endsAt: wallMs !== undefined ? Date.now() + wallMs : undefined,
     fit: windowFit(m?.contextWindow, m?.compactAt),
+    addition: additionOf(contract, "worker"),
   });
 }

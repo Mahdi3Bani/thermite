@@ -166,6 +166,13 @@ usage: thermite <command> [options]
                                       rig's compaction point. Control saves a new version of the
                                       campaign; runs started from then take it. Without either
                                       option, the settings are removed. It prints the version
+  campaign additions CAMPAIGN [--add ROLE=FILE]... --control URL --token-file F
+                                      set the owner's additions to a campaign's roles (owner's
+                                      token): each --add gives ROLE's text, from FILE, added to
+                                      that role's own instructions in every prompt of the
+                                      campaign's runs. Control saves a new version of the
+                                      campaign; runs started from then take it. Without --add, the
+                                      additions are removed. It prints the version
   kit add NAME BUNDLE [--ref REF] [--force] --control URL --token-file F
                                       give control a kit repository written elsewhere, as a git
                                       bundle file (owner's token; at most 64 MiB): control keeps
@@ -236,9 +243,9 @@ usage: thermite <command> [options]
 
 ## Rules for every command
 
-- **Options.** Each option takes its value as the next word or after `=`. In `doctor`, `local init`, `token new`, `assign`, `assign-payload`, `rig`, `run start`, `campaign copy`, `campaign context`, `command`, `submit` and `status`, an option the command does not know, or a word it does not expect, ends the command with Node's own message and exit code 2. In `runpod` and `mcp`, an option it does not know does the same; a word after the name it takes is ignored.
+- **Options.** Each option takes its value as the next word or after `=`. In `doctor`, `local init`, `token new`, `assign`, `assign-payload`, `rig`, `run start`, `campaign copy`, `campaign context`, `campaign additions`, `command`, `submit` and `status`, an option the command does not know, or a word it does not expect, ends the command with Node's own message and exit code 2. In `runpod` and `mcp`, an option it does not know does the same; a word after the name it takes is ignored.
 - **Older option names.** `--instance` is read as `--run`, and `--unit` as `--rig`. These are the names from before runs and rigs were renamed.
-- **Control's token.** The commands that talk to control (`assign`, `run start`, `campaign copy`, `campaign context`, `mcp`, `command`, `rig add`, `rig token`, `rig retire`, `rig list`, and every `runpod` command) send the contents of `--token-file`, trimmed, as `Authorization: Bearer <token>`. Only the owner's token works on these routes; any other token gets `401 {"error":"unauthorized"}`. See [Tokens and roles](tokens.md).
+- **Control's token.** The commands that talk to control (`assign`, `run start`, `campaign copy`, `campaign context`, `campaign additions`, `mcp`, `command`, `rig add`, `rig token`, `rig retire`, `rig list`, and every `runpod` command) send the contents of `--token-file`, trimmed, as `Authorization: Bearer <token>`. Only the owner's token works on these routes; any other token gets `401 {"error":"unauthorized"}`. See [Tokens and roles](tokens.md).
 - **Control's address.** `--control` is control's base address, such as `https://control.example.com`. A trailing `/` is removed.
 - **Refusals.** When control or the harness refuses a request, the command prints `<url> -> <status> <body>` on standard error and exits 2. `status` is the exception: see [below](#status). A request body that does not match the route gives `400 {"error":"invalid request"}` from control. The harness says which field and why, such as `400 {"error":"invalid request: run is missing: it must be a string"}`. A command that control refuses before signing it gives `400` with the reason (for example a payload that does not fit its kind, or a message that nothing would read), or `404` for an unknown rig; another refusal from inside control gives `500` with the reason. The [REST API reference](rest-api.md) lists the routes.
 
@@ -647,6 +654,26 @@ It prints control's answer on one line, such as `{"campaign":"sort-speed","versi
 | `--token-file F` | Yes | | A file with the owner's token |
 
 Each call sets the settings anew: without either option, they are removed. A value out of range ends the command before anything is sent, with exit code 2: `--context-window and --compact-at:` and why. Without `--control` and `--token-file`, it ends with `give --control and --token-file: control keeps the campaign` and exit code 2. Control's refusals come back as `<url> -> <status> <body>`: [A campaign's context settings](rest-api.md#a-campaigns-context-settings) lists them. MCP's [`set_campaign_context`](mcp-tools.md#set_campaign_context) does the same with an operator's token too.
+
+### `campaign additions`
+
+`thermite campaign additions` sets your additions to a campaign's agent roles (`POST /v1/campaigns/<campaign>/additions`): your own words, from a file for each role, added to that role's instructions in every prompt of the campaign's runs. Control saves a new version of the campaign, with them in its contract's [`role_additions`](contract.md#your-additions-to-the-agents-roles); runs started from then take it.
+
+```sh
+npx thermite campaign additions sort-speed --add worker=worker-notes.md --add planner=planner-notes.md \
+  --control https://control.example.com --token-file ~/thermite-owner-token
+```
+
+It prints control's answer on one line, such as `{"campaign":"sort-speed","version":4,"contract_sha":"<sha256>","role_additions":{"worker":"…","planner":"…"},"said":"…"}`, and its `said` on standard error: `Version 4 of sort-speed is saved, with additions for worker, planner. Runs started from now take it.`
+
+| Option | Required | Default | Meaning |
+| --- | --- | --- | --- |
+| `CAMPAIGN` | Yes | | The campaign, as on its page |
+| `--add ROLE=FILE` | No, more than once | none | One role's addition: the role's id, such as `worker` or `research-planner`, and a file whose text is added to that role's instructions. [Your additions to the agents' roles](contract.md#your-additions-to-the-agents-roles) lists the roles of each mode |
+| `--control URL` | Yes | | Control's address |
+| `--token-file F` | Yes | | A file with the owner's token |
+
+Each call sets the additions anew: a role it gives no `--add` has none in the new version, and without `--add` they are all removed. A word without `=` ends the command before anything is sent, with exit code 2: `--add takes ROLE=FILE, such as worker=worker-notes.md: not …`; so does a file that can't be read: `--add worker: <file> can't be read:` and why. Without `--control` and `--token-file`, it ends with `give --control and --token-file: control keeps the campaign` and exit code 2. Control's refusals come back as `<url> -> <status> <body>`, such as a role the campaign's mode never runs: [The owner's additions to a campaign's roles](rest-api.md#the-owners-additions-to-a-campaigns-roles) lists them. MCP's [`set_campaign_additions`](mcp-tools.md#set_campaign_additions) does the same with an operator's token too.
 
 ### `kit add`
 

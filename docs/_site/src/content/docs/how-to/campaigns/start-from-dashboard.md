@@ -173,6 +173,10 @@ Under the fields above, **Agents' context** sets the campaign's own context wind
 
 A line under them says what the first run's workers get on the rig you chose, such as "On rig-1, the first run's workers get **131,072** tokens and compact at 80%." Bold numbers are this campaign's. The line says what is wrong instead, such as `The compaction point is a whole percent of the context window, from 50 to 95.`, or `narrow-model takes at most 131,072 tokens: a run on rig-1 can't start with this window.` when the window is above what a provider lists for a model of that rig's agents. The summary at **6 Review and start** ends with it, such as `Its agents get at most 131,072 tokens and compact at 70%.` Control keeps the numbers in the campaign's contract, as `agents_context`. You can change them later on the campaign's page: see [Set the agents' context](#set-the-agents-context).
 
+### Your additions to the agents' roles
+
+Under **Agents' context**, **Your additions to the agents' roles** (folded until you open it) has a box for each role a campaign of the chosen mode runs, such as **Worker**, **Planner** and **Auditor** for a hill climb, or **Research worker** and **Synthesizer** for a research campaign. Text in a box is added to that role's own instructions in every prompt of the campaign's runs; an empty box adds nothing. See [Add your words to the agents' roles](#add-your-words-to-the-agents-roles).
+
 ### Advanced
 
 Under **Advanced**, at the foot of step 5:
@@ -309,6 +313,21 @@ A campaign's page has a block **Agents' context**, "every run of" the campaign. 
 The block says, for example, `Saved as version 3: 131,072 tokens at 70%. New runs of sort-speed take it. sort-speed-2 keeps what it started with.` Control saved a new version of the campaign's contract, with the numbers as `agents_context`. A run at work keeps what it started with; runs started from now take the new numbers. Saving the same numbers again says `Nothing changed: version 3 has these numbers already.` Both fields empty remove the campaign's own: `Saved as version 4: the rig's, for each agent.`
 
 A number the block refuses shows under the help line as you type, and **Save** stays off: `Write the number of tokens in digits, such as 131072.`, `A context window is a whole number of tokens from 4,096 to 100,000,000.` or `The compaction point is a whole percent of the context window, from 50 to 95.` Control refuses the same with **Not saved.** and the reason, and keeps what you typed in the fields. Under **The same over REST, MCP and the command line**, the block shows the same request for a script or an agent: see [Set a campaign's own context window](../models/model-per-agent.md#set-a-campaigns-own-context-window).
+
+## Add your words to the agents' roles
+
+Each agent role has its own instructions in Thermite's code ([Agent roles](../../reference/agent-roles.md)). A campaign's page has a block **Your additions to the agents' roles** that adds your own words to a role for this campaign's runs, with no change to that code: for example, "Keep every change small enough to read in one sitting." for the workers.
+
+1. Open **Campaigns** in the sidebar, then the campaign, and scroll to **Your additions to the agents' roles**. Its heading's right side names the roles that have one, or says `none`.
+2. Open **Add text to a role** (or **Change them**). There is one box for each role a campaign of its mode runs, named as the [Agent roles](../../reference/agent-roles.md) page names it, with its id, such as **Worker** `worker`.
+3. Write in the boxes you want, at most 20,000 characters each. Empty a box to remove that role's addition.
+4. Press **Save**.
+
+The block says, for example, `Saved as version 4: additions for worker and planner. New runs of sort-speed take it.` Control saved a new version of the campaign's contract, with the text as [`role_additions`](../../reference/contract.md#your-additions-to-the-agents-roles). A run at work keeps what it started with. Saving the same text again says `Nothing changed: version 4 has these additions already.`
+
+Each prompt of the role then carries your text as a part of its own, after the role's instructions: it starts `# The campaign owner's addition (contract version 4)`, and a line tells the agent that it adds to its instructions and replaces none of them, which come first where the two differ. On a run's **Prompts** tab, that part shows as from `owner's addition`. Your text never decides a measurement, a verdict or a promotion: code does.
+
+A script or an agent does the same with [`POST /v1/campaigns/<campaign>/additions`](../../reference/rest-api.md#the-owners-additions-to-a-campaigns-roles), MCP's [`set_campaign_additions`](../../reference/mcp-tools.md#set_campaign_additions) or [`thermite campaign additions`](../../reference/command-line.md#campaign-additions).
 
 ## Compare two models from zero
 

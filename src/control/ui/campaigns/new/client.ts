@@ -354,6 +354,10 @@ ${BRIEF_PAGE_JS}
     // control refuses them in its words; the submit stops on what is not a number.
     const cw = ccNum(val("context_window")), ca = ccNum(val("compact_at"), true);
     if (cw.n || ca.n) d.agents_context = Object.assign({}, cw.n ? { context_window: cw.n } : {}, ca.n ? { compact_at: ca.n } : {});
+    // The owner's additions to the mode's roles (goal 166): each box filled, by its role's id.
+    const adds = {};
+    for (const el of $$('[name^="addition_"]')) if (!el.closest("[hidden]") && el.value.trim()) adds[el.name.slice(9)] = el.value;
+    if (Object.keys(adds).length) d.role_additions = adds;
     if (mode === "research") {
       d.research = { topic: val("topic"), questions: briefList(blItems("questions")), seeds: briefLinks(form.elements.links ? form.elements.links.value : "").links, min_duration: val("min_duration") };
       // The floor of verified claims before the answer check (goal 112): left out when empty.
@@ -425,7 +429,7 @@ ${BRIEF_PAGE_JS}
     const rig = choice.rig || "";
     if (!rig) return s;
     const research = (choice.mode || "hill_climb") === "research";
-    let own = (ccRigs[rig] || []).filter((a) => !research || ["workers", "teachers", "second_teacher", "merged_by"].includes(a.agent));
+    let own = (ccRigs[rig] || []).filter((a) => !research || ["workers", "teachers", "second_teacher", "merged_by", "synthesizer", "final_writer"].includes(a.agent));
     const mSel = form.elements.agents_model;
     if (mSel && mSel.value) {
       const opt = mSel.selectedOptions[0], model = decodeURIComponent(mSel.value.split("|")[1] || "");

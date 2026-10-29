@@ -5,6 +5,7 @@ import type { NoteRequest } from "../../../agents/tools/index.ts";
 import type { McpCallResult } from "../../../common/mcp-client.ts";
 import type { LaneLimitValues } from "../../../core/contract.ts";
 import type { McpToolInfo } from "../../../core/mcp.ts";
+import type { OwnerAddition } from "../../../core/role-additions.ts";
 import type { CallUsage } from "../../../core/usage.ts";
 import type { Role, Runner } from "../../broker/index.ts";
 import type { SessionLink } from "../live-session.ts";
@@ -51,6 +52,8 @@ export interface TrialSpec {
    * through the harness's gateway with its own token.
    */
   mcpServers?: string[] | undefined;
+  /** The owner's addition to the worker for the run's campaign (goal 166); none: no section. */
+  addition?: OwnerAddition | undefined;
 }
 
 export interface SubmitOutcome {

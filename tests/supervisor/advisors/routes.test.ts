@@ -212,6 +212,51 @@ describe("advisors from control", () => {
     assert.equal(merged?.merged_by?.name, "m");
   });
 
+  test("the synthesizer and the final writer take their own models from control, else the first teacher's (goal 166)", async () => {
+    const file = AdvisorsConfig.parse({
+      teachers: [{ name: "t", runtime: "cli", argv: ["x"], restricted: true }],
+    });
+    const from = (body: Record<string, unknown>) =>
+      fetchControlAdvisors({
+        rig: "rig-a",
+        controlUrl: "http://control",
+        controlToken: "t",
+        fetchImpl: (async () => Response.json(body)) as typeof fetch,
+      });
+    // Their own routes, under their own names.
+    const own = await from({
+      teacher_models: [route({ model: "model-a" })],
+      synthesizer: route({ model: "model-s" }),
+      final_writer: route({ type: "claude", model: "claude-opus-5-5", api_key: "tok" }),
+    });
+    assert.equal(own.synthesizer?.name, "synthesizer");
+    assert.equal(own.synthesizer?.runtime === "openai" && own.synthesizer.model, "model-s");
+    assert.equal(own.final_writer?.name, "final-writer");
+    assert.equal(own.final_writer?.runtime, "claude-code");
+    const merged = mergeAdvisors(file, own);
+    assert.deepEqual(
+      [merged?.synthesizer?.name, merged?.final_writer?.name, merged?.teachers[0]?.name],
+      ["synthesizer", "final-writer", "teacher-1"],
+    );
+    // None from control: neither has a slot, and each pass uses the first teacher's (the file's).
+    const none = mergeAdvisors(file, await from({ synthesizer: null, final_writer: null }));
+    assert.deepEqual([none?.synthesizer, none?.final_writer], [undefined, undefined]);
+    assert.equal(none?.teachers[0]?.name, "t");
+    // A synthesizer alone is an advisor to run: the supervisor's loop does not idle.
+    const alone = mergeAdvisors(undefined, { synthesizer: own.synthesizer });
+    assert.equal(alone?.synthesizer?.name, "synthesizer");
+    assert.deepEqual(alone?.teachers, []);
+    // The advisors file has no place for them: its schema refuses both.
+    for (const key of ["synthesizer", "final_writer"])
+      assert.equal(
+        AdvisorsConfig.safeParse({
+          [key]: { name: "s", runtime: "cli", argv: ["x"], restricted: true },
+        }).success,
+        false,
+        key,
+      );
+  });
+
   test("the advisors file takes merged_by and review_panel; the old names combiner and panel are refused", () => {
     const cli = (name: string) => ({ name, runtime: "cli", argv: ["x"], restricted: true });
     const now = AdvisorsConfig.parse({ merged_by: cli("m"), review_panel: [cli("r1")] });
@@ -239,6 +284,8 @@ describe("advisors from control", () => {
       merged_by: undefined,
       auditor: undefined,
       review_panel: undefined,
+      synthesizer: undefined,
+      final_writer: undefined,
     });
     // No file and nothing from control: no advisors at all. A control with no such route: its
     // 404 changes nothing.

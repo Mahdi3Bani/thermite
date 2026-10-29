@@ -1,12 +1,20 @@
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { errorText } from "../../common/errors.ts";
-import { CAMPAIGN_CONTEXT, CAMPAIGN_COPY, START_RUN } from "../../core/api/control/owner.ts";
+import {
+  CAMPAIGN_ADDITIONS,
+  CAMPAIGN_CONTEXT,
+  CAMPAIGN_COPY,
+  START_RUN,
+} from "../../core/api/control/owner.ts";
 import { controlAt, orFail } from "../calls.ts";
 import { briefFromFlags, contextFromFlags, fail } from "./shared.ts";
 import { USAGE } from "./usage.ts";
 
-/** The commands for the campaigns control keeps: start a run of one, copy one, set its context. */
+/**
+ * The commands for the campaigns control keeps: start a run of one, copy one, set its context, set
+ * the owner's additions to its roles.
+ */
 
 /** thermite run start: start a run of a campaign control keeps. */
 export async function thermiteRun(rest: string[]): Promise<void> {
@@ -49,8 +57,53 @@ export async function thermiteRun(rest: string[]): Promise<void> {
   if (out.started === false) process.exitCode = 1;
 }
 
-/** thermite campaign copy and context. */
+/**
+ * The owner's additions as `--add ROLE=FILE` gives them: each role's text, read from its file.
+ * A word without `=`, or a file that can't be read, ends the command.
+ */
+function additionsFromFlags(adds: readonly string[] | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const a of adds ?? []) {
+    const at = a.indexOf("=");
+    if (at < 1) fail(`--add takes ROLE=FILE, such as worker=worker-notes.md: not ${a}`);
+    const role = a.slice(0, at);
+    const file = a.slice(at + 1);
+    try {
+      out[role] = readFileSync(file, "utf8");
+    } catch (err) {
+      fail(`--add ${role}: ${file} can't be read: ${errorText(err)}`);
+    }
+  }
+  return out;
+}
+
+/** thermite campaign copy, context and additions. */
 export async function thermiteCampaign(rest: string[]): Promise<void> {
+  // The owner's additions to a campaign's roles (goal 166), through POST
+  // /v1/campaigns/<name>/additions.
+  if (rest[0] === "additions") {
+    const [, campaign, ...args] = rest;
+    if (!campaign || campaign.startsWith("-")) fail(USAGE);
+    const { values } = parseArgs({
+      args,
+      options: {
+        control: { type: "string" },
+        "token-file": { type: "string" },
+        add: { type: "string", multiple: true },
+      },
+    });
+    if (!values.control || !values["token-file"])
+      fail("give --control and --token-file: control keeps the campaign");
+    const out = await orFail(
+      controlAt(values.control, values["token-file"]).call(CAMPAIGN_ADDITIONS, {
+        params: { campaign },
+        body: { additions: additionsFromFlags(values.add) },
+      }),
+    );
+    process.stdout.write(`${JSON.stringify(out)}\n`);
+    if (out.said) process.stderr.write(`${out.said}\n`);
+    return;
+  }
   // A campaign's own context settings (goal 070), through POST /v1/campaigns/<name>/context.
   if (rest[0] === "context") {
     const [, campaign, ...args] = rest;

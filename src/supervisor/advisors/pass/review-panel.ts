@@ -25,6 +25,7 @@ export async function answerReviews(ctx: AdviseContext): Promise<void> {
     pastSearchFor,
     researchFor,
     configFor,
+    additionsFor,
     keeperFor,
     mcpFor,
     overBudget,
@@ -63,6 +64,7 @@ export async function answerReviews(ctx: AdviseContext): Promise<void> {
         const answers: { message: number; text: string; advisor: string }[] = [];
         const journal: { by: string; notes: NoteInput[] }[] = [];
         const mcp = await mcpFor(pkg.run);
+        const additions = await additionsFor(pkg.run);
         // A research run's review (goal 112): its reviewers may read the run's own research.
         const research = isResearchPackage(pkg);
         // With the campaign's own context settings, when it sets any (goal 070).
@@ -82,6 +84,7 @@ export async function answerReviews(ctx: AdviseContext): Promise<void> {
               ...(mcp ? { mcp } : {}),
               ...(research && pkg.run ? { research: researchFor(pkg.run) } : {}),
               keeper: keeperFor(pkg.run),
+              additions,
             }).then(
               (r) => ({ runtime, r }),
               (err: unknown) => ({

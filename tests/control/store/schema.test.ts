@@ -23,7 +23,7 @@ describe("control's store migrations", () => {
     old.close();
 
     const store = new ControlStore(path);
-    assert.equal(version(store.db), 9);
+    assert.equal(version(store.db), 10);
     const folder = store.db.prepare("select name from campaign_folder").get() as { name: string };
     assert.equal(folder.name, "speed");
     store.db.close();
@@ -45,7 +45,7 @@ describe("control's store migrations", () => {
   test("a new store is not copied", () => {
     const path = fresh();
     const store = new ControlStore(path);
-    assert.equal(version(store.db), 9);
+    assert.equal(version(store.db), 10);
     store.db.close();
     assert.deepEqual(copiesOf(path), []);
   });
@@ -56,7 +56,7 @@ describe("control's store migrations", () => {
     one.db.exec("drop table rig_update; delete from schema_migrations where version >= 2");
     one.db.close();
     const store = new ControlStore(path);
-    assert.equal(version(store.db), 9);
+    assert.equal(version(store.db), 10);
     assert.ok(store.db.prepare("select 1 from sqlite_master where name = 'rig_update'").get());
     store.db.close();
     assert.deepEqual(
@@ -81,7 +81,7 @@ describe("control's store migrations", () => {
       row.run(id, agent);
     three.db.close();
     const store = new ControlStore(path);
-    assert.equal(version(store.db), 9);
+    assert.equal(version(store.db), 10);
     const agents = store.db.prepare("select agent from model_call order by event_id").all();
     assert.deepEqual(
       agents.map((r) => r.agent),
@@ -91,6 +91,72 @@ describe("control's store migrations", () => {
     assert.deepEqual(
       copiesOf(path).map((c) => c.version),
       [3],
+    );
+  });
+
+  test("a store at version 9 gets the synthesizer's and the final writer's model slots, and keeps every agent's model (goal 166)", () => {
+    const path = fresh();
+    const nine = new ControlStore(path);
+    // The table as version 9 left it: its check takes the roles of goal 074 only.
+    nine.db.exec(`drop table rig_role_model;
+      create table rig_role_model (
+        rig text not null,
+        role text not null check (role in ('planner', 'teachers', 'second_teacher', 'merged_by', 'auditor', 'review_panel')),
+        provider text not null, model text not null, effort text, assigned_at text not null,
+        harness text, context_cap integer, compact_at integer,
+        primary key (rig, role));
+      insert into rig_role_model values ('rig-a', 'teachers', 'lab', 'wide-model', 'high', '2026-10-27', 'codex', 65536, 70);
+      insert into rig_role_model values ('rig-a', 'auditor', 'lab', 'strong-model', null, '2026-10-27', null, null, null);
+      delete from schema_migrations where version >= 10`);
+    assert.throws(() =>
+      nine.db
+        .prepare(
+          "insert into rig_role_model (rig, role, provider, model, assigned_at) values ('rig-a', 'synthesizer', 'lab', 'm', 'now')",
+        )
+        .run(),
+    );
+    nine.db.close();
+    const store = new ControlStore(path);
+    assert.equal(version(store.db), 10);
+    const roles = store.agentModels.byRole("rig-a");
+    assert.deepEqual(roles.teachers, {
+      provider: "lab",
+      model: "wide-model",
+      effort: "high",
+      harness: "codex",
+      contextCap: 65_536,
+      compactAt: 70,
+    });
+    assert.equal(roles.auditor?.model, "strong-model");
+    // The two new slots take a model; a role the check does not name is still refused.
+    store.modelProviders.put({
+      name: "lab",
+      type: "openai",
+      base_url: "https://models.example.com/v1",
+      key: { sealed: "sealed-for-tests", hint: "…ests" },
+    });
+    store.agentModels.assignRole("rig-a", "synthesizer", { provider: "lab", model: "wide-model" });
+    store.agentModels.assignRole("rig-a", "final_writer", {
+      provider: "lab",
+      model: "strong-model",
+      harness: "pi",
+    });
+    const after = store.agentModels.byRole("rig-a");
+    assert.deepEqual(
+      [after.synthesizer?.model, after.final_writer?.model, after.final_writer?.harness],
+      ["wide-model", "strong-model", "pi"],
+    );
+    assert.throws(() =>
+      store.db
+        .prepare(
+          "insert into rig_role_model (rig, role, provider, model, assigned_at) values ('rig-a', 'writer', 'lab', 'm', 'now')",
+        )
+        .run(),
+    );
+    store.db.close();
+    assert.deepEqual(
+      copiesOf(path).map((c) => c.version),
+      [9],
     );
   });
 
@@ -117,11 +183,11 @@ describe("control's store migrations", () => {
     old.exec(V010);
     old.close();
     const store = new ControlStore(path);
-    store.db.prepare("insert into schema_migrations (version) values (10)").run();
+    store.db.prepare("insert into schema_migrations (version) values (11)").run();
     store.db.close();
     assert.throws(
       () => new ControlStore(path),
-      /control store is at schema version 10, newer than this code's 9: .*the copy made then: .*control\.db\.v0\..*\.copy/,
+      /control store is at schema version 11, newer than this code's 10: .*the copy made then: .*control\.db\.v0\..*\.copy/,
     );
   });
 });
