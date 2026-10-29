@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "n
 import { dirname, join } from "node:path";
 import { serve } from "@hono/node-server";
 import { buildInfo } from "../common/build-info.ts";
-import { busHost, busUrl, natsBus, reloadBus } from "../common/bus.ts";
+import { busHost, natsBus, reloadBus } from "../common/bus.ts";
 import { log, optionalSecretFromFile, parseListen } from "../common/env.ts";
 import { writeAtomic } from "../common/fs.ts";
 import { startLogging } from "../common/log.ts";
@@ -20,10 +20,11 @@ import {
   CONFIG_WRITE_MS,
   ConfigWriter,
   ConfigWritten,
+  controlBusUrl,
 } from "./bus/index.ts";
 import { Credential } from "./credential.ts";
 import { mountDashboard } from "./dashboard/index.ts";
-import { EventsMirror } from "./events/index.ts";
+import { EventsApply, EventsMirror } from "./events/index.ts";
 import { followReports } from "./ingest.ts";
 import { sendCommandsOn } from "./issue/index.ts";
 import { KitRepos } from "./kits/index.ts";
@@ -40,6 +41,10 @@ import { ControlStore } from "./store/index.ts";
 async function main(): Promise<void> {
   const env = process.env;
   startLogging("control", env);
+  // The message bus (goal 168), which control needs: every rig's events are kept in its events
+  // stream, and what control derives from them is applied from there. Rigs report over the bus,
+  // or over HTTP; control publishes the events of both. Commands and live lines go over it too.
+  const natsUrl = controlBusUrl(env);
   const dir = env.THERMITE_CONTROL_DIR ?? "/var/lib/thermite-control";
   mkdirSync(dir, { recursive: true });
   const keyPath = join(dir, "control-signing.key");
@@ -98,28 +103,22 @@ async function main(): Promise<void> {
   const driver = driverFromEnv(env);
   // Optional: the owner accepts each rig's first report key (no trust on first use).
   const requireKeyAcceptance = env.THERMITE_CONTROL_REQUIRE_KEY_ACCEPT === "1";
-  // The message bus (goal 168): with THERMITE_NATS_URL, rigs' reports and live lines arrive
-  // there too, and commands leave there too.
-  const natsUrl = busUrl(env);
   // How rigs and the machines control sets rigs up on reach control.
   const publicUrl = env.THERMITE_CONTROL_PUBLIC_URL || undefined;
   // The bus as the rigs control sets up reach it (none: they keep to HTTP), and its TLS: control's
   // own authority, kept beside its signing key, and the server's certificate for the names control
   // and those rigs reach it by, written to the folder the server reads (bus/tls.ts).
-  const rigBusUrl = natsUrl ? busPublicUrl(env, publicUrl) : undefined;
-  const busDir = natsUrl ? busConfigDir(env) : undefined;
-  const busTls =
-    natsUrl && busDir
-      ? new BusTls({
-          stateDir: dir,
-          configDir: busDir,
-          names: [busHost(natsUrl), ...(rigBusUrl ? [busHost(rigBusUrl)] : [])],
-        })
-      : undefined;
+  const rigBusUrl = busPublicUrl(env, publicUrl);
+  const busDir = busConfigDir(env);
+  const busTls = new BusTls({
+    stateDir: dir,
+    configDir: busDir,
+    names: [busHost(natsUrl), ...(rigBusUrl ? [busHost(rigBusUrl)] : [])],
+  });
   // The rigs beside control in compose read the authority's certificate from control's volume.
   const caExport = env[BUS_CA_EXPORT_SETTING];
-  if (busTls && caExport) writeAtomic(caExport, busTls.caCert, 0o644);
-  const trust = busTls ? { ca: busTls.caCert } : undefined;
+  if (caExport) writeAtomic(caExport, busTls.caCert, 0o644);
+  const trust = { ca: busTls.caCert };
   // The key that seals model routes' API keys: its own file, made on first use. Mount it
   // from a separate secret to keep it off the database's volume.
   const secrets = SecretBox.fromFile(
@@ -127,24 +126,24 @@ async function main(): Promise<void> {
   );
   // Who may use the bus: control's own users and each rig's that registered its key, written to
   // the server's users file, which the server reloads on control's request (bus/users.ts).
-  const busUsers =
-    natsUrl && busDir && busTls
-      ? new BusUsers({
-          store,
-          secrets,
-          file: join(busDir, BUS_USERS_FILE),
-          tls: busTls,
-          reload: (seed) => reloadBus(natsUrl, seed, trust),
-        })
-      : undefined;
-  // Control's connection to the bus, signed in as its own user; the mirror of its events table
-  // there; and what it took from the live stream and wrote to the config bucket, which the bus's
-  // state shows.
-  const bus =
-    natsUrl && busUsers
-      ? natsBus(natsUrl, "control", { seed: busUsers.controlSeed, trust })
-      : undefined;
-  const eventsMirror = bus ? new EventsMirror({ store, bus }) : undefined;
+  const busUsers = new BusUsers({
+    store,
+    secrets,
+    file: join(busDir, BUS_USERS_FILE),
+    tls: busTls,
+    reload: (seed) => reloadBus(natsUrl, seed, trust),
+  });
+  // Control's connection to the bus, signed in as its own user; the apply of the events stream,
+  // which writes what control derives from the events, and the mirror of its events table there,
+  // which nudges the apply after each batch; and what it took from the live stream and wrote to
+  // the config bucket, which the bus's state shows.
+  const bus = natsBus(natsUrl, "control", { seed: busUsers.controlSeed, trust });
+  const eventsApply = new EventsApply({ store, bus });
+  const eventsMirror = new EventsMirror({
+    store,
+    bus,
+    published: () => void eventsApply.nudge(),
+  });
   const liveTaken = new LiveTaken();
   const configWritten = new ConfigWritten();
   // What the dashboard, REST, MCP and the loops below share, made once here (parts.ts): the test
@@ -170,23 +169,21 @@ async function main(): Promise<void> {
               supervisor: env.THERMITE_RIG_SUPERVISOR_IMAGE,
             }
           : undefined,
-      rigBus: rigBusUrl && busTls ? { url: rigBusUrl, ca: busTls.caCert } : undefined,
-      bus:
-        bus && natsUrl && eventsMirror
-          ? {
-              server: new URL(natsUrl).host,
-              bus,
-              events: eventsMirror,
-              live: liveTaken,
-              config: configWritten,
-            }
-          : undefined,
+      rigBus: rigBusUrl ? { url: rigBusUrl, ca: busTls.caCert } : undefined,
+      bus: {
+        server: new URL(natsUrl).host,
+        bus,
+        events: eventsMirror,
+        apply: eventsApply,
+        live: liveTaken,
+        config: configWritten,
+      },
     },
     { staleAfterMs, offlineAfterMs, control: buildInfo() },
   );
   const { runpodTests, tunnels, runpodRigs } = parts;
   // Each rig's config, written to the config bucket when it changes (bus/config.ts).
-  const busConfig = bus ? new ConfigWriter({ parts, bus, figures: configWritten }) : undefined;
+  const busConfig = new ConfigWriter({ parts, bus, figures: configWritten });
   const server = serve({
     fetch: createControlApi(store, tokens, privateKeyPem, {
       staleAfterMs,
@@ -217,33 +214,39 @@ async function main(): Promise<void> {
       .filter((r) => !r.retired_at)
       .map((r) => r.rig),
     lifecycle: driver?.kind ?? null,
-    bus: natsUrl ? new URL(natsUrl).host : null,
+    bus: new URL(natsUrl).host,
     bus_for_rigs: rigBusUrl ? new URL(rigBusUrl).host : null,
   });
   // Reports from the bus, folded through the ingest route's checks as they arrive; the events
-  // table, mirrored to the events stream, from the stream's last row to the table's end at start
-  // and then as reports arrive, by HTTP or by the bus; live lines, folded into the live view as
-  // they arrive; each command control issues, published to its rig's subject as well as kept in
-  // the store; and each rig's config, written when it changes. The users file is written first,
-  // so that the server can start, and kept up to date after.
-  let usersSync: NodeJS.Timeout | undefined;
-  let configWrite: NodeJS.Timeout | undefined;
-  if (bus && busUsers && busConfig && eventsMirror) {
-    void busUsers.sync();
-    usersSync = setInterval(() => void busUsers.sync(), BUS_USERS_SYNC_MS);
-    void eventsMirror.start();
-    void busConfig.start().then(() => busConfig.write());
-    configWrite = setInterval(() => void busConfig.write(), CONFIG_WRITE_MS);
-    followReports(bus, { store, control: buildInfo(), requireKeyAcceptance }).catch((err) =>
-      log("control", "reports from the bus stopped", { error: String(err) }, "error"),
-    );
-    followLive(bus, { store, taken: liveTaken }).catch((err) =>
-      log("control", "live lines from the bus stopped", { error: String(err) }, "error"),
-    );
-    sendCommandsOn(store, bus).catch((err) =>
-      log("control", "commands stream not made", { error: String(err) }, "error"),
-    );
-  }
+  // stream, applied from the store's place to its end, once the store's place is checked against
+  // the stream's end; the events table, mirrored to the events stream after that check, from the
+  // stream's last row to the table's end at start and then as reports arrive, by HTTP or by the
+  // bus; live lines, folded into the live view as they arrive; each command control issues,
+  // published to its rig's subject as well as kept in the store; and each rig's config, written
+  // when it changes. The users file is written first, so that the server can start, and kept up
+  // to date after.
+  void busUsers.sync();
+  const usersSync = setInterval(() => void busUsers.sync(), BUS_USERS_SYNC_MS);
+  void eventsApply.start().then(() => {
+    // A store that applied the stream past its end holds records the stream lacks: control does
+    // not go on with it.
+    if (eventsApply.stopped) {
+      log("control", "fatal", { error: eventsApply.stopped }, "error");
+      process.exit(1);
+    }
+    return eventsMirror.start();
+  });
+  void busConfig.start().then(() => busConfig.write());
+  const configWrite = setInterval(() => void busConfig.write(), CONFIG_WRITE_MS);
+  followReports(bus, { store, control: buildInfo(), requireKeyAcceptance }).catch((err) =>
+    log("control", "reports from the bus stopped", { error: String(err) }, "error"),
+  );
+  followLive(bus, { store, taken: liveTaken }).catch((err) =>
+    log("control", "live lines from the bus stopped", { error: String(err) }, "error"),
+  );
+  sendCommandsOn(store, bus).catch((err) =>
+    log("control", "commands stream not made", { error: String(err) }, "error"),
+  );
   // Full resets advance as their evidence arrives.
   const resets = setInterval(() => {
     advanceResets({ store, privateKeyPem, driver, staleAfterMs }).catch((err) =>

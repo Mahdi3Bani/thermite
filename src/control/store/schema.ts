@@ -4,6 +4,7 @@ import { transaction } from "../../common/sqlite.ts";
 import { busKeyTables, busSealKeyColumn } from "./bus.ts";
 import { eventsInOrderIndex } from "./events.ts";
 import { synthesizerAndWriterSlots } from "./models.ts";
+import { appliedPlacesTables } from "./positions.ts";
 import { runRegistryTable } from "./runs.ts";
 
 /**
@@ -711,6 +712,8 @@ const STORE_MIGRATIONS: readonly ((db: DatabaseSync) => void)[] = [
   busSealKeyColumn,
   // The synthesizer's and the final writer's own models (goal 166).
   synthesizerAndWriterSlots,
+  // How far the store applied the events stream, and each rig ledger's held cursor (goal 168).
+  appliedPlacesTables,
 ];
 
 /**

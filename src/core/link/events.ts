@@ -55,8 +55,8 @@ const EVENT_KIND_WORDS = "a kind is up to 64 of a-z, 0-9 and _, starting with a 
 
 /**
  * The subject an event goes on. A run's event goes on its run's subject when control's run
- * registry gives the run to the rig (`runIsTheRigs`, which the caller looks up): by its kind, or a
- * queue change by what it did. Every other event goes on the rig's own subject by its kind: one
+ * registry gives the run to the rig, or to no rig yet (`runIsTheRigs`, which the caller looks up):
+ * by its kind, or a queue change by what it did. Every other event goes on the rig's own subject by its kind: one
  * with no run, one of a run the registry gives another rig, and one of a run whose name a subject
  * can't hold (a run named before goal 170), as a live line does. Throws, in words, on a rig's name
  * or a kind a subject can't hold.

@@ -19,8 +19,8 @@ import type { ControlStore, StoredEvent } from "../store/index.ts";
  * recorded it (core/link/events.ts), with its place in the table (`Thermite-Seq`). The mirror goes
  * on after the Thermite-Seq of the stream's last message: at control's start, from there to the
  * table's end (the move of the events control had before), and then each time ingest stores new
- * rows. It is the stream's one writer, one turn at a time. Nothing reads the stream yet: control's
- * pages read the table.
+ * rows. It is the stream's one writer, one turn at a time. The apply of the stream (apply.ts)
+ * writes what control derives from the events; control's pages still read the table.
  */
 
 /**
@@ -45,6 +45,17 @@ export interface MirrorStopped {
   /** The row's event as a message's data, in bytes; null when its size is not what stopped it. */
   bytes: number | null;
   error: string;
+}
+
+/**
+ * Whether a run's event goes on its run's subject: the run registry gives the run to the rig that
+ * reported it, or to no rig yet. A run a rig created is its own from its `run_created` on, which
+ * ingest registers before this copy reads the registry; so every event of a run a page creates goes
+ * on the run's subject, its `run_created` too. A run the registry gives only other rigs is not the
+ * rig's: its event goes on the rig's own subject.
+ */
+function isTheRigsRun(rig: string, rigsOfRun: readonly string[]): boolean {
+  return rigsOfRun.length === 0 || rigsOfRun.includes(rig);
 }
 
 /** A row as a message on the bus, or why the bus can't carry it. */
@@ -96,6 +107,8 @@ export interface EventsMirrorOptions {
   bus: Pick<Bus, "makeStream" | "publishBatch" | "lastSeq" | "message">;
   /** How long it waits after a failure: BUS_RETRY_MS unless a test gives a shorter one. */
   retryMs?: number | undefined;
+  /** Told after each batch the stream stored: the apply of the stream (apply.ts) reads it then. */
+  published?: (() => void) | undefined;
 }
 
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -229,6 +242,7 @@ export class EventsMirror {
         this.streamSeq = last;
         this.published += messages.length;
         copied += messages.length;
+        this.o.published?.();
       }
       if (stop) return this.stop(stop);
       if (!messages.length) break;
@@ -256,7 +270,7 @@ export class EventsMirror {
     const messages: Outgoing[] = [];
     let last = this.streamSeq ?? 0;
     let bytes = 0;
-    // The runs the run registry gives each rig, looked up once a batch.
+    // The rigs the run registry gives each run, looked up once a batch.
     const rigsOf = new Map<string, string[]>();
     for (const row of rows) {
       const run = row.run;
@@ -265,7 +279,7 @@ export class EventsMirror {
         rig: row.rig,
         ledger: row.ledger_id,
         event: { ...row.event, body: JSON.parse(row.body), run },
-        runIsTheRigs: run !== null && (rigsOf.get(run) ?? []).includes(row.rig),
+        runIsTheRigs: run !== null && isTheRigsRun(row.rig, rigsOf.get(run) ?? []),
         seq: row.seq,
       });
       if ("error" in m) {

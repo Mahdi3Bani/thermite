@@ -13,6 +13,7 @@ import { generateSigningKeys } from "../../../src/core/commands.ts";
 import { parseContract } from "../../../src/core/contract.ts";
 import { usesFor } from "../../../src/core/mcp.ts";
 import { ADMIN, controlOnly, mcpClient, signIn } from "../../helpers/control-stack.ts";
+import { applied } from "../../helpers/control-store.ts";
 
 /**
  * Copy a campaign (goal 069): REST's POST /v1/campaigns/<name>/copy, MCP's copy_campaign. The copy
@@ -67,8 +68,11 @@ async function stack() {
     options: { staleAfterMs: 600_000, kits },
   });
   const next = new Map<string, number>();
-  /** A rig's report of these events, after the ones it reported before. */
-  const ingest = (rig: string, events: Ev[]) => {
+  /**
+   * A rig's report of these events, after the ones it reported before, once control applied them
+   * from the events stream.
+   */
+  const ingest = async (rig: string, events: Ev[]) => {
     const from = next.get(rig) ?? 0;
     next.set(rig, from + events.length);
     store.rigEvents.ingest({
@@ -100,9 +104,10 @@ async function stack() {
         },
       },
     });
+    await applied(store);
   };
   const deps = { store, kits, privateKeyPem: keys.privateKeyPem };
-  ingest("rig-a", []);
+  await ingest("rig-a", []);
   const first = await startCampaign(deps, {
     draft,
     rig: "rig-a",
@@ -111,7 +116,7 @@ async function stack() {
     by: "owner:ui",
   });
   assert.ok(first.ok && first.run === "matmul-speed-1");
-  ingest("rig-a", [
+  await ingest("rig-a", [
     ["harness", "run_created", "matmul-speed-1", { campaign: "matmul-speed", mode: "hill_climb" }],
     [
       "planner",
@@ -128,7 +133,7 @@ async function stack() {
     by: "owner:ui",
   });
   assert.ok(second.ok && second.version === 2);
-  ingest("rig-b", [
+  await ingest("rig-b", [
     ["harness", "run_created", "sv-2", { campaign: "survey-study", mode: "research" }],
     [
       "harness",
@@ -266,7 +271,7 @@ describe("Copy a campaign over REST (goal 069)", () => {
     assert.deepEqual(sent.payload.imports, before.payload.imports);
     assert.deepEqual(sent.payload.seed, before.payload.seed);
     // The rig reports the run: control files it in the copy's folder, and syncs it nothing else.
-    s.ingest("rig-a", [
+    await s.ingest("rig-a", [
       ["harness", "run_created", "matmul-speed-b-1", { campaign: "matmul-speed-b" }],
     ]);
     const sync = s.store.kb().sync("rig-a", "matmul-speed-b-1", 0);

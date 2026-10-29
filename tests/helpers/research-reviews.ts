@@ -1,6 +1,7 @@
 import type { ControlStore } from "../../src/control/store/index.ts";
 import { callUsage } from "../../src/core/usage.ts";
 import { ADMIN, controlOnly, mcpClient, signIn } from "./control-stack.ts";
+import { applied } from "./control-store.ts";
 
 /**
  * A research run as control sees it from a rig's events (goals 116 and 117), for control's tests:
@@ -32,7 +33,8 @@ export async function researchControl() {
     return JSON.parse(r.content[0]?.text ?? "null");
   };
   let id = 0;
-  const ingest = (events: Ev[]) =>
+  /** The rig's report of these events, once control applied them from the events stream. */
+  const ingest = async (events: Ev[]) => {
     store.rigEvents.ingest({
       rig: "rig-a",
       ledger_id: "ledger-a",
@@ -48,6 +50,8 @@ export async function researchControl() {
       })),
       summary: {},
     });
+    await applied(store);
+  };
   /** A form as the page's script sends it: with fetch, asking for JSON. */
   const send = async (form: Record<string, string>) => {
     const csrf = ui.csrfOf(await page(RUN));

@@ -14,7 +14,7 @@ import { at, researchControl, researchRunEvents } from "../../helpers/research-r
 describe("a research run's items on control (goals 116 and 117)", () => {
   test("get_run and run_queue carry the decisions, each review's items, the progress rule, the hypotheses and each task's question and yield", async () => {
     const c = await researchControl();
-    c.ingest(researchRunEvents());
+    await c.ingest(researchRunEvents());
     const run = await c.mcp("get_run", { run: "s-1" });
     assert.deepEqual(
       run.standing.map((s: Record<string, unknown>) => [

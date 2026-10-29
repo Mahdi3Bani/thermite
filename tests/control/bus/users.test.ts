@@ -325,7 +325,7 @@ describe("each rig's key on the message bus", () => {
     store.db.close();
   });
 
-  test("a key is recorded without the bus too; with the bus, the server's folder must be named", () => {
+  test("a key is recorded without the bus too; control needs the server's folder named", () => {
     const store = new ControlStore(":memory:");
     const key = user();
     assert.equal(takeRigBusKey(store, "rig-a", key), "new");
@@ -337,7 +337,7 @@ describe("each rig's key on the message bus", () => {
     for (const env of [{}, { THERMITE_NATS_CONFIG_DIR: " " }])
       assert.throws(
         () => busConfigDir(env),
-        /^Error: with THERMITE_NATS_URL set, THERMITE_NATS_CONFIG_DIR names the folder control writes the bus's users and TLS certificate to, which the server's configuration includes$/,
+        /^Error: control needs THERMITE_NATS_CONFIG_DIR: the folder control writes the bus's users and TLS certificate to, which the server's configuration includes$/,
       );
   });
 });

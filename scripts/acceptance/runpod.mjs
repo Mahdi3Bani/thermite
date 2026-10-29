@@ -34,14 +34,16 @@ import { promisify } from "node:util";
 import { acceptanceChecks } from "./lib/checks.mjs";
 import { cleanEngine, engine } from "./lib/smoke-env.mjs";
 
-// Control's side, in this process (Node.js strips the types of these files).
+// Control's side, in this process (Node.js strips the types of these files). Its store is on the
+// tests' fake message bus, as control needs a bus: the rigs here report over HTTP, in pull mode,
+// and only control's own copy of its events and the apply of it use the bus, in this process.
 const { createControlApi } = await import("../../src/control/api/index.ts");
 const { advanceResets } = await import("../../src/control/lifecycle.ts");
 const { RunpodRigs } = await import("../../src/control/runpod/rigs.ts");
 const { SecretBox } = await import("../../src/control/secrets.ts");
-const { ControlStore } = await import("../../src/control/store/index.ts");
 const { ControlTunnels } = await import("../../src/control/runpod/tunnel.ts");
 const { generateSigningKeys } = await import("../../src/core/commands.ts");
+const { controlStore } = await import("../../tests/helpers/control-store.ts");
 const { FAKE_RUNPOD_KEY, fakeRunpod } = await import("../../tests/helpers/fake-runpod.ts");
 
 const harnessImage = "localhost/thermite-harness:runpod-check";
@@ -161,7 +163,7 @@ try {
 
   // Control, with one RunPod account in Providers: the fake's key, sealed.
   const keys = generateSigningKeys();
-  const store = new ControlStore(":memory:");
+  const store = controlStore();
   const secrets = SecretBox.ephemeral();
   store.gpuClouds.add({
     name: "runpod",

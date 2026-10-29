@@ -4,13 +4,13 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { ControlStore } from "../../src/control/store/index.ts";
 import { parseContract } from "../../src/core/contract.ts";
 import { Registry } from "../../src/harness/agents/registry.ts";
 import { LocalRunner } from "../../src/harness/broker/runner.ts";
 import { ResearchFolder } from "../../src/harness/research/folder.ts";
 import { Research } from "../../src/harness/research/research/index.ts";
 import { exportOnce } from "../../src/supervisor/git-export.ts";
+import { applied, controlStore } from "../helpers/control-store.ts";
 import { researchFixture } from "../helpers/fixtures.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";
 
@@ -362,7 +362,7 @@ describe("a run's export holds its journal, its research notes and its briefing"
       /Ended: no submission; 4 turns/,
     );
     // The same items control files from the same events, field by field.
-    const store = new ControlStore(":memory:");
+    const store = controlStore();
     const events = s.ledger.eventsAfter(0, 100_000).events;
     store.rigEvents.ingest({
       rig: s.rig,
@@ -373,6 +373,7 @@ describe("a run's export holds its journal, its research notes and its briefing"
       events,
       summary: {},
     });
+    await applied(store);
     const filed = store
       .kb()
       .changedAfter([String(s.ledger.runs.get(RUN)?.campaign)], 0)

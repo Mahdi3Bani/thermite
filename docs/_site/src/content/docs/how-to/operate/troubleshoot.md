@@ -78,6 +78,18 @@ There is no single Logs page yet ([goal 027](https://github.com/iammrduncan/ther
 - **Why:** you added `compose.lifecycle.yaml` to a stack that had already run. See [Give control a deployment driver](rig-lifecycle.md#give-control-a-deployment-driver).
 - **Do:** start the stack again without that file.
 
+### Control stops at start: `control needs its message bus`
+
+- **You see:** control keeps restarting, and its log has a `fatal` line that says `control needs its message bus: set THERMITE_NATS_URL to its NATS server, such as nats://nats:4222. …`.
+- **Why:** control keeps every rig's events on the bus, and does not start without it. The compose stack sets it for control; a deployment of your own may not.
+- **Do:** give control `THERMITE_NATS_URL`, and its bus's folder, `THERMITE_NATS_CONFIG_DIR`, with a NATS server beside it as the compose stack's `nats` service runs it. To keep a rig off the bus, leave the setting off that rig's supervisor instead: [Keep the rigs off it](message-bus.md#keep-the-rigs-off-it).
+
+### Control stops at start: its store is past the events stream's end
+
+- **You see:** control stops soon after it starts, and its log has `control's store is past the events stream's end`, then a `fatal` line with `control's store has applied the EVENTS stream to place …, past its last, …`.
+- **Why:** control's store holds records of events the bus's `EVENTS` stream no longer has: the bus's volume was restored from a backup older than control's store, or removed. Going on would skip the stream's next events.
+- **Do:** restore the stream from a backup at least as new as control's store, or the store from one no newer than the stream, then start control again.
+
 ### The port is already in use
 
 - **You see:** `docker compose up` fails because port 8800 is taken. `thermite doctor` says `Port 8800 is in use by another program.` before you start.
@@ -150,7 +162,7 @@ A sign-in also ends when the owner's token changes, or after 30 days without use
 | `following failed; trying again` or `making the stream failed; trying again`, with `ECONNREFUSED`, `ETIMEDOUT` or a timeout | The supervisor can't reach the message bus's port | Open the port to the rig's machine or cluster: [Run the message bus](message-bus.md#let-rigs-on-other-machines-reach-it) |
 | The same, with `unable to verify the first certificate` | The rig trusts another certificate authority than control's own for the bus, as after control made a new one | Move the rig onto its images again, so that it gets control's authority: [Move a rig onto new images](rig-lifecycle.md#move-a-rig-onto-new-images) |
 | The same, with `does not match certificate's altnames` | The rig reaches the bus by a name the server's certificate does not hold | Set `THERMITE_NATS_PUBLIC_URL` on control to the address the rigs use, restart control, and move the rig onto its images again |
-| The same, with `Authorization Violation` | The bus's server does not know the rig's key: control has not written it yet, or control runs with the bus off | Wait for the supervisor's next call to control, which registers the key. With the bus off on control, move the rig onto its images again, which takes the bus out |
+| The same, with `Authorization Violation` | The bus's server does not know the rig's key: control has not written it yet | Wait for the supervisor's next call to control, which registers the key |
 
 A rig control set up on a machine or a cluster may also still be pulling its images. Its setup steps say `no report after 10 minutes: it may not have started` when it took longer than that; it may still report later. For a rig on a cluster, see [A rig on a cluster never reports](#a-rig-on-a-cluster-never-reports).
 
@@ -442,7 +454,8 @@ A reason about one experiment names its state, then the rule: `only queued exper
   - **The sync hasn't come yet.** The supervisor syncs every 3 minutes, and only the runs that are running: a paused run gets its items once it runs again. Its setting is `THERMITE_KB_SYNC_SECONDS` (180); `0` turns the sync off ([Settings](../../reference/settings.md#how-often-it-talks-to-control)). A supervisor without control's address and token syncs nothing.
   - **Control didn't assign the run.** Control sends past research only for a run it assigned to that rig. For any other run, such as the `check-smoke-…` run of a rig's **Judge smoke** check, control has nothing: the supervisor logs no error, and asks about that run again after an hour. A run control assigned but hasn't seen the rig report yet gets its items at the next sync after the rig's report.
   - **The sync failed.** `past research sync error` names each run with its error, once until a sync works again, such as `<run>: control's knowledge base: HTTP` and the status control answered.
-  - **Control couldn't index the rig's reports.** The **Audit log** has a `kb_failed` entry with the error, and control's log has `knowledge base catch-up failed`. Control tries again with the rig's next report.
+  - **Control couldn't index an event of the rig's.** The **Audit log** has a `kb_failed` entry with the error, and control's log has `an event not indexed in the knowledge base`, with the event's rig, ledger, id and kind. That event is left out of the knowledge base; the events after it are indexed.
+  - **Control hasn't applied the rig's events yet.** Control fills the knowledge base from its message bus's `EVENTS` stream. While the bus is away, nothing new is indexed: `GET /v1/bus` says why under `events.apply`, and its `behind` falls to 0 once the bus is back ([Follow control's events to the bus and back](message-bus.md#follow-controls-events-to-the-bus-and-back)).
 
 ### An MCP server fails its check
 

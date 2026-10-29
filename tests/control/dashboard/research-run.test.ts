@@ -24,7 +24,7 @@ import {
 describe("a research run's page (goals 116 and 117)", () => {
   test("the Overview: each question's card, decision, gaps, share and yield, saturation and the progress rule", async () => {
     const c = await researchControl();
-    c.ingest(researchRunEvents());
+    await c.ingest(researchRunEvents());
     const html = await c.page(RUN);
     const block = part(html, 'data-part="research"', 'data-part="attempts"');
     assert.match(
@@ -113,7 +113,7 @@ describe("a research run's page (goals 116 and 117)", () => {
 
   test("the Reviews tab: newest first; asked and posted, tries, outcome, cost, decisions with dissent and what came before, each reviewer, messages, Live lines; nothing secret", async () => {
     const c = await researchControl();
-    c.ingest(researchRunEvents());
+    await c.ingest(researchRunEvents());
     reviewLiveLines(c.store);
     const html = await c.page(`${RUN}/reviews`);
     // Newest first.
@@ -207,7 +207,7 @@ describe("a research run's page (goals 116 and 117)", () => {
 
   test("the campaign's Reviews tab lists each run's reviews by run; a review from before item reviews shows its counts and gaps", async () => {
     const c = await researchControl();
-    c.ingest([
+    await c.ingest([
       ev(
         "run_created",
         { campaign: "survey", version: 1, mode: "research", seed: { repo: "research" } },
@@ -257,7 +257,7 @@ describe("a research run's page (goals 116 and 117)", () => {
       await c.page("/ui/campaigns/survey"),
       /<a class="on" href="\/ui\/campaigns\/survey">Overview<\/a>/,
     );
-    c.ingest([
+    await c.ingest([
       ev(
         "run_created",
         { campaign: "speed", version: 1, mode: "hill_climb", seed: { repo: "p", commit: "a" } },
@@ -275,7 +275,7 @@ describe("a research run's page (goals 116 and 117)", () => {
 
   test("the Hypotheses tab: by status with questions and verdicts; Promote, Return to pool and Retire send hypothesis_status with why", async () => {
     const c = await researchControl();
-    c.ingest(researchRunEvents());
+    await c.ingest(researchRunEvents());
     const html = await c.page(`${RUN}/hypotheses`);
     const need = part(html, "<h2>Need a verdict</h2>", "<h2>The pool</h2>");
     // The author's (one from before the pool), then the promoted one; no moves on the author's.
@@ -361,13 +361,13 @@ describe("a research run's page (goals 116 and 117)", () => {
     assert.equal(refused.status, 400);
     assert.match(String(refused.answer.said), /write why you change the hypothesis first/i);
     // A closed run's hypotheses have no moves.
-    c.ingest([ev("run_status", { status: "closed", reason: "closed by the owner" })]);
+    await c.ingest([ev("run_status", { status: "closed", reason: "closed by the owner" })]);
     assert.doesNotMatch(await c.page(`${RUN}/hypotheses`), /name="kind" value="hypothesis_status"/);
   });
 
   test("the Tasks tab shows each research task's question and yield; a task that added nothing is not drawn as a gain", async () => {
     const c = await researchControl();
-    c.ingest(researchRunEvents());
+    await c.ingest(researchRunEvents());
     const html = await c.page(`${RUN}/experiments`);
     // A research run's queue is called Tasks, and its parts are named for tasks.
     assert.match(html, /\/experiments">Tasks <span class="muted">/);
@@ -459,7 +459,7 @@ describe("a research run's page (goals 116 and 117)", () => {
         ),
       );
     }
-    c.ingest(events);
+    await c.ingest(events);
     const started = performance.now();
     const hypotheses = await c.page(`${RUN}/hypotheses`);
     const reviews = await c.page(`${RUN}/reviews`);

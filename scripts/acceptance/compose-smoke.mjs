@@ -3,12 +3,13 @@
 // through control, submit one candidate as a proposer, and wait until its verdict reaches
 // control. Usage: COMPOSE="podman compose" node scripts/acceptance/compose-smoke.mjs (or "docker compose").
 //
-// The stack runs with the message bus, as compose.yaml does by default (goal 168): the supervisor
-// sends its reports and live lines over it, over TLS, and the smoke checks that they reached
-// control that way, and that control's events table is mirrored to the events stream. With
-// THERMITE_NATS_URL set to nothing (THERMITE_NATS_URL= node …), the stack runs without it,
-// everything over HTTP, as a deployment that turns the bus off does. Either way it prints how long
-// events took to reach control.
+// Control is always on its message bus (goal 168), and keeps every rig's events in its events
+// stream: the smoke checks that control's events table is mirrored there, and that control applied
+// the stream to its end. The rig is on the bus too, as compose.yaml has it by default: its
+// supervisor sends its reports and live lines over it, over TLS, and the smoke checks that they
+// reached control that way. With THERMITE_NATS_URL set to nothing (THERMITE_NATS_URL= node …), the
+// rig reports over HTTP, as a deployment that turns its rigs off the bus does, while control stays
+// on its bus. Either way it prints how long events took to reach control.
 import {
   api,
   assign,
@@ -22,6 +23,7 @@ import {
   until,
 } from "./lib/smoke-env.mjs";
 
+/** The rig's bus: control's always runs; set to nothing, the rig reports over HTTP. */
 const bus = process.env.THERMITE_NATS_URL ?? "nats://nats:4222";
 const composeEnv = {
   THERMITE_POLL_SECONDS: "3",
@@ -73,17 +75,16 @@ function busState() {
 }
 
 const env = prepare();
-console.log(`compose: build and start (reports over ${bus ? "the message bus" : "HTTP"})`);
+console.log(`compose: build and start (the rig reports over ${bus ? "the message bus" : "HTTP"})`);
 stack("up", "-d", "--build");
 try {
   await until("control health", async () => (await fetch(`${control}/v1/health`)).ok);
-  // Control's health says how it holds the bus: connected once the server took control's files,
-  // or off.
+  // Control's health says how it holds its bus: connected once the server took control's files.
   const health = await until(
-    `control's health says the bus is ${bus ? "connected" : "off"}`,
+    "control's health says the bus is connected",
     async () => {
       const h = await (await fetch(`${control}/v1/health`)).json();
-      return h.bus === (bus ? "connected" : "off") ? h : undefined;
+      return h.bus === "connected" ? h : undefined;
     },
     60_000,
   );
@@ -118,7 +119,13 @@ try {
   const kinds = [...new Set((await events()).map((e) => e.kind))];
   console.log("events at control:", kinds.join(", "));
   console.log("verdict:", verdict);
-  if (bus) {
+  if (!bus) {
+    // The rig reported over HTTP: the reports stream holds none of its pages.
+    const state = busState();
+    if (state.messages !== 0)
+      throw new Error(`the rig is off the bus, but the reports stream holds ${state.messages}`);
+    console.log("reports over HTTP: the reports stream holds none");
+  } else {
     // The reports came over the bus: the stream holds them, and control acked each one it folded.
     const state = await until(
       "control folded every report on the bus",
@@ -146,28 +153,41 @@ try {
       1000,
     );
     console.log("live lines on the bus:", JSON.stringify(live));
-    // Control's events table is mirrored to the events stream: as many messages as the table has
-    // rows, and the Thermite-Seq of the stream's last message, as control's state of the bus reads
-    // it from the server, is the table's last seq.
-    const mirrored = await until(
-      "control's events table mirrored to the events stream",
-      async () => {
-        const table = eventsTable();
-        const messages = streamState("EVENTS")?.state?.messages ?? 0;
-        const { events: e } = (await api("/v1/bus")).body;
-        return table.rows > 0 &&
-          messages === table.rows &&
-          e?.stream_seq === table.last &&
-          e.behind === 0 &&
-          e.stopped === null
-          ? { table, messages, stream_seq: e.stream_seq, published: e.published }
-          : undefined;
-      },
-      60_000,
-      1000,
-    );
-    console.log("events on the bus:", JSON.stringify(mirrored));
   }
+  // Control's events table is mirrored to the events stream, whichever way the rig reported: as
+  // many messages as the table has rows, and the Thermite-Seq of the stream's last message, as
+  // control's state of the bus reads it from the server, is the table's last seq. And control
+  // applied the stream to its end: its records (a command's outcome, the model calls, the
+  // knowledge base) come from there.
+  const mirrored = await until(
+    "control's events table mirrored to the events stream, and applied",
+    async () => {
+      const table = eventsTable();
+      const stream = streamState("EVENTS")?.state;
+      const messages = stream?.messages ?? 0;
+      const { events: e } = (await api("/v1/bus")).body;
+      return table.rows > 0 &&
+        messages === table.rows &&
+        e?.stream_seq === table.last &&
+        e.behind === 0 &&
+        e.stopped === null &&
+        e.apply?.place === stream?.last_seq &&
+        e.apply.behind === 0 &&
+        e.apply.stopped === null
+        ? {
+            table,
+            messages,
+            stream_seq: e.stream_seq,
+            published: e.published,
+            applied_place: e.apply.place,
+            applied: e.apply.applied,
+          }
+        : undefined;
+    },
+    60_000,
+    1000,
+  );
+  console.log("events on the bus:", JSON.stringify(mirrored));
   const delays = eventDelays();
   const at = (q) => delays[Math.min(delays.length - 1, Math.floor(q * delays.length))] ?? 0;
   console.log(

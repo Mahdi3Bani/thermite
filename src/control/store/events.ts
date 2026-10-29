@@ -3,7 +3,7 @@ import { log } from "../../common/env.ts";
 import { errorText } from "../../common/errors.ts";
 import { canonicalJson } from "../../core/canonical.ts";
 import { currentEvent } from "../../core/names.ts";
-import { MODEL_CALL_EVENT, ModelCallBody } from "../../core/usage.ts";
+import { MODEL_CALL_EVENT } from "../../core/usage.ts";
 import { type Row, StorePart } from "./part.ts";
 import type { IngestReport } from "./report.ts";
 
@@ -59,6 +59,13 @@ export class RigEvents extends StorePart {
     return added;
   }
 
+  /**
+   * The report's events, and the rig's row, in one transaction. What control derives from the
+   * events (a command's outcome, a model call's usage, the knowledge base's items) the apply of
+   * the events stream writes (control/events), in the stream's order. A run a rig created goes in
+   * the run registry here too, before the copy on the bus chooses its events' subjects from the
+   * registry; the apply writes it again, the same, from the stream.
+   */
   private keepReport(report: IngestReport): number {
     const now = new Date().toISOString();
     return this.tx(() => {
@@ -69,29 +76,7 @@ export class RigEvents extends StorePart {
            received_at, run) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       for (const e of report.events) {
-        this.store.runRegistry.registerRunCreated(report.rig, report.ledger_id, e);
-        if (e.kind === "command" && e.subject) {
-          const b = (e.body ?? {}) as { accepted?: boolean };
-          this.store.commands.confirmApplied(
-            report.rig,
-            e.subject,
-            b.accepted === false ? "failed" : "delivered",
-            canonicalJson({ source: "harness", ...(e.body as object) }),
-            now,
-          );
-        }
-        // A model call's usage (goal 075), as columns the sums read. A body that does not read as
-        // one stays an event only.
-        const call =
-          e.kind === MODEL_CALL_EVENT && e.subject ? ModelCallBody.safeParse(e.body) : null;
-        if (call?.success)
-          this.store.usage.recordCall(
-            report.rig,
-            report.ledger_id,
-            e.id,
-            String(e.subject),
-            call.data,
-          );
+        this.store.runRegistry.registerRunCreated(report.rig, report.ledger_id, currentEvent(e));
         added += Number(
           insert.run(
             report.rig,

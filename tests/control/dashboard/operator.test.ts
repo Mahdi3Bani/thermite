@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { ControlStore } from "../../../src/control/store/index.ts";
 import { seedDemo } from "../../helpers/control-demo.ts";
 import { controlOnly, signIn } from "../../helpers/control-stack.ts";
+import { applied, controlStore } from "../../helpers/control-store.ts";
 
 /**
  * The dashboard for an operator, over the demo seed: each decision and what it decides, the
@@ -11,8 +11,10 @@ import { controlOnly, signIn } from "../../helpers/control-stack.ts";
 
 /** Control over the demo seed (no harness): three rigs with decisions waiting and runs at work. */
 async function demo() {
-  const store = new ControlStore(":memory:");
+  const store = controlStore();
   seedDemo(store);
+  // The knowledge base's folders and the model usage, as control applies them from the bus.
+  await applied(store);
   const { control } = controlOnly({
     store,
     tokens: { rigs: { "rig-a": "t-a-abcdef", "rig-b": "t-b-abcdef", "rig-c": "t-c-abcdef" } },

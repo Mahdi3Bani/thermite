@@ -2,7 +2,7 @@ import { createPrivateKey, createPublicKey, X509Certificate } from "node:crypto"
 import { existsSync, readFileSync } from "node:fs";
 import { isIP } from "node:net";
 import { join } from "node:path";
-import { busUrl } from "../../common/bus.ts";
+import { BUS_URL_SETTING, busUrl } from "../../common/bus.ts";
 import { log } from "../../common/env.ts";
 import { writeAtomic } from "../../common/fs.ts";
 import { type CertAndKey, certFingerprint, makeCa, makeServerCert } from "./cert.ts";
@@ -37,6 +37,21 @@ export const BUS_PORT = 4222;
 export const BUS_PUBLIC_URL_SETTING = "THERMITE_NATS_PUBLIC_URL";
 /** The setting of a file control also writes its authority's certificate to, for rigs beside it. */
 export const BUS_CA_EXPORT_SETTING = "THERMITE_NATS_CA_EXPORT";
+
+/**
+ * The bus's address as control reaches it, from its setting. Control needs its bus: it keeps every
+ * rig's events in the bus's events stream, and derives its records from them there, whether a rig
+ * reports over the bus or over HTTP. Not set stops control at start, with the setting's name; a
+ * bad one too (busUrl).
+ */
+export function controlBusUrl(env: Record<string, string | undefined>): string {
+  const url = busUrl(env);
+  if (!url)
+    throw new Error(
+      `control needs its message bus: set ${BUS_URL_SETTING} to its NATS server, such as nats://nats:4222. Control keeps every rig's events in the bus's EVENTS stream and derives its records from them there, whether a rig reports over the bus or over HTTP`,
+    );
+  return url;
+}
 
 /**
  * The bus's address for the rigs control sets up: its setting, or else control's address for

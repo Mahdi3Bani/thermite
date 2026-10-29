@@ -30,12 +30,14 @@ import { generateKeyPairSync } from "node:crypto";
 import { acceptanceChecks } from "./lib/checks.mjs";
 import { cleanEngine, engine } from "./lib/smoke-env.mjs";
 
-// Control's side, in this process (Node.js strips the types of these files).
+// Control's side, in this process (Node.js strips the types of these files). Its store is on the
+// tests' fake message bus, as control needs a bus: the rigs here report over HTTP, in pull mode,
+// and only control's own copy of its events and the apply of it use the bus, in this process.
 const { createControlApi } = await import("../../src/control/api/index.ts");
 const { SecretBox } = await import("../../src/control/secrets.ts");
-const { ControlStore } = await import("../../src/control/store/index.ts");
 const { ControlTunnels } = await import("../../src/control/runpod/tunnel.ts");
 const { generateSigningKeys } = await import("../../src/core/commands.ts");
+const { controlStore } = await import("../../tests/helpers/control-store.ts");
 const { keySha256 } = await import("../../src/core/tunnel.ts");
 
 const harnessImage = "localhost/thermite-harness:rig-image-check";
@@ -158,7 +160,7 @@ try {
   }
   // Control mints the rig, its one-time code and the pod's launch values, as a launch does.
   const controlKeys = generateSigningKeys();
-  const store = new ControlStore(":memory:");
+  const store = controlStore();
   const secrets = SecretBox.ephemeral();
   const tunnels = new ControlTunnels(store, secrets, controlKeys.privateKeyPem);
   createControlApi(

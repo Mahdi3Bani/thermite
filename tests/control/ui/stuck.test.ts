@@ -58,7 +58,7 @@ async function stuckRun(settings: Record<string, unknown> = { quiet_minutes: 30 
     ev("trial_started", { trial: "t-2", lane: "lane-2", family: "contradict", focus: "f2" }),
     ev("trial_started", { trial: "t-3", lane: "lane-3", family: "primary", focus: "f3" }),
   ];
-  c.ingest(events);
+  await c.ingest(events);
   const report = (lane2: Record<string, unknown>) =>
     c.store.rigEvents.ingest({
       rig: "rig-a",

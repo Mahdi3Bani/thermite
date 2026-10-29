@@ -1,6 +1,5 @@
 import type { Bus, BusMessage } from "../common/bus.ts";
-import { log, redact } from "../common/env.ts";
-import { errorText } from "../common/errors.ts";
+import { log } from "../common/env.ts";
 import {
   REPORT_CONSUMER_CONFIG,
   REPORT_STREAM_CONFIG,
@@ -98,16 +97,9 @@ export function takeReport(
     const leftOut = { rig, left_out: read.unknown };
     log("control", "a report with fields control does not know", leftOut, "debug");
   }
+  // The events, and the rig's row. What control derives from them, the apply of the events stream
+  // writes once the copy on the bus has them (control/events).
   const added = store.rigEvents.ingest(body);
-  // Into the knowledge base now, while this report's ledger is the rig's (it reads only a rig's
-  // current ledger). After a failure the next report or read catches up.
-  try {
-    store.kb();
-  } catch (err) {
-    const error = redact(errorText(err));
-    log("control", "knowledge base catch-up failed", { rig, error }, "error");
-    store.auditLog.add("control", "kb_failed", { rig, error });
-  }
   noteReportAfterWait(store, rig);
   return [200, { added }];
 }

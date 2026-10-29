@@ -30,6 +30,7 @@ import { LiveLines } from "./live.ts";
 import { Machines } from "./machines.ts";
 import { McpServerRows } from "./mcp-servers.ts";
 import { ModelAssignments } from "./models.ts";
+import { BusPositions } from "./positions.ts";
 import { ModelProviders } from "./providers.ts";
 import { RigRefusals } from "./refusals.ts";
 import type { IngestReport } from "./report.ts";
@@ -118,6 +119,8 @@ export class ControlStore {
   readonly busKeys: BusKeys;
   readonly rigUpdates: RigUpdates;
   readonly mcpServers: McpServerRows;
+  /** How far the store applied the bus's streams: the events stream's apply (control/events). */
+  readonly busPositions: BusPositions;
   private knowledge: KnowledgeBase | undefined;
 
   constructor(path: string) {
@@ -156,6 +159,7 @@ export class ControlStore {
     this.busKeys = new BusKeys(this, this.db);
     this.rigUpdates = new RigUpdates(this, this.db);
     this.mcpServers = new McpServerRows(this, this.db);
+    this.busPositions = new BusPositions(this, this.db);
   }
 
   /**
@@ -167,13 +171,11 @@ export class ControlStore {
   }
 
   /**
-   * Thermite's own knowledge base (goal 065), brought up to date with every event reported so
-   * far. Its cursor is kept in this store, so it carries on after a restart of control. It makes
-   * its tables on first use.
+   * Thermite's own knowledge base (goal 065), which the apply of the events stream feeds
+   * (control/events) as it applies each event. It makes its tables on first use.
    */
   kb(): KnowledgeBase {
     this.knowledge ??= new KnowledgeBase(this.db);
-    this.knowledge.catchUp();
     return this.knowledge;
   }
 }

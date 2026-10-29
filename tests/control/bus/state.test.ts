@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { type BusView, ConfigWritten } from "../../../src/control/bus/index.ts";
-import { EventsMirror } from "../../../src/control/events/index.ts";
+import { EventsApply, EventsMirror } from "../../../src/control/events/index.ts";
 import { LiveTaken } from "../../../src/control/live/index.ts";
 import { ControlStore } from "../../../src/control/store/index.ts";
 import { COMMAND_STREAM } from "../../../src/core/link/commands.ts";
@@ -50,7 +50,7 @@ function setup(bus?: BusView, store?: ControlStore) {
 
 /**
  * A bus with the reports and live streams made, two live messages kept, and control's counts; and
- * the mirror of control's events table, not started.
+ * the mirror of control's events table and the apply of the events stream, not started.
  */
 async function onBus() {
   const store = new ControlStore(":memory:");
@@ -69,13 +69,14 @@ async function onBus() {
   live.refused["bad live signature"] = 1;
   live.rigs.set("rig-a", 3);
   const config = new ConfigWritten();
-  const events = new EventsMirror({ store, bus, retryMs: 10 });
-  const view = { server: "nats:4222", bus, events, live, config };
-  return { store, bus, events, live, config, view };
+  const apply = new EventsApply({ store, bus, retryMs: 10 });
+  const events = new EventsMirror({ store, bus, retryMs: 10, published: () => void apply.nudge() });
+  const view = { server: "nats:4222", bus, events, apply, live, config };
+  return { store, bus, events, apply, live, config, view };
 }
 
 describe("the message bus's state", () => {
-  test("with the bus off, it says so, and /metrics has none of its series", async () => {
+  test("control made without its bus, as only a test makes it: it says so, and /metrics has none of its series", async () => {
     const s = setup();
     assert.deepEqual(await (await s.read("/v1/bus")).json(), { on: false });
     assert.equal((await s.control.request("/v1/bus")).status, 401);
@@ -221,7 +222,7 @@ describe("the message bus's state", () => {
     assert.doesNotMatch(JSON.stringify(state.config), /"sealed":"|revision|api_key/);
   });
 
-  test("with the bus on: the mirror of control's events table, and why it stopped", async () => {
+  test("with the bus on: the mirror of control's events table, the apply of the stream, and why the mirror stopped", async () => {
     const b = await onBus();
     await b.bus.makeStream(EVENT_STREAM_CONFIG);
     const page = (from: number, to: number, body: (id: number) => unknown = () => ({})) => {
@@ -246,7 +247,8 @@ describe("the message bus's state", () => {
     const s = setup(b.view, b.store);
     const state = async () =>
       ((await (await s.read("/v1/bus")).json()) as { events: Record<string, unknown> }).events;
-    // Before the mirror started: the table's last seq, and the stream's, as the server has it.
+    // Before the mirror started: the table's last seq, and the stream's, as the server has it; the
+    // apply's place, at the stream's start.
     assert.deepEqual(await state(), {
       stream: "EVENTS",
       since: b.events.since,
@@ -256,13 +258,33 @@ describe("the message bus's state", () => {
       published: 0,
       waiting: null,
       stopped: null,
+      apply: {
+        place: 0,
+        last_place: 0,
+        behind: 0,
+        applied: 0,
+        refused: 0,
+        waiting: null,
+        stopped: null,
+      },
     });
+    await b.apply.start();
     await b.events.start();
+    await b.apply.nudge();
     const copied = await state();
     assert.deepEqual(
       [copied.table_seq, copied.stream_seq, copied.behind, copied.published, copied.stopped],
       [3, 3, 0, 3, null],
     );
+    assert.deepEqual(copied.apply, {
+      place: 3,
+      last_place: 3,
+      behind: 0,
+      applied: 3,
+      refused: 0,
+      waiting: null,
+      stopped: null,
+    });
     const metrics = await (await s.read("/metrics")).text();
     for (const series of [
       'thermite_bus_stream_messages{stream="EVENTS"} 3',
@@ -271,6 +293,10 @@ describe("the message bus's state", () => {
       "thermite_events_behind 0",
       "thermite_events_published_total 3",
       "thermite_events_mirror_stopped 0",
+      "thermite_events_applied_place 3",
+      "thermite_events_unapplied 0",
+      "thermite_events_applied_total 3",
+      "thermite_events_apply_refused_total 0",
     ])
       assert.ok(metrics.includes(`\n${series}\n`), series);
     // A row too large for a message on the bus, stored before ingest refused such pages: the
@@ -288,6 +314,7 @@ describe("the message bus's state", () => {
     assert.ok(after.includes("\nthermite_events_mirror_stopped 1\n"));
     assert.ok(after.includes("\nthermite_events_behind 2\n"));
     b.events.close();
+    b.apply.close();
   });
 
   test("a server that does not answer is said in words; the rest still shows", async () => {
@@ -310,6 +337,8 @@ describe("the message bus's state", () => {
     // What the stream holds is not known; the table's last seq is control's own.
     const events = state.events as Record<string, unknown>;
     assert.deepEqual([events.table_seq, events.stream_seq, events.behind], [0, null, null]);
+    const apply = events.apply as Record<string, unknown>;
+    assert.deepEqual([apply.place, apply.last_place, apply.behind], [0, null, null]);
     assert.ok(state.live, "control's own figures still show");
     assert.match(await (await s.read("/metrics")).text(), /\nthermite_bus_up 0\n/);
   });

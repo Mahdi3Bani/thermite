@@ -17,12 +17,13 @@ import { KB_SCHEMA } from "./schema.ts";
 
 /**
  * The knowledge base's tables in control's store (goal 065; goal 125, T6): each campaign's items
- * and runs, the grants to read other folders, and the cursor of the events indexed so far. What
- * the knowledge base is, and its items' shape, are in kb.ts.
+ * and runs, the grants to read other folders, and its cursors (kb_cursor in schema.ts). The apply
+ * of the events stream feeds it (control/events). What the knowledge base is, and its items'
+ * shape, are in kb.ts.
  */
 
 type Row = Record<string, unknown>;
-/** Events read per transaction while catching up. */
+/** Events read per transaction while reading again. */
 const PAGE = 2000;
 
 /**
@@ -64,6 +65,7 @@ export class KnowledgeBase {
   constructor(db: DatabaseSync) {
     this.db = db;
     db.exec(KB_SCHEMA);
+    this.readAgain();
   }
 
   /** Runs fn in one transaction: all of it is kept, or none of it. */
@@ -80,57 +82,43 @@ export class KnowledgeBase {
   }
 
   /**
-   * Indexes the events control received since the last call. Only a rig's current ledger is
-   * read: control calls this after each report it takes, so every ledger is read while it is
-   * the rig's, and a ledger the rig has left (a reset) adds nothing more.
+   * Where the knowledge base was indexed from control's events table, before the apply of the
+   * events stream fed it (goal 168): the table's seq of the last event indexed then. It no longer
+   * moves. The apply indexes each event of the stream after it, by the seq its message carries, and
+   * every event whose message carries none: so an event is indexed once, either way.
    */
-  catchUp(): number {
-    this.readAgain();
-    let total = 0;
-    for (;;) {
-      const cur = Number(
-        (this.db.prepare("select seq from kb_cursor where id = 1").get() as { seq: number }).seq,
-      );
-      const rows = this.db
-        .prepare(
-          `select e.seq, e.rig, e.ledger_id, e.at, e.actor, e.kind, e.subject, e.body from rig_event e
-           join rig r on r.id = e.rig and r.ledger_id = e.ledger_id
-           where e.seq > ? order by e.seq limit ?`,
-        )
-        .all(cur, PAGE) as Row[];
-      if (!rows.length) return total;
-      this.tx(() => {
-        for (const r of rows) {
-          let body: unknown;
-          try {
-            body = JSON.parse(str(r.body));
-          } catch {
-            // a body control stored as JSON always parses; anything else is skipped
-            continue;
-          }
-          if (!body || typeof body !== "object") continue;
-          this.index(
-            { rig: str(r.rig), ledger: str(r.ledger_id) },
-            str(r.at),
-            str(r.actor),
-            str(r.kind),
-            str(r.subject),
-            body as Row,
-          );
-        }
-        this.db
-          .prepare("update kb_cursor set seq = ? where id = 1")
-          .run(Number(rows.at(-1)?.seq ?? cur));
-      });
-      total += rows.length;
-      if (rows.length < PAGE) return total;
-    }
+  indexedFromTable(): number {
+    return Number(
+      (this.db.prepare("select seq from kb_cursor where id = 1").get() as { seq: number }).seq,
+    );
   }
 
   /**
-   * Once, after an upgrade: the events indexed before READING read again for the kinds of item
-   * added since, from each rig's current ledger, as catchUp reads them. A run keeps the folder it
-   * was filed in. Nothing is written when the store is already at READING.
+   * One event of a rig's ledger into the folder of its run's campaign (core/kb-index.ts reads
+   * it). The apply of the events
+   * stream hands each event here, in the stream's order, so each ledger's events come while it is
+   * the rig's: a rig's report from a ledger it has left is refused.
+   */
+  index(
+    src: { rig: string; ledger: string },
+    e: { at: string; actor: string; kind: string; subject: string | null; body: unknown },
+  ): void {
+    if (!e.body || typeof e.body !== "object") return;
+    const { at, actor, kind } = e;
+    indexEvent(this.target(src), {
+      at,
+      actor,
+      kind,
+      subject: e.subject ?? "",
+      body: e.body as Row,
+    });
+  }
+
+  /**
+   * Once, after an upgrade: the events indexed from the table before READING read again for the
+   * kinds of item added since, from each rig's current ledger. A run keeps the folder it was filed
+   * in. Nothing is written when the store is already at READING. Events the apply indexed are not
+   * read again: a reading after 3 must read them from the events stream.
    */
   private readAgain(): void {
     const at = (
@@ -160,7 +148,8 @@ export class KnowledgeBase {
           try {
             body = JSON.parse(str(r.body));
           } catch {
-            continue; // as in catchUp
+            // a body control stored as JSON always parses; anything else is skipped
+            continue;
           }
           if (!body || typeof body !== "object") continue;
           const src = { rig: str(r.rig), ledger: str(r.ledger_id) };
@@ -314,18 +303,6 @@ export class KnowledgeBase {
         at,
         at,
       );
-  }
-
-  /** One event into the folder of its run's campaign (core/kb-index.ts reads it). */
-  private index(
-    src: { rig: string; ledger: string },
-    at: string,
-    actor: string,
-    kind: string,
-    subject: string,
-    b: Row,
-  ): void {
-    indexEvent(this.target(src), { at, actor, kind, subject, body: b });
   }
 
   /** Every campaign folder (also one with runs and no items yet), newest change first. */

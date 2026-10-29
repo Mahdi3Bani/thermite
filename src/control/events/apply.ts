@@ -1,0 +1,258 @@
+import { BUS_READ_MAX, BUS_RETRY_MS, type Bus, type BusMessage } from "../../common/bus.ts";
+import { log, redact } from "../../common/env.ts";
+import { errorText } from "../../common/errors.ts";
+import { canonicalJson } from "../../core/canonical.ts";
+import { EVENT_STREAM, type EventRead, readEventMessage } from "../../core/link/events.ts";
+import { currentEvent } from "../../core/names.ts";
+import { MODEL_CALL_EVENT, ModelCallBody } from "../../core/usage.ts";
+import type { ControlStore } from "../store/index.ts";
+
+/**
+ * What control derives from its rigs' events, written from the `EVENTS` stream (goal 168, step 4).
+ * The apply reads the stream in order, from the place control's store applied through
+ * (`bus_position`), and writes, for each event: the run registry's entry for a run the rig created,
+ * a command's outcome as the harness gave it, a model call's usage, and the knowledge base's items;
+ * then each rig ledger's held cursor, the last event of it applied (`rig_ledger.through_event`),
+ * and the stream's place, in the same transaction, so that the store and the stream never disagree
+ * about what was applied. An event at or below its ledger's held cursor is applied already, and
+ * changes nothing. Control's own copy of its events table on the stream (mirror.ts) nudges it
+ * after each batch it publishes.
+ */
+
+/** How many messages one read takes at most: one transaction applies them all. */
+export const APPLY_PAGE = BUS_READ_MAX;
+
+export interface EventsApplyOptions {
+  store: ControlStore;
+  bus: Pick<Bus, "read" | "lastSeq">;
+  /** How long it waits after a failure: BUS_RETRY_MS unless a test gives a shorter one. */
+  retryMs?: number | undefined;
+}
+
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * The apply of the events stream. start() checks the store's place against the stream's end, then
+ * applies what the stream holds after it, and again at each nudge(). A read or a transaction that
+ * fails changes nothing, and is tried again after a pause. A store whose place is past the
+ * stream's end stops it for good: control then does not start (main.ts).
+ */
+export class EventsApply {
+  private readonly o: EventsApplyOptions;
+  readonly since = new Date().toISOString();
+  /** Messages it applied since control started. */
+  applied = 0;
+  /** Messages it could not read as events since control started, and passed over. */
+  refused = 0;
+  /** Why it waits now (the bus away); null while it applies, or has applied all. */
+  waiting: string | null = null;
+  /** Why it stopped for good: the store applied the stream past its end. Null while it goes on. */
+  stopped: string | null = null;
+  private checked = false;
+  private readonly checkedOnce: Promise<void>;
+  private markChecked: () => void = () => undefined;
+  private due = false;
+  private running: Promise<void> | undefined;
+  private closed = false;
+
+  constructor(o: EventsApplyOptions) {
+    this.o = o;
+    this.checkedOnce = new Promise((r) => {
+      this.markChecked = r;
+    });
+  }
+
+  /**
+   * Applies what the stream holds after the store's place, and again at each nudge(). Resolves once
+   * it has checked the store's place against the stream's end, waiting for the bus while it is
+   * away: `stopped` then says whether the store is past the stream's end.
+   */
+  start(): Promise<void> {
+    void this.nudge();
+    return this.checkedOnce;
+  }
+
+  /** A turn after the one under way; resolves when it has applied all the stream holds, or stopped. */
+  nudge(): Promise<void> {
+    this.due = true;
+    this.running ??= this.run().finally(() => {
+      this.running = undefined;
+    });
+    return this.running;
+  }
+
+  close(): void {
+    this.closed = true;
+    this.markChecked();
+  }
+
+  private async run(): Promise<void> {
+    // After the code that nudged it has run to its end.
+    await Promise.resolve();
+    while (this.due && !this.stopped && !this.closed) {
+      this.due = false;
+      try {
+        await this.turn();
+        if (this.waiting)
+          log("control", "events applied from the bus again", { after: this.waiting });
+        this.waiting = null;
+      } catch (err) {
+        this.due = true;
+        const error = errorText(err);
+        if (this.waiting !== error)
+          log("control", "events not applied from the bus; trying again", { error }, "warn");
+        this.waiting = error;
+        await pause(this.o.retryMs ?? BUS_RETRY_MS);
+      }
+    }
+  }
+
+  /**
+   * The store's place against the stream's last: a store past it holds records of messages the
+   * stream does not have, as when one of the two was restored from an older backup, and applying
+   * the stream's next messages would skip them.
+   */
+  private async check(): Promise<void> {
+    const { store, bus } = this.o;
+    const last = await bus.lastSeq(EVENT_STREAM);
+    const place = store.busPositions.of(EVENT_STREAM);
+    if (place > last) {
+      this.stopped = `control's store has applied the ${EVENT_STREAM} stream to place ${place}, past its last, ${last}: the stream is older than the store, as when one of them was restored from an older backup. Restore the stream from a backup at least as new as the store, or the store from one no newer than the stream, then start control again`;
+      log("control", "control's store is past the events stream's end", { place, last }, "error");
+    } else {
+      this.checked = true;
+      const where = { stream: EVENT_STREAM, place, last, behind: last - place };
+      log("control", "control's records go on from the events stream's place", where);
+    }
+    this.markChecked();
+  }
+
+  /** Applies every message the stream holds after the store's place, a page at a time. */
+  private async turn(): Promise<void> {
+    const { store, bus } = this.o;
+    if (!this.checked) await this.check();
+    if (this.stopped) return;
+    while (!this.closed) {
+      const from = store.busPositions.of(EVENT_STREAM) + 1;
+      const read = await bus.read(EVENT_STREAM, { from, limit: APPLY_PAGE });
+      if (read.next <= from) return;
+      this.applyPage(read.messages, read.next - 1);
+      if (read.done) return;
+    }
+  }
+
+  /**
+   * The page's messages, in the stream's order, and the place it ends at, in one transaction. Each
+   * rig ledger's held cursor is read once a page, and written once at its end where it moved.
+   */
+  private applyPage(messages: readonly BusMessage[], through: number): void {
+    const { store } = this.o;
+    const now = new Date().toISOString();
+    const kb = store.kb();
+    const fromTable = kb.indexedFromTable();
+    const held = new Map<string, Held>();
+    let applied = 0;
+    let refused = 0;
+    store.tx(() => {
+      for (const m of messages) {
+        const read = readOrSay(m);
+        if (!read) {
+          refused++;
+          continue;
+        }
+        const key = `${read.rig}\n${read.ledger}`;
+        const h = held.get(key) ?? {
+          rig: read.rig,
+          ledger: read.ledger,
+          through: store.reportedRigs.heldCursor(read.rig, read.ledger),
+          moved: false,
+        };
+        held.set(key, h);
+        // At or below its ledger's held cursor: applied already, its records in the store.
+        if (read.event.id <= h.through) continue;
+        // The knowledge base was indexed from control's events table up to `fromTable` before the
+        // apply fed it: a message copied from a row at or below it is in it already.
+        const toKb = read.seq === undefined || read.seq > fromTable;
+        applyEvent(store, read, now, toKb);
+        h.through = read.event.id;
+        h.moved = true;
+        applied++;
+      }
+      for (const h of held.values())
+        if (h.moved) store.reportedRigs.holdThrough(h.rig, h.ledger, h.through, now);
+      store.busPositions.set(EVENT_STREAM, through);
+    });
+    this.applied += applied;
+    this.refused += refused;
+  }
+}
+
+/** A rig ledger's held cursor as a page moves it: the last event applied, and whether it moved. */
+interface Held {
+  rig: string;
+  ledger: string;
+  through: number;
+  moved: boolean;
+}
+
+/** A message read as an event, or undefined, said in control's log, for one it can't read. */
+function readOrSay(m: BusMessage): EventRead | undefined {
+  try {
+    return readEventMessage(m);
+  } catch (err) {
+    const what = { place: m.seq, subject: m.subject.slice(0, 200), error: errorText(err) };
+    log("control", "an event on the bus not applied: control can't read it", what, "error");
+    return undefined;
+  }
+}
+
+/**
+ * What control keeps of one event, under the current names (core/names.ts), as the readers of its
+ * events table read it: the run registry's entry for a run the rig created (ingest wrote it before
+ * the copy on the bus chose the event's subject; this writes the same again), a command's outcome
+ * as the harness gave it, a model call's usage (goal 075; a body that does not read as one stays
+ * an event only), and, with `toKb`, its items in the knowledge base. An event the knowledge base
+ * can't index is left out of it, in control's log and the audit log.
+ */
+function applyEvent(store: ControlStore, read: EventRead, now: string, toKb: boolean): void {
+  const { rig, ledger } = read;
+  const e = currentEvent(read.event);
+  store.runRegistry.registerRunCreated(rig, ledger, e);
+  if (e.kind === "command" && e.subject) {
+    const b = (e.body ?? {}) as { accepted?: boolean };
+    const status = b.accepted === false ? "failed" : "delivered";
+    const outcome = canonicalJson({ source: "harness", ...(e.body as object) });
+    store.commands.confirmApplied(rig, e.subject, status, outcome, now);
+  }
+  const call = e.kind === MODEL_CALL_EVENT && e.subject ? ModelCallBody.safeParse(e.body) : null;
+  if (call?.success) store.usage.recordCall(rig, ledger, e.id, String(e.subject), call.data);
+  if (!toKb) return;
+  try {
+    // A savepoint: an event indexed in part is not kept.
+    store.tx(() => store.kb().index({ rig, ledger }, e));
+  } catch (err) {
+    const error = redact(errorText(err));
+    const what = { rig, ledger, event: e.id, kind: e.kind, error };
+    log("control", "an event not indexed in the knowledge base", what, "error");
+    store.auditLog.add("control", "kb_failed", { rig, error });
+  }
+}
+
+/**
+ * The apply's state, for the bus's state (REST, MCP, /metrics): the stream's place control's store
+ * applied through, the stream's last place as the server has it (`last`: null when the server did
+ * not answer), the messages between them, those applied and passed over since control started,
+ * and why it waits or stopped.
+ */
+export function applyState(store: ControlStore, apply: EventsApply, last: number | null) {
+  const place = store.busPositions.of(EVENT_STREAM);
+  return {
+    place,
+    last_place: last,
+    behind: last === null ? null : Math.max(0, last - place),
+    applied: apply.applied,
+    refused: apply.refused,
+    waiting: apply.waiting,
+    stopped: apply.stopped,
+  };
+}

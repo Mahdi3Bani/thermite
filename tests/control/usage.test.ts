@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { saveRunpodRig } from "../../src/control/runpod/index.ts";
-import { ControlStore } from "../../src/control/store/index.ts";
+import type { ControlStore } from "../../src/control/store/index.ts";
 import { modelUsage } from "../../src/control/usage.ts";
 import { rigView } from "../../src/control/views/index.ts";
 import { callUsage } from "../../src/core/usage.ts";
 import { ADMIN, controlOnly, mcpClient } from "../helpers/control-stack.ts";
+import { applied, controlStore } from "../helpers/control-store.ts";
 
 /**
  * Model usage on control (goal 075): the rigs' model_call events become rows the sums read, for a
@@ -52,7 +53,7 @@ const call = (o: {
   }),
 });
 
-function ingest(
+async function ingest(
   store: ControlStore,
   rig: string,
   ledger: string,
@@ -75,12 +76,14 @@ function ingest(
     })),
     summary: {},
   });
+  // The usage rows are written as the apply of the events stream applies the events.
+  await applied(store);
 }
 
 /** rig-a ran r-1 of matmul; rig-b ran r-2 of matmul and r-3 of gemv. */
-function stack() {
-  const store = new ControlStore(":memory:");
-  ingest(store, "rig-a", "ledger-a", [
+async function stack() {
+  const store = controlStore();
+  await ingest(store, "rig-a", "ledger-a", [
     ["run_created", "r-1", { campaign: "matmul", mode: "hill_climb", version: 1, agents: true }],
     [
       "model_call",
@@ -107,7 +110,7 @@ function stack() {
     // A body that does not read as a record stays an event, and no sum counts it.
     ["model_call", "r-1", { agent: "workers", tokens_in: "lots" }],
   ]);
-  ingest(store, "rig-b", "ledger-b", [
+  await ingest(store, "rig-b", "ledger-b", [
     ["run_created", "r-2", { campaign: "matmul", mode: "hill_climb", version: 1, agents: true }],
     ["run_created", "r-3", { campaign: "gemv", mode: "goal", version: 1, agents: true }],
     [
@@ -138,8 +141,8 @@ function stack() {
 }
 
 describe("model usage on control (goal 075)", () => {
-  test("a run's usage: its records only, by agent and by model; a figure none reports is null", () => {
-    const s = stack();
+  test("a run's usage: its records only, by agent and by model; a figure none reports is null", async () => {
+    const s = await stack();
     const r = modelUsage(s.store, { run: "r-1" });
     assert.deepEqual(r.scope, { kind: "run", run: "r-1" });
     assert.equal(r.total.records, 3);
@@ -174,8 +177,8 @@ describe("model usage on control (goal 075)", () => {
     assert.ok(week.total.records <= 2);
   });
 
-  test("a campaign's usage sums all its runs on every rig, with each run's share; the system's, each campaign's", () => {
-    const s = stack();
+  test("a campaign's usage sums all its runs on every rig, with each run's share; the system's, each campaign's", async () => {
+    const s = await stack();
     const c = modelUsage(s.store, { campaign: "matmul" });
     assert.equal(c.total.records, 4);
     assert.equal(c.total.calls, 3);
@@ -198,9 +201,9 @@ describe("model usage on control (goal 075)", () => {
     assert.equal(modelUsage(s.store, { campaign: "nope" }).total.records, 0);
   });
 
-  test("a rig's records stay when it leaves its ledger: the calls were made", () => {
-    const s = stack();
-    ingest(s.store, "rig-a", "ledger-a2", [
+  test("a rig's records stay when it leaves its ledger: the calls were made", async () => {
+    const s = await stack();
+    await ingest(s.store, "rig-a", "ledger-a2", [
       ["run_created", "r-9", { campaign: "matmul", mode: "hill_climb", version: 1, agents: true }],
       ["model_call", "r-9", call({ at: ago(1), tokensIn: 10, tokensOut: 1 })],
     ]);
@@ -209,8 +212,8 @@ describe("model usage on control (goal 075)", () => {
     assert.equal(modelUsage(s.store, { run: "r-1" }).total.records, 3);
   });
 
-  test("the pages built from every event leave the calls out; the rig's event list keeps them", () => {
-    const s = stack();
+  test("the pages built from every event leave the calls out; the rig's event list keeps them", async () => {
+    const s = await stack();
     const v = rigView(s.store, "rig-a", { staleAfterMs: 600_000 });
     assert.ok(v);
     assert.ok(v.recent.every((e) => e.kind !== "model_call"));
@@ -229,7 +232,7 @@ describe("model usage on control (goal 075)", () => {
   });
 
   test("REST: the owner's or the reader's token; a query that does not read is refused in words", async () => {
-    const s = stack();
+    const s = await stack();
     const r = await s.get("?campaign=matmul&period=all", TOKENS.read);
     assert.equal(r.status, 200);
     const body = (await r.json()) as { total: { records: number }; by_run: unknown[] };
@@ -253,7 +256,7 @@ describe("model usage on control (goal 075)", () => {
   });
 
   test("MCP: model_usage gives the same report", async () => {
-    const s = stack();
+    const s = await stack();
     const client = await mcpClient(s.api, TOKENS.operator);
     const out = (await client.callTool({
       name: "model_usage",
@@ -280,8 +283,8 @@ describe("model usage on control (goal 075)", () => {
 
 describe("model usage cost on control (goal 075)", () => {
   /** lab lists wide-model's price and not small-model's; sub is a Claude subscription. */
-  function priced() {
-    const s = stack();
+  async function priced() {
+    const s = await stack();
     for (const [name, type] of [
       ["lab", "openai"],
       ["sub", "claude"],
@@ -307,7 +310,7 @@ describe("model usage cost on control (goal 075)", () => {
   }
 
   test("each call at its model's price: the provider's list's, else the owner's; a subscription's on its plan; else no price", async () => {
-    const s = priced();
+    const s = await priced();
     const r1 = modelUsage(s.store, { run: "r-1" });
     // wide-model: 400 in, 600 cached, 100 out; then 1000 in and 100 out. small-model: no price.
     assert.deepEqual(r1.total.cost, {
@@ -392,8 +395,8 @@ describe("model usage cost on control (goal 075)", () => {
     assert.equal(modelUsage(s.store, { run: "r-1" }).total.cost.no_price, 1);
   });
 
-  test("a pod's spend goes to the run its rig was running when control counted it; idle spend to the system only", () => {
-    const s = priced();
+  test("a pod's spend goes to the run its rig was running when control counted it; idle spend to the system only", async () => {
+    const s = await priced();
     s.store.runpod.addRig({
       rig: "rig-a",
       cloud: "rp",
@@ -404,10 +407,10 @@ describe("model usage cost on control (goal 075)", () => {
     // r-1 is the run at work on rig-a.
     saveRunpodRig(s.store, "rig-a", { spent_usd: 0.5 }, true);
     // Paused (the stack gave rig-a five events): the pod's spend belongs to no run.
-    ingest(s.store, "rig-a", "ledger-a", [["run_status", "r-1", { status: "paused" }]], 6);
+    await ingest(s.store, "rig-a", "ledger-a", [["run_status", "r-1", { status: "paused" }]], 6);
     saveRunpodRig(s.store, "rig-a", { spent_usd: 0.8 }, true);
     // Two runs running: the spend is split between them.
-    ingest(
+    await ingest(
       s.store,
       "rig-a",
       "ledger-a",
@@ -435,7 +438,7 @@ describe("model usage cost on control (goal 075)", () => {
   });
 
   test("MCP: an operator sets a price with set_model_price; providers lists the prices in use", async () => {
-    const s = priced();
+    const s = await priced();
     const client = await mcpClient(s.api, TOKENS.operator);
     const out = (await client.callTool({
       name: "set_model_price",

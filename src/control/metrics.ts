@@ -77,10 +77,12 @@ export function metricsText(store: ControlStore, staleAfterMs: number, now = Dat
  * The message bus's series, with the bus on (goal 168): whether control reached its server, each
  * stream's messages and bytes and each consumer's backlog, the mirror of control's events table
  * (the table's last seq, the stream's, the rows behind, those published, and whether it stopped),
- * the live stream's lines (those control took and refused, and those each rig's supervisor
+ * the apply of the events stream (its place, the messages behind it, those applied and passed
+ * over), the live stream's lines (those control took and refused, and those each rig's supervisor
  * published and dropped), and the config bucket's values (those control wrote and failed to write,
  * and the updates each rig's supervisor took and refused). Bounded: by stream, consumer (two for
- * each rig at most), rig, config key, and the fixed reasons for a refusal. Empty with the bus off.
+ * each rig at most), rig, config key, and the fixed reasons for a refusal. Empty for a test's
+ * control made without its bus.
  */
 export async function busMetricsText(
   store: ControlStore,
@@ -126,6 +128,22 @@ export async function busMetricsText(
     "1 when the mirror stopped on what it can't copy",
   );
   lines.push(`thermite_events_mirror_stopped ${events.stopped ? 1 : 0}`);
+  help(
+    "thermite_events_applied_place",
+    "gauge",
+    "The events stream's place control's store applied through",
+  );
+  lines.push(`thermite_events_applied_place ${events.apply.place}`);
+  help("thermite_events_unapplied", "gauge", "Messages of the events stream not applied yet");
+  if (events.apply.behind !== null) lines.push(`thermite_events_unapplied ${events.apply.behind}`);
+  help("thermite_events_applied_total", "counter", "Events control applied from the stream");
+  lines.push(`thermite_events_applied_total ${events.apply.applied}`);
+  help(
+    "thermite_events_apply_refused_total",
+    "counter",
+    "Messages of the events stream control could not read, passed over",
+  );
+  lines.push(`thermite_events_apply_refused_total ${events.apply.refused}`);
   const live = state.live;
   help("thermite_live_lines_taken_total", "counter", "Live lines control added from the bus");
   for (const r of live.rigs)

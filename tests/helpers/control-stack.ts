@@ -6,17 +6,19 @@ import {
   createControlApi,
 } from "../../src/control/api/index.ts";
 import { mountDashboard } from "../../src/control/dashboard/index.ts";
-import { ControlStore } from "../../src/control/store/index.ts";
+import type { ControlStore } from "../../src/control/store/index.ts";
 import { generateSigningKeys, type KeyPairPem } from "../../src/core/commands.ts";
 import { createHarnessApi } from "../../src/harness/api/index.ts";
 import type { HarnessService } from "../../src/harness/service/index.ts";
 import { type RelayState, relayOnce } from "../../src/supervisor/relay/index.ts";
+import { applied, controlStore } from "./control-store.ts";
 import { makeJudgeEnv } from "./judge-env.ts";
 
 /**
  * Control's tests' one stack (goal 125, T10): control, a rig's harness and the supervisor's relay
  * between them, all in this process; a dashboard session; and an MCP client. A test asks for what
- * it needs, and a change to how control is made changes this file, not every test.
+ * it needs, and a change to how control is made changes this file, not every test. Control's store
+ * is on a fake message bus, as control needs one (control-store.ts).
  */
 
 /** The owner's token, and the rig's and the supervisor's, as the tests use them. */
@@ -105,8 +107,9 @@ function makeControl(
 
 /**
  * Control alone, with no rig's harness: a fresh signing key unless given one (control started
- * again over the same store keeps its key), an in-memory store unless given one (a test that
- * fills the store before control starts makes it first), and `api()` as below.
+ * again over the same store keeps its key), an in-memory store on a fake bus unless given one (a
+ * test that fills the store before control starts makes it first, with controlStore()), and
+ * `api()` as below.
  */
 export function controlOnly(
   o: {
@@ -116,7 +119,7 @@ export function controlOnly(
     keys?: KeyPairPem;
   } = {},
 ) {
-  const store = o.store ?? new ControlStore(":memory:");
+  const store = o.store ?? controlStore();
   const keys = o.keys ?? generateSigningKeys();
   return { store, keys, ...makeControl(store, o.tokens, keys, o.options) };
 }
@@ -130,13 +133,14 @@ interface RigEnv {
 /**
  * Control with one rig, `rig-a`, whose harness is `env`'s (a judge env unless given), and the
  * supervisor's relay between them. `relay()` runs rounds of it: the rig's report, then control's
- * pending commands. `api()` calls control's REST API with the owner's token unless given another.
+ * pending commands; each round ends once control applied the events it took from the events
+ * stream. `api()` calls control's REST API with the owner's token unless given another.
  */
 export function controlStack<E extends RigEnv = ReturnType<typeof makeJudgeEnv>>(
   o: { env?: E; tokens?: Partial<ControlTokens>; options?: Options } = {},
 ) {
   const env = (o.env ?? makeJudgeEnv()) as E;
-  const store = new ControlStore(":memory:");
+  const store = controlStore();
   const { tokens, control, api } = makeControl(store, o.tokens, env.keys, o.options);
   const harness = createHarnessApi(env.service, { supervisor: SUPERVISOR_TOKEN });
   const fetchImpl: typeof fetch = async (input, init) => {
@@ -156,7 +160,10 @@ export function controlStack<E extends RigEnv = ReturnType<typeof makeJudgeEnv>>
   };
   let state: RelayState = { cursor: 0 };
   const relay = async (rounds = 1): Promise<RelayState> => {
-    for (let i = 0; i < rounds; i++) state = await relayOnce(cfg, state);
+    for (let i = 0; i < rounds; i++) {
+      state = await relayOnce(cfg, state);
+      await applied(store);
+    }
     return state;
   };
   return { env, store, tokens, control, harness, fetchImpl, cfg, relay, api };

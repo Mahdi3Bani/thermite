@@ -35,9 +35,9 @@ services:
       THERMITE_LIFECYCLE: "${THERMITE_LIFECYCLE:-}"
       THERMITE_COMPOSE_PROJECT: thermite
       THERMITE_COMPOSE_SERVICES: '{"local-1":{"harness":"harness","supervisor":"supervisor"},"local-2":{"harness":"harness-2","supervisor":"supervisor-2"}}'
-      # The message bus (the nats service below), as control reaches it. To turn the bus off, set
-      # THERMITE_NATS_URL to nothing in .env (`THERMITE_NATS_URL=`): everything goes over HTTP.
-      THERMITE_NATS_URL: "${THERMITE_NATS_URL-nats://nats:4222}"
+      # The message bus (the nats service below), as control reaches it. Control needs it: it keeps
+      # every rig's events there. THERMITE_NATS_URL in .env is the rigs' switch, never control's.
+      THERMITE_NATS_URL: nats://nats:4222
       # The bus as rigs on other machines and clusters reach it (empty: the host of
       # THERMITE_CONTROL_PUBLIC_URL, port 4222). Control gives it to the rigs it sets up.
       THERMITE_NATS_PUBLIC_URL: "${THERMITE_NATS_PUBLIC_URL:-}"
@@ -63,8 +63,8 @@ services:
 
   # The message bus (goal 168): NATS with JetStream, beside control. The supervisors send their
   # reports and live lines here and take their commands and their rig's config from here; control
-  # folds the reports and the live lines, publishes the commands and writes each rig's config,
-  # sealed to the rig. Every connection is over TLS, with the certificate that control's own
+  # folds the reports and the live lines, keeps every rig's events here, however they came,
+  # publishes the commands and writes each rig's config, sealed to the rig. Every connection is over TLS, with the certificate that control's own
   # authority signs, and signs in with a key the server knows from the users control writes:
   # control's own, and one for each rig whose supervisor registered its key. The harness never
   # reaches it. Its port, NATS's own, is published on this machine's loopback only, unless
@@ -193,7 +193,8 @@ services:
       # The advisors: teachers, their merged by model, auditor and review panel (off unless a config file is given).
       THERMITE_ADVISORS_FILE: "${THERMITE_ADVISORS_FILE:-}"
       # The message bus: reports, commands, live lines and config go over it, over TLS, trusting
-      # control's authority. THERMITE_NATS_URL set to nothing in .env: HTTP.
+      # control's authority. THERMITE_NATS_URL set to nothing in .env: this rig reports over HTTP,
+      # and control, on its bus still, keeps its events there.
       THERMITE_NATS_URL: "${THERMITE_NATS_URL-nats://nats:4222}"
       THERMITE_NATS_CA_FILE: /keys/bus-ca.pem
     volumes:
@@ -265,7 +266,8 @@ services:
       THERMITE_RESULTS_REMOTE: "${THERMITE_RESULTS_REMOTE:-file:///results/results.git}"
       THERMITE_ADVISORS_FILE: "${THERMITE_ADVISORS_FILE:-}"
       # The message bus: reports, commands, live lines and config go over it, over TLS, trusting
-      # control's authority. THERMITE_NATS_URL set to nothing in .env: HTTP.
+      # control's authority. THERMITE_NATS_URL set to nothing in .env: this rig reports over HTTP,
+      # and control, on its bus still, keeps its events there.
       THERMITE_NATS_URL: "${THERMITE_NATS_URL-nats://nats:4222}"
       THERMITE_NATS_CA_FILE: /keys/bus-ca.pem
     volumes:

@@ -23,7 +23,7 @@ describe("control's store migrations", () => {
     old.close();
 
     const store = new ControlStore(path);
-    assert.equal(version(store.db), 10);
+    assert.equal(version(store.db), 11);
     const folder = store.db.prepare("select name from campaign_folder").get() as { name: string };
     assert.equal(folder.name, "speed");
     store.db.close();
@@ -45,7 +45,7 @@ describe("control's store migrations", () => {
   test("a new store is not copied", () => {
     const path = fresh();
     const store = new ControlStore(path);
-    assert.equal(version(store.db), 10);
+    assert.equal(version(store.db), 11);
     store.db.close();
     assert.deepEqual(copiesOf(path), []);
   });
@@ -56,7 +56,7 @@ describe("control's store migrations", () => {
     one.db.exec("drop table rig_update; delete from schema_migrations where version >= 2");
     one.db.close();
     const store = new ControlStore(path);
-    assert.equal(version(store.db), 10);
+    assert.equal(version(store.db), 11);
     assert.ok(store.db.prepare("select 1 from sqlite_master where name = 'rig_update'").get());
     store.db.close();
     assert.deepEqual(
@@ -81,7 +81,7 @@ describe("control's store migrations", () => {
       row.run(id, agent);
     three.db.close();
     const store = new ControlStore(path);
-    assert.equal(version(store.db), 10);
+    assert.equal(version(store.db), 11);
     const agents = store.db.prepare("select agent from model_call order by event_id").all();
     assert.deepEqual(
       agents.map((r) => r.agent),
@@ -117,7 +117,7 @@ describe("control's store migrations", () => {
     );
     nine.db.close();
     const store = new ControlStore(path);
-    assert.equal(version(store.db), 10);
+    assert.equal(version(store.db), 11);
     const roles = store.agentModels.byRole("rig-a");
     assert.deepEqual(roles.teachers, {
       provider: "lab",
@@ -160,6 +160,41 @@ describe("control's store migrations", () => {
     );
   });
 
+  test("a store at version 10 gets the events stream's place and each rig ledger's held cursor, at the start (goal 168)", () => {
+    const path = fresh();
+    const ten = new ControlStore(path);
+    ten.db.exec(`drop table bus_position;
+      create table rig_ledger_10 (rig text not null, ledger_id text not null, first_seen text not null,
+        superseded_at text, primary key (rig, ledger_id));
+      insert into rig_ledger_10 values ('rig-a', 'l-1', '2026-10-28', '2026-10-29'), ('rig-a', 'l-2', '2026-10-29', null);
+      drop table rig_ledger;
+      alter table rig_ledger_10 rename to rig_ledger;
+      delete from schema_migrations where version >= 11`);
+    ten.db.close();
+    const store = new ControlStore(path);
+    assert.equal(version(store.db), 11);
+    // Nothing applied from the stream yet: the apply goes through it from its first message.
+    assert.equal(store.busPositions.of("EVENTS"), 0);
+    assert.deepEqual(
+      ["l-1", "l-2"].map((l) => store.reportedRigs.heldCursor("rig-a", l)),
+      [0, 0],
+    );
+    // The ledgers keep what they had.
+    const left = store.db
+      .prepare("select ledger_id, superseded_at from rig_ledger order by ledger_id")
+      .all()
+      .map((r) => ({ ...r }));
+    assert.deepEqual(left, [
+      { ledger_id: "l-1", superseded_at: "2026-10-29" },
+      { ledger_id: "l-2", superseded_at: null },
+    ]);
+    store.db.close();
+    assert.deepEqual(
+      copiesOf(path).map((c) => c.version),
+      [10],
+    );
+  });
+
   test("a rig's events are read in pages in control's order from an index, with no sort", () => {
     const store = new ControlStore(":memory:");
     // The views' paged read (RigEvents.after, lean, on the rig's ledger).
@@ -183,11 +218,11 @@ describe("control's store migrations", () => {
     old.exec(V010);
     old.close();
     const store = new ControlStore(path);
-    store.db.prepare("insert into schema_migrations (version) values (11)").run();
+    store.db.prepare("insert into schema_migrations (version) values (12)").run();
     store.db.close();
     assert.throws(
       () => new ControlStore(path),
-      /control store is at schema version 11, newer than this code's 10: .*the copy made then: .*control\.db\.v0\..*\.copy/,
+      /control store is at schema version 12, newer than this code's 11: .*the copy made then: .*control\.db\.v0\..*\.copy/,
     );
   });
 });

@@ -137,7 +137,7 @@ describe("the release bundle", () => {
     );
   });
 
-  test("the message bus runs beside control by default, over TLS, and can be turned off", () => {
+  test("the message bus runs beside control, over TLS; control is always on it, and the rigs can be turned off it", () => {
     for (const compose of [COMPOSE, render(TEMPLATE, placeholders(input()), COMPOSE_NEEDS)]) {
       assert.equal(
         serviceKey(compose, "nats", "profiles"),
@@ -164,9 +164,14 @@ describe("the release bundle", () => {
         assert.ok(compose.includes(`[ -s ${dir}/${name} ]`), `it waits for ${name}`);
       // Its health check: the server answers, with JetStream on.
       assert.match(compose, /healthz\?js-enabled-only=true/);
-      // Control and both rigs' supervisors are on it unless THERMITE_NATS_URL is set to nothing.
+      // Control is always on it; both rigs' supervisors are unless THERMITE_NATS_URL is set to
+      // nothing in .env.
+      const fixed = "\n      THERMITE_NATS_URL: nats://nats:4222\n";
+      assert.equal(compose.split(fixed).length - 1, 1);
+      const at = compose.indexOf(fixed);
+      assert.ok(compose.indexOf("\n  control:\n") < at && at < compose.indexOf("\n  nats:\n"));
       const on = /THERMITE_NATS_URL: "\$\{THERMITE_NATS_URL-nats:\/\/nats:4222\}"/g;
-      assert.equal(compose.match(on)?.length, 3);
+      assert.equal(compose.match(on)?.length, 2);
       assert.equal(compose.split("THERMITE_NATS_CA_FILE: /keys/bus-ca.pem").length - 1, 2);
       assert.match(compose, /THERMITE_NATS_CA_EXPORT: \/keys\/bus-ca\.pem/);
       assert.match(compose, /THERMITE_NATS_CONFIG_DIR: \/nats-config/);

@@ -55,7 +55,7 @@ export interface ControlParts {
   runpodRigs: RunpodRigs;
   /** Their stop, start, restart and terminate, beside the driver THERMITE_LIFECYCLE names. */
   runpodDriver: RunpodDriver;
-  /** The message bus (THERMITE_NATS_URL), for its state; none: control runs without it. */
+  /** The message bus (THERMITE_NATS_URL), for its state; none only in a test's control. */
   bus?: BusView | undefined;
   /** Every rig as control sees it now (views.ts), through the folds control keeps. */
   views(): RigView[];

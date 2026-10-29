@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { describe, test } from "node:test";
+import { before, describe, test } from "node:test";
 import { copiedFromRecords } from "../../../src/control/campaigns/index.ts";
 import { keepChampionPatch } from "../../../src/control/champions.ts";
 import { checkRows } from "../../../src/control/command-progress.ts";
 import { saveRunpodRig } from "../../../src/control/runpod/index.ts";
-import { ControlStore } from "../../../src/control/store/index.ts";
+import type { ControlStore } from "../../../src/control/store/index.ts";
 import { findRun, rigChecks, runMessages } from "../../../src/control/views/index.ts";
 import { callUsage } from "../../../src/core/usage.ts";
+import { applied, controlStore } from "../../helpers/control-store.ts";
 import { report, SET_START, type SetEvent } from "../../helpers/view-events.ts";
 
 /**
@@ -48,10 +49,11 @@ const published = (run: string, seq: number, patch: Buffer) =>
 
 /**
  * rig-a ran r-0 of sort, then had a full reset; in its new ledger r-1 of sort is at work and r-2
- * of sort is paused. rig-b runs r-3 of another campaign.
+ * of sort is paused. rig-b runs r-3 of another campaign. Applied from the events stream: the model
+ * call's record and the knowledge base's runs.
  */
-function seeded(): ControlStore {
-  const store = new ControlStore(":memory:");
+async function seeded(): Promise<ControlStore> {
+  const store = controlStore();
   report(store, "rig-a", "ledger-1", [
     ev("run_created", "r-0", { campaign: "sort", mode: "hill_climb" }),
     ev("agent_message", "r-0", { id: 1, to: "all", text: "The old run's words.", keep: false }),
@@ -105,11 +107,15 @@ function seeded(): ControlStore {
     ev("run_created", "r-3", { campaign: "other", mode: "hill_climb" }),
     ev("experiment_added", "r-3", { id: "x-1", title: "unroll", by: "planner", state: "queued" }),
   ]);
+  await applied(store);
   return store;
 }
 
 describe("control's readers of the rigs' events read what it keeps already", () => {
-  const store = seeded();
+  let store: ControlStore;
+  before(async () => {
+    store = await seeded();
+  });
 
   test("Live checks a run's message lines against the owner's messages on its rig's current ledger", () => {
     assert.deepEqual(
@@ -165,8 +171,8 @@ describe("control's readers of the rigs' events read what it keeps already", () 
     assert.deepEqual(findRun(store, "r-3")?.run.round_starts, []);
   });
 
-  test("a champion's patch is kept when it is the newest one its run published as that champion", () => {
-    const s = seeded();
+  test("a champion's patch is kept when it is the newest one its run published as that champion", async () => {
+    const s = await seeded();
     assert.equal(keepChampionPatch(s, "rig-a", "r-1", 2, FIRST), "mismatch");
     assert.equal(keepChampionPatch(s, "rig-a", "r-1", 2, SECOND), "stored");
     assert.equal(keepChampionPatch(s, "rig-a", "r-1", 3, THIRD), "stored");
@@ -213,8 +219,8 @@ describe("control's readers of the rigs' events read what it keeps already", () 
     );
   });
 
-  test("a pod's spend goes to the runs its rig runs on its current ledger, with their campaign", () => {
-    const s = seeded();
+  test("a pod's spend goes to the runs its rig runs on its current ledger, with their campaign", async () => {
+    const s = await seeded();
     s.runpod.addRig({ rig: "rig-a", cloud: "rp", pod: "p-1", state: { spent_usd: 0 }, by: "t" });
     saveRunpodRig(s, "rig-a", { spent_usd: 0.5 }, true);
     assert.deepEqual(

@@ -3,16 +3,20 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { ControlStore } from "../../src/control/store/index.ts";
+import type { ControlStore } from "../../src/control/store/index.ts";
 import { KnowledgeBase } from "../../src/control/store/kb/index.ts";
 import { KbSync } from "../../src/core/kb.ts";
 import { assigned } from "../helpers/assignments.ts";
 import { controlOnly } from "../helpers/control-stack.ts";
+import { applied, busOf, closeBus, controlStore } from "../helpers/control-store.ts";
 
 type Ev = [string, string, string, Record<string, unknown>];
 
-/** A rig's events as control receives them (subject first, then the body). */
-function ingest(
+/**
+ * A rig's events as control receives them (subject first, then the body), once the apply of the
+ * events stream has fed them to the knowledge base.
+ */
+async function ingest(
   store: ControlStore,
   rig: string,
   events: Ev[],
@@ -35,11 +39,12 @@ function ingest(
     })),
     summary: {},
   });
+  await applied(store);
 }
 
 /** Two rigs: a goal campaign with a run's journal and experiments, and a research campaign. */
-function twoCampaigns(store: ControlStore) {
-  ingest(store, "rig-a", [
+async function twoCampaigns(store: ControlStore) {
+  await ingest(store, "rig-a", [
     ["harness", "run_created", "gs-3", { campaign: "gemv-speed", mode: "goal" }],
     [
       "planner",
@@ -80,7 +85,7 @@ function twoCampaigns(store: ControlStore) {
       { id: "x-1", lane: "lane-1", trial: "t-1", attempt: "a-1", result: "submitted" },
     ],
   ]);
-  ingest(store, "rig-b", [
+  await ingest(store, "rig-b", [
     ["harness", "run_created", "sv-2", { campaign: "survey-study", mode: "research" }],
     [
       "lane-1",
@@ -113,11 +118,10 @@ function twoCampaigns(store: ControlStore) {
   ]);
 }
 
-test("each campaign's folder is built from its runs' events; folders are read only where granted", () => {
-  const store = new ControlStore(":memory:");
-  twoCampaigns(store);
+test("each campaign's folder is built from its runs' events; folders are read only where granted", async () => {
+  const store = controlStore();
+  await twoCampaigns(store);
   const kb = store.kb();
-  assert.equal(kb.catchUp(), 0, "store.kb() caught up already: nothing new");
   const folders = kb.folders();
   const pn = folders.find((f) => f.campaign === "gemv-speed");
   assert.deepEqual(pn?.counts, { attempt: 1, experiment: 1, note: 1, run: 1 });
@@ -160,7 +164,7 @@ test("each campaign's folder is built from its runs' events; folders are read on
   assert.equal(kb.grant("gemv-speed", "gemv-speed", "owner:ui"), false);
   assert.deepEqual(kb.reads("gemv-speed"), []);
   // Later events update the same items, and new ones are added.
-  ingest(
+  await ingest(
     store,
     "rig-a",
     [
@@ -179,10 +183,10 @@ test("each campaign's folder is built from its runs' events; folders are read on
   assert.ok(Number(dropped?.seq) > Number(exp?.seq), "an update gives the item a new seq");
 });
 
-test("the knowledge base carries on after a restart of control: its cursor and seqs are kept", () => {
+test("the knowledge base carries on after a restart of control: its cursor and seqs are kept", async () => {
   const path = join(mkdtempSync(join(tmpdir(), "thermite-kb-")), "control.db");
-  const first = new ControlStore(path);
-  twoCampaigns(first);
+  const first = controlStore(path);
+  await twoCampaigns(first);
   const before = first.kb().folders();
   const top = Math.max(
     ...first
@@ -190,12 +194,15 @@ test("the knowledge base carries on after a restart of control: its cursor and s
       .changedAfter(["gemv-speed", "survey-study"], 0)
       .map((x) => x.seq),
   );
-  // Control restarts: a new store on the same file indexes nothing twice.
-  const second = new ControlStore(path);
+  // Control restarts: a new store on the same file, on the same bus, goes on from the stream's
+  // place it applied, and indexes nothing twice.
+  closeBus(first);
+  const second = controlStore(path, busOf(first).bus);
+  await applied(second);
+  assert.equal(busOf(second).apply.applied, 0);
   const kb = second.kb();
-  assert.equal(kb.catchUp(), 0);
   assert.deepEqual(kb.folders(), before);
-  ingest(
+  await ingest(
     second,
     "rig-a",
     [
@@ -212,16 +219,16 @@ test("the knowledge base carries on after a restart of control: its cursor and s
   assert.ok(Number(lesson?.seq) > top, "seqs go on from where they were");
 });
 
-test("a rig's new ledger never mixes its runs' items with the old ledger's", () => {
-  const store = new ControlStore(":memory:");
-  ingest(store, "rig-a", [
+test("a rig's new ledger never mixes its runs' items with the old ledger's", async () => {
+  const store = controlStore();
+  await ingest(store, "rig-a", [
     ["harness", "run_created", "r-1", { campaign: "old-campaign", mode: "goal" }],
     ["planner", "experiment_added", "r-1", { id: "x-1", title: "the old idea", by: "planner" }],
     ["harness", "attempt_recorded", "a-1", { run: "r-1", lane: "lane-1", hypothesis: "old try" }],
   ]);
   store.kb();
   // A reset: the rig reports a new ledger that starts again at event 1, with the same names.
-  ingest(
+  await ingest(
     store,
     "rig-a",
     [
@@ -246,11 +253,11 @@ test("a rig's new ledger never mixes its runs' items with the old ledger's", () 
   assert.equal(kb.sync("rig-a", "r-1", 0)?.campaign, "new-campaign");
 });
 
-test("a run's sync: its readable folders by seq, never its own items, in pages, updates again", () => {
-  const store = new ControlStore(":memory:");
-  twoCampaigns(store);
+test("a run's sync: its readable folders by seq, never its own items, in pages, updates again", async () => {
+  const store = controlStore();
+  await twoCampaigns(store);
   // A second run of gemv-speed on another rig, and a third campaign nobody granted.
-  ingest(store, "rig-c", [
+  await ingest(store, "rig-c", [
     ["harness", "run_created", "gs-4", { campaign: "gemv-speed", mode: "goal" }],
     [
       "lane-1",
@@ -259,7 +266,7 @@ test("a run's sync: its readable folders by seq, never its own items, in pages, 
       { id: 1, by: "lane-1", kind: "decision", text: "kept the old path below n = 4096" },
     ],
   ]);
-  ingest(store, "rig-d", [
+  await ingest(store, "rig-d", [
     ["harness", "run_created", "x-9", { campaign: "secret-campaign", mode: "goal" }],
     ["planner", "experiment_added", "x-9", { id: "x-1", title: "not for pn", by: "planner" }],
   ]);
@@ -268,7 +275,7 @@ test("a run's sync: its readable folders by seq, never its own items, in pages, 
     const out: KbSync["items"] = [];
     let cur = after;
     for (let i = 0; i < 50; i++) {
-      // As the route does: caught up with every report first.
+      // As the route reads it.
       const page = store.kb().sync(rig, run, cur, limit);
       assert.ok(page);
       KbSync.parse(page);
@@ -313,7 +320,7 @@ test("a run's sync: its readable folders by seq, never its own items, in pages, 
   assert.equal(quiet?.next, s.next);
   assert.equal(quiet?.more, false);
   // An updated item comes again, with a seq after the cursor.
-  ingest(
+  await ingest(
     store,
     "rig-a",
     [["planner", "experiment_dropped", "gs-3", { id: "x-1", by: "owner", why: "done elsewhere" }]],
@@ -353,7 +360,7 @@ test("the rigs' route: the rig's own token, its own runs, a KbSync", async () =>
   const { store, control } = controlOnly({
     tokens: { rigs: { "rig-a": "rig-a-token-abcd", "rig-b": "rig-b-token-abcd" } },
   });
-  twoCampaigns(store);
+  await twoCampaigns(store);
   const get = (path: string, token: string) =>
     control.request(path, { headers: { authorization: `Bearer ${token}` } });
   // A run control did not assign gets nothing, whatever its own events name.
@@ -386,8 +393,8 @@ test("the rigs' route: the rig's own token, its own runs, a KbSync", async () =>
 });
 
 test("a research note is a note of its own in the folder and in the run's journal", async () => {
-  const store = new ControlStore(":memory:");
-  ingest(store, "rig-c", [
+  const store = controlStore();
+  await ingest(store, "rig-c", [
     ["harness", "run_created", "g-1", { campaign: "gemv-speed", mode: "goal" }],
     [
       "lane-1",
@@ -428,10 +435,10 @@ test("a research note is a note of its own in the folder and in the run's journa
   assert.ok(!run?.timeline.some((e) => e.kind === "research_note"));
 });
 
-test("a folder holds everything a run produces: the run, its trials, its documents, the sources' text", () => {
-  const store = new ControlStore(":memory:");
+test("a folder holds everything a run produces: the run, its trials, its documents, the sources' text", async () => {
+  const store = controlStore();
   const text = `The weights stream from memory. ${"More words. ".repeat(40)}`;
-  ingest(store, "rig-r", [
+  await ingest(store, "rig-r", [
     [
       "control:owner",
       "run_created",
@@ -593,10 +600,10 @@ test("a folder holds everything a run produces: the run, its trials, its documen
   assert.equal(full.find((e) => e.kind === "source_fetched")?.body.text, text);
 });
 
-test("after an upgrade, the runs indexed before get their run and trial items, once, in their folder", () => {
-  const store = new ControlStore(":memory:");
+test("after an upgrade, the runs indexed before get their run and trial items, once, in their folder", async () => {
+  const store = controlStore();
   assigned(store, "rig-a", "gs-3", "gemv-speed");
-  ingest(store, "rig-a", [
+  await ingest(store, "rig-a", [
     ["harness", "run_created", "gs-3", { campaign: "gemv-speed", mode: "goal" }],
     [
       "scheduler",
@@ -608,10 +615,14 @@ test("after an upgrade, the runs indexed before get their run and trial items, o
     ["control:owner", "run_status", "gs-3", { status: "paused", reason: "a pause" }],
   ]);
   const kb = store.kb();
-  // As an earlier reading left the store: no run or trial items, and no reading's version.
-  store.db.exec("delete from kb_item where kind in ('run', 'trial'); delete from kb_meta;");
+  // As an earlier reading left the store, indexed from control's events table: no run or trial
+  // items, and no reading's version.
+  store.db.exec(
+    "update kb_cursor set seq = (select max(seq) from rig_event); delete from kb_item where kind in ('run', 'trial'); delete from kb_meta;",
+  );
   const note = kb.search("kept", ["gemv-speed"])[0];
-  assert.equal(kb.catchUp(), 0, "no new event");
+  // Control starts again: the knowledge base reads those events again as it opens.
+  new KnowledgeBase(store.db);
   assert.deepEqual(kb.folder("gemv-speed").counts, { note: 1, run: 1, trial: 1 });
   const [run] = kb.search("", ["gemv-speed"], { kinds: ["run"] });
   assert.match(String(run?.body), /Status: paused \(a pause\)$/);
@@ -623,20 +634,20 @@ test("after an upgrade, the runs indexed before get their run and trial items, o
   );
   // Once only: a later call reads nothing again.
   store.db.exec("delete from kb_item where kind = 'trial'");
-  kb.catchUp();
+  new KnowledgeBase(store.db);
   assert.equal(kb.folder("gemv-speed").counts.trial, undefined);
 });
 
-test("a rig files a run's items only under a campaign control gave it", () => {
-  const store = new ControlStore(":memory:");
+test("a rig files a run's items only under a campaign control gave it", async () => {
+  const store = controlStore();
   // Control assigned gemv-speed to rig-a's g-1.
   assigned(store, "rig-a", "g-1", "gemv-speed");
-  ingest(store, "rig-a", [
+  await ingest(store, "rig-a", [
     ["harness", "run_created", "g-1", { campaign: "gemv-speed", mode: "goal" }],
     ["lane-1", "journal_note", "g-1", { id: 1, by: "lane-1", kind: "lesson", text: "real lesson" }],
   ]);
   // rig-b names gemv-speed for a run control never assigned it: nothing goes in that folder.
-  ingest(store, "rig-b", [
+  await ingest(store, "rig-b", [
     ["harness", "run_created", "g-9", { campaign: "gemv-speed", mode: "goal" }],
     ["lane-1", "journal_note", "g-9", { id: 1, by: "lane-1", kind: "lesson", text: "planted" }],
     // A campaign control never assigned anywhere (a local run) is still filed as named.
@@ -652,16 +663,18 @@ test("a rig files a run's items only under a campaign control gave it", () => {
   assert.equal(kb.search("local", ["local-try"], { kinds: ["note"] }).length, 1);
 });
 
-test("a store built by an earlier reading rebuilds its experiments and attempts once (goal 162)", () => {
-  const store = new ControlStore(":memory:");
-  twoCampaigns(store);
+test("a store built by an earlier reading rebuilds its experiments and attempts once (goal 162)", async () => {
+  const store = controlStore();
+  await twoCampaigns(store);
   const kb = store.kb();
   const [exp] = kb.search("vector", ["gemv-speed"], { kinds: ["experiment"] });
   const whole = exp?.body;
-  // As reading 2 left an item whose details held "Result: ": cut, and its state in its text.
+  // As reading 2 left an item whose details held "Result: ": cut, and its state in its text,
+  // indexed from control's events table.
   store.db.prepare("update kb_item set body = 'cut', meta = '{}' where kind = 'experiment'").run();
   store.db.prepare("update kb_meta set value = '2' where key = 'reading'").run();
-  new KnowledgeBase(store.db).catchUp();
+  store.db.exec("update kb_cursor set seq = (select max(seq) from rig_event)");
+  new KnowledgeBase(store.db);
   const [again] = kb.search("vector", ["gemv-speed"], { kinds: ["experiment"] });
   assert.equal(again?.body, whole);
   assert.equal(again?.meta.result, "Result: attempt a-1 (submitted)");
@@ -671,9 +684,9 @@ test("a store built by an earlier reading rebuilds its experiments and attempts 
   assert.equal(reading.value, "3");
 });
 
-test("control reads a run recorded under its names from before 2026-10-15, as the harness does (goal 162)", () => {
-  const store = new ControlStore(":memory:");
-  ingest(store, "rig-a", [
+test("control reads a run recorded under its names from before 2026-10-15, as the harness does (goal 162)", async () => {
+  const store = controlStore();
+  await ingest(store, "rig-a", [
     ["harness", "instance_created", "old-1", { campaign: "old-speed", mode: "goal" }],
     ["harness", "instance_status", "old-1", { status: "paused", reason: "the owner paused it" }],
   ]);

@@ -30,7 +30,9 @@ create table if not exists kb_run (
   campaign text not null,
   primary key (rig, ledger, run)
 );
--- seq: the last rig event indexed; item_seq: the last seq given to an item or a grant's copy.
+-- seq: the seq in control's events table of the last event indexed from it, before the apply of
+-- the events stream fed the knowledge base (it no longer moves); item_seq: the last seq given to
+-- an item or a grant's copy, which the rigs' cursors count.
 create table if not exists kb_cursor (
   id integer primary key check (id = 1),
   seq integer not null,

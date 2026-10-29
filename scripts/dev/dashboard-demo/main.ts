@@ -7,7 +7,10 @@
 //
 // Its parts are in dashboard-demo/: the hill climb, the goal campaign, the research campaign and
 // its reviews, what the rigs report and the live sessions. The rigs are made in the order below,
-// which the seeded random sequences depend on.
+// which the seeded random sequences depend on. Control's store is on the tests' fake message bus,
+// in this process: what control derives from the rigs' events (model usage, the knowledge base,
+// commands' outcomes) is applied from its events stream, as on a real bus, and the demo needs no
+// NATS server.
 
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,8 +20,8 @@ import { serve } from "@hono/node-server";
 import { createControlApi } from "../../../src/control/api/index.ts";
 import { mountDashboard } from "../../../src/control/dashboard/index.ts";
 import { issueCommand } from "../../../src/control/issue/index.ts";
-import { ControlStore } from "../../../src/control/store/index.ts";
 import { generateSigningKeys } from "../../../src/core/commands.ts";
+import { applied, controlStore } from "../../../tests/helpers/control-store.ts";
 import { goalRig } from "./goal.ts";
 import { hillClimbRigs } from "./hill-climb.ts";
 import { liveSessions } from "./live.ts";
@@ -27,7 +30,7 @@ import { pilotRig, researchRig } from "./research.ts";
 
 const { values } = parseArgs({ options: { port: { type: "string", default: "8810" } } });
 
-const store = new ControlStore(join(mkdtempSync(join(tmpdir(), "thermite-demo-")), "control.db"));
+const store = controlStore(join(mkdtempSync(join(tmpdir(), "thermite-demo-")), "control.db"));
 const rigs = ["gpu-1", "gpu-2", "gpu-3", "cpu-1", "gpu-4"];
 store.enrollments.setConfiguredRigs(rigs);
 
@@ -87,6 +90,9 @@ store.modelProviders.setModels("demo-models", [
   },
   { id: "kimi-k3", context_window: 262_144 },
 ]);
+
+// What control derives from the rigs' events, applied before the first page is served.
+await applied(store);
 
 const port = Number(values.port);
 serve({

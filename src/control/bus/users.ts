@@ -30,15 +30,15 @@ export const BUS_USERS_FILE = "users.conf";
 export const BUS_USERS_SYNC_MS = 5_000;
 
 /**
- * The folder of the server's files, from its setting. Control needs one when it runs the bus: the
- * server then knows only the users control writes there, and serves the certificate it writes
- * there. Not set stops control at start.
+ * The folder of the server's files, from its setting. Control needs one, as it needs its bus: the
+ * server knows only the users control writes there, and serves the certificate it writes there.
+ * Not set stops control at start.
  */
 export function busConfigDir(env: Record<string, string | undefined>): string {
   const dir = env[BUS_CONFIG_DIR_SETTING]?.trim();
   if (!dir)
     throw new Error(
-      `with THERMITE_NATS_URL set, ${BUS_CONFIG_DIR_SETTING} names the folder control writes the bus's users and TLS certificate to, which the server's configuration includes`,
+      `control needs ${BUS_CONFIG_DIR_SETTING}: the folder control writes the bus's users and TLS certificate to, which the server's configuration includes`,
     );
   return dir;
 }

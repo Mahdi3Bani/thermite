@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { queueSeedOf } from "../../../src/control/kb.ts";
 import { controlOnly, signIn } from "../../helpers/control-stack.ts";
+import { applied } from "../../helpers/control-store.ts";
 
 /**
  * Goal 112's research paper on control's side, from a rig's events: the research Overview's
@@ -17,7 +18,10 @@ async function control() {
   const { get, page } = await signIn(api);
   let id = 0;
   const t0 = Date.now() - 3600_000;
-  const ingest = (...events: { kind: string; subject: string; body: Record<string, unknown> }[]) =>
+  /** The rig's report of these events, once control applied them from the events stream. */
+  const ingest = async (
+    ...events: { kind: string; subject: string; body: Record<string, unknown> }[]
+  ) => {
     store.rigEvents.ingest({
       rig: "rig-a",
       ledger_id: "ledger-a",
@@ -31,6 +35,8 @@ async function control() {
       })),
       summary: {},
     });
+    await applied(store);
+  };
   /** The Overview's one line on the answer check, without markup. */
   const line = async () =>
     (/<div class="small rcheck"[^>]*><b>Answer check:<\/b> ([^<]*)<\/div>/.exec(await page(PAGE)) ??
@@ -83,8 +89,8 @@ const PAPER = "# What the runs show\n\n## Summary\n\nThe first run kept <b>42</b
 describe("a research run's paper on control (goal 112)", () => {
   test("the Answer check line says when the final writer is at work and when the paper is in; the run's page links the paper", async () => {
     const c = await control();
-    c.ingest(...answered);
-    c.ingest({
+    await c.ingest(...answered);
+    await c.ingest({
       kind: "research_paper_requested",
       subject: "s-1",
       body: { review: 4, figures: { sources: 2 } },
@@ -98,7 +104,7 @@ describe("a research run's paper on control (goal 112)", () => {
       await c.page(PAGE),
       /<span class="br-who">writer<\/span><span class="br-what">the final writer is writing the paper<\/span>/,
     );
-    c.ingest({
+    await c.ingest({
       kind: "research_paper_refused",
       subject: "s-1",
       body: {
@@ -121,7 +127,7 @@ describe("a research run's paper on control (goal 112)", () => {
     );
     // No link while there is no paper.
     assert.equal((await c.get("/ui/campaigns/survey/runs/s-1/paper.md")).status, 404);
-    c.ingest({
+    await c.ingest({
       kind: "research_paper_accepted",
       subject: "s-1",
       body: {
@@ -158,7 +164,7 @@ describe("a research run's paper on control (goal 112)", () => {
       /The research paper passed the harness's checks and the rig's STE checker\. It cites 1 claims, and 1 next experiment went to the knowledge base\./,
     );
     // Closed: the final report starts with the paper.
-    c.ingest(
+    await c.ingest(
       { kind: "research_final", subject: "s-1", body: { ...digest, paper: true } },
       {
         kind: "run_status",
@@ -174,7 +180,7 @@ describe("a research run's paper on control (goal 112)", () => {
 
   test("a rig with no final writer: the run closes with the review panel's answers, and the line says there is no paper", async () => {
     const c = await control();
-    c.ingest(
+    await c.ingest(
       ...answered,
       {
         kind: "research_final",
@@ -195,7 +201,7 @@ describe("a research run's paper on control (goal 112)", () => {
 
   test("the paper's next experiments are experiments of the campaign's folder, which Start a run takes into a new run's queue", async () => {
     const c = await control();
-    c.ingest(...answered, {
+    await c.ingest(...answered, {
       kind: "research_paper_accepted",
       subject: "s-1",
       body: {

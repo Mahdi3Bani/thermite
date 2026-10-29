@@ -29,7 +29,7 @@ async function draining(work?: Record<string, unknown>) {
       focus: "Find published repetition counts",
     }),
   ];
-  c.ingest(events);
+  await c.ingest(events);
   const open = (trial: string, lane: string, started: number, more: Record<string, unknown>) => ({
     trial,
     run: "s-1",

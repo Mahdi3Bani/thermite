@@ -170,6 +170,31 @@ export class ReportedRigs extends StorePart {
       .run(report.rig, report.ledger_id, now);
   }
 
+  /**
+   * A rig ledger's held cursor: the last event of it whose records control's store holds, as the
+   * apply of the events stream moved it (control/events); 0 before any.
+   */
+  heldCursor(rig: string, ledgerId: string): number {
+    const r = this.db
+      .prepare("select through_event from rig_ledger where rig = ? and ledger_id = ?")
+      .get(rig, ledgerId) as { through_event: number } | undefined;
+    return Number(r?.through_event ?? 0);
+  }
+
+  /**
+   * The apply alone moves a ledger's held cursor, to the last event of it that it applied, never
+   * back. A ledger the store has no row for yet, as in a store older than the stream, gets one.
+   */
+  holdThrough(rig: string, ledgerId: string, eventId: number, now: string): void {
+    this.db
+      .prepare(
+        `insert into rig_ledger (rig, ledger_id, first_seen, through_event) values (?, ?, ?, ?)
+         on conflict (rig, ledger_id) do update
+           set through_event = max(rig_ledger.through_event, excluded.through_event)`,
+      )
+      .run(rig, ledgerId, now, eventId);
+  }
+
   /** A row for a rig that never reported, so it is listed (with no report: offline). */
   addUnreported(rig: string, now: string): void {
     this.db

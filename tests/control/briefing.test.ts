@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { briefingFromKb } from "../../src/control/briefing.ts";
 import { briefingSeedOf } from "../../src/control/kb.ts";
-import { ControlStore } from "../../src/control/store/index.ts";
+import type { ControlStore } from "../../src/control/store/index.ts";
+import { applied, controlStore } from "../helpers/control-store.ts";
 
-/** One run of `campaign` on `rig`, named `run`, with one finding. */
-function ran(store: ControlStore, rig: string, run: string, words: string) {
+/** One run of `campaign` on `rig`, named `run`, with one finding, in the knowledge base. */
+async function ran(store: ControlStore, rig: string, run: string, words: string) {
   const at = (m: number) => new Date(Date.parse("2026-10-27T01:00:00Z") + m * 60_000).toISOString();
   store.rigEvents.ingest({
     rig,
@@ -33,12 +34,13 @@ function ran(store: ControlStore, rig: string, run: string, words: string) {
     ],
     summary: {},
   });
+  await applied(store);
 }
 
-test("a briefing item from one of two runs of one name, on two rigs, is found by its rig (goal 162)", () => {
-  const store = new ControlStore(":memory:");
-  ran(store, "rig-a", "s-1", "On rig-a the cache was the limit.");
-  ran(store, "rig-b", "s-1", "On rig-b the clock was the limit.");
+test("a briefing item from one of two runs of one name, on two rigs, is found by its rig (goal 162)", async () => {
+  const store = controlStore();
+  await ran(store, "rig-a", "s-1", "On rig-a the cache was the limit.");
+  await ran(store, "rig-b", "s-1", "On rig-b the clock was the limit.");
   const kb = store.kb();
   const fromB = kb.search("clock", ["speed"]).find((x) => x.rig === "rig-b");
   assert.ok(fromB);

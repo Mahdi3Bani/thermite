@@ -34,6 +34,7 @@ export {
   BUS_TLS_FILES,
   BusTls,
   busPublicUrl,
+  controlBusUrl,
 } from "./tls.ts";
 export {
   BUS_CONFIG_DIR_SETTING,

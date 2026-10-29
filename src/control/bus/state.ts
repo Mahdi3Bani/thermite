@@ -12,16 +12,23 @@ import {
   LIVE_STREAM,
 } from "../../core/link/live.ts";
 import { REPORT_STREAM } from "../../core/link/report.ts";
-import { type EventsMirror, mirrorState, streamEnd } from "../events/index.ts";
+import {
+  applyState,
+  type EventsApply,
+  type EventsMirror,
+  mirrorState,
+  streamEnd,
+} from "../events/index.ts";
 import type { LiveTaken } from "../live/index.ts";
 import type { ControlStore } from "../store/index.ts";
 import { type ConfigWritten, configState } from "./config.ts";
 
 /**
  * The message bus's state, for whoever runs control (goal 168): its server, the streams control
- * makes with what each consumer has still to take, the mirror of control's events table, and the
- * live stream's and the config bucket's figures, from control's side and from each rig's
- * supervisor. REST (`GET /v1/bus`), MCP (`bus_state`) and `/metrics` read it.
+ * makes with what each consumer has still to take, the mirror of control's events table and the
+ * apply of the events stream, and the live stream's and the config bucket's figures, from
+ * control's side and from each rig's supervisor. REST (`GET /v1/bus`), MCP (`bus_state`) and
+ * `/metrics` read it.
  */
 
 /** The streams control makes, in the order the state lists them. */
@@ -37,14 +44,16 @@ export const BUS_STREAMS = [
 export const BUS_STATE_TIMEOUT_MS = 5_000;
 
 /**
- * The bus as control's APIs see it: its server, the mirror of control's events table, what control
- * took from the live stream, and what it wrote to the config bucket.
+ * The bus as control's APIs see it: its server, the mirror of control's events table and the
+ * apply of the events stream, what control took from the live stream, and what it wrote to the
+ * config bucket.
  */
 export interface BusView {
   /** The server's host and port. */
   server: string;
   bus: Pick<Bus, "streams" | "connected" | "lastSeq" | "message">;
   events: EventsMirror;
+  apply: EventsApply;
   live: LiveTaken;
   config: ConfigWritten;
 }
@@ -94,18 +103,21 @@ export function liveState(store: ControlStore, taken: LiveTaken) {
 }
 
 /**
- * The bus in control's health answer: off, connected (control holds a connection to its server
- * now) or away (it holds none, and tries again). Control's own routes serve either way, so the
+ * The bus in control's health answer: connected (control holds a connection to its server now) or
+ * away (it holds none, and tries again); off only where control was made without it, as in a
+ * test, since control needs its bus to start. Control's own routes serve either way, so the
  * answer stays 200: a restart of control mends nothing on the bus.
  */
 export const busHealth = (view: BusView | undefined): "off" | "connected" | "away" =>
   view ? (view.bus.connected() ? "connected" : "away") : "off";
 
-/** The bus's state now; with the bus off, only that it is off. */
+/** The bus's state now; for a test's control made without its bus, only that it is off. */
 export async function busState(store: ControlStore, view: BusView | undefined) {
   if (!view) return { on: false as const };
   let streams: StreamState[] = [];
-  // The Thermite-Seq of the events stream's last message, as the server has it.
+  // The events stream's last place, and the Thermite-Seq of its last message, as the server has
+  // them.
+  let eventsPlace: number | null = null;
   let eventsSeq: number | null = null;
   let error: string | null = null;
   let timer: NodeJS.Timeout | undefined;
@@ -117,7 +129,7 @@ export async function busState(store: ControlStore, view: BusView | undefined) {
   });
   try {
     const read = Promise.all([view.bus.streams(BUS_STREAMS), streamEnd(view.bus)]);
-    [streams, { seq: eventsSeq }] = await Promise.race([read, late]);
+    [streams, { place: eventsPlace, seq: eventsSeq }] = await Promise.race([read, late]);
   } catch (err) {
     error = errorText(err);
   } finally {
@@ -129,7 +141,10 @@ export async function busState(store: ControlStore, view: BusView | undefined) {
     reachable: error === null,
     error,
     streams,
-    events: mirrorState(store, view.events, eventsSeq),
+    events: {
+      ...mirrorState(store, view.events, eventsSeq),
+      apply: applyState(store, view.apply, eventsPlace),
+    },
     live: liveState(store, view.live),
     config: configState(store, view.config),
   };
