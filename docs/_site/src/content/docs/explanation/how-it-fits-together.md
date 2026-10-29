@@ -161,13 +161,14 @@ Such a message never reaches the rig. Its sender gets control's reason at once (
 
 **Kept in force.** A message to everyone working or to a lane can be kept in force (📌 in Live's message box). Every new trial's brief then carries it, under its own heading, until the owner removes it: **Remove** in Live's list of kept messages, or the `unkeep_message` command. Live then shows the removal as your own line, under **You**: "📌 You removed your kept message: …". Other messages are given once to each reader.
 
-**When each reader reads it.** Each reader (each lane, the planner, and each advisor role) reads a message once; only a message kept in force is read again, by each new trial. A read counts only when the agent works with the text. A message in a trial's brief counts once the trial's agent is at work: its first line in Live, or a turn or tokens used. A trial that fails before then leaves the message for the lane's next trial. A message given at a worker's next step, or in a continued session, counts at once. An advisor's read counts with its work: the teachers' once a teacher gives a review, the auditor's and the review panel's once their audit or review is posted. Fetching a message is not reading it.
+**When each reader reads it.** Each reader (each lane, the planner, and each advisor role) reads a message once; only a message kept in force is read again, by each new trial. A read counts only when the agent works with the text. A message in a trial's brief counts once the trial's agent is at work: its first line in Live, or a turn or tokens used. A trial that fails before then leaves the message for the lane's next trial. A message given at a worker's next step, or in a continued session, counts at once. One given inside a turn through a program's hook counts once the hook has handed it to the program, and through Thermite's OpenCode plugin once OpenCode says it took it in. An advisor's read counts with its work: the teachers' once a teacher gives a review, the auditor's and the review panel's once their audit or review is posted. Fetching a message is not reading it.
 
 | Reader | When it reads a message |
 | --- | --- |
 | A lane with no trial running | In the brief of its next trial, once that trial's agent is at work |
 | A Pi worker | At its next step: when the model's current turn ends, before its next call to the model |
-| An OpenCode, Claude Code or Codex worker | When its current run of `opencode run`, `claude -p` or `codex exec` ends without a submission. The harness then continues the session with the message. These programs take no message into a run that is under way, and a run goes on until the model stops by itself, the agent submits or the trial's time is up |
+| A Claude Code or Codex worker | Inside its turn, through Thermite's hooks: after the next tool it runs (its PostToolUse hook adds the message to what the model reads next), or when the model stops (its Stop hook gives the message as the reason to go on, and the agent goes on with it). One message at a time. A message that arrives after the turn ended goes in when the harness continues the session |
+| An OpenCode worker | Inside its turn, through Thermite's plugin: when the agent starts its next tool, the plugin steers the message into the session, and OpenCode takes it in after that tool. A message still waiting when `opencode run` ends goes in when the harness continues the session |
 | Any worker, after it submits | It doesn't. A submission ends the trial, and the lane's next trial reads the message in its brief, where it can act on it |
 | The planner | In its next plan, if the model's plan is used. While the planner is off, its model can't be reached, or both its answers are refused, the message waits |
 | The teachers | In a round that starts at once, for a running run. Between rounds, the supervisor looks for new messages to the teachers every few seconds; a round already under way finishes first |
@@ -180,7 +181,7 @@ Such a message never reaches the rig. Its sender gets control's reason at once (
 | Event | What it records |
 | --- | --- |
 | `agent_message` | The message: its text, who it is for, and whether it is kept in force |
-| `agent_message_read` | Each reader's first read: a lane (with its trial), the planner (with its round) or an advisor role |
+| `agent_message_read` | Each reader's first read: a lane (with its trial and how its agent was given the message), the planner (with its round) or an advisor role |
 | `agent_message_unkept` | The owner took a message out of force |
 | `advisor_answer` | An advisor's answer |
 

@@ -1,5 +1,5 @@
 # command
-sh -c exec "$@" >> "$THERMITE_CODEX_EVENTS" 2>&1 sh <bin>/codex exec --json --skip-git-repo-check --ignore-rules --dangerously-bypass-approvals-and-sandbox --model gpt-test -
+sh -c exec "$@" >> "$THERMITE_CODEX_EVENTS" 2>&1 sh <bin>/codex exec --json --skip-git-repo-check --ignore-rules --dangerously-bypass-approvals-and-sandbox --dangerously-bypass-hook-trust --model gpt-test -
 # standard input
 You are a research worker in an automated research harness, working in a git repository
 in your current directory. You get one assignment and one trial. Read the code, make a focused

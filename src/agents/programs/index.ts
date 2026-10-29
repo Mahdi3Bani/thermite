@@ -2,8 +2,9 @@
  * The agent programs that run as command-line programs, as Thermite starts them for the harness's
  * agents and the supervisor's advisors: Claude Code (claude-code/), the Codex CLI (codex/) and
  * OpenCode v2 (opencode/), each with its binary, its configuration and environment, its command
- * line and how its output is read; the PATH their agent's shell gets (path.ts); and the adapters
- * that read each one's own session log into one set of events (session-log.ts). The harness's
+ * line and how its output is read; the PATH their agent's shell gets (path.ts); the adapters
+ * that read each one's own session log into one set of events (session-log.ts); and Thermite's
+ * hook program for Claude Code and Codex, with the adapter of its signals (hooks/). The harness's
  * trial loop for them is src/harness/agents/cli/.
  */
 
@@ -25,6 +26,7 @@ export {
   claudeResultUsage,
   claudeShell,
   claudeTranscript,
+  claudeTrialSettings,
   closeClaudeRun,
   mergeUsage,
   NO_CLAUDE_CODE,
@@ -43,6 +45,8 @@ export {
   codexEnv,
   codexExe,
   codexExitWords,
+  codexHooks,
+  codexNotify,
   codexRollout,
   NO_CODEX,
   newCodexTally,
@@ -50,6 +54,7 @@ export {
   readCodexEvents,
   tomlString,
 } from "./codex/index.ts";
+export { HOOK_PROGRAM, hookSignals, SIGNALS_VAR } from "./hooks/index.ts";
 export {
   NO_OPENCODE,
   newTally,

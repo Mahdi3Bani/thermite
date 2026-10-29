@@ -10,7 +10,10 @@ import {
   codexEnv,
   codexExe,
   codexExitWords,
+  codexHooks,
+  codexNotify,
   codexRollout,
+  hookSignals,
   newCodexTally,
   readCodexEvents,
   tallyLog,
@@ -74,10 +77,19 @@ export const codexProgram: CliProgram<CodexTally> = {
   turnWords: "each message or tool call is one",
   bin: codexBin,
   exe: codexExe,
+  // Its hooks and notify signal each turn and tool, and its hooks give the agent the owner's
+  // messages inside its turn (goal 169).
   setup: (run) => ({
     script:
-      "mkdir -p codex-home/.codex codex-tmp && cat > codex-home/.codex/config.toml && : > codex-events.jsonl && chmod 0644 codex-events.jsonl",
-    stdin: codexConfig(run.model, `${run.apiUrl}/v1/model-proxy`, run.mcp, run.keptAt),
+      'mkdir -p codex-home/.codex codex-tmp && cat > codex-home/.codex/config.toml && printf %s "$1" > codex-home/.codex/hooks.json && : > codex-events.jsonl && chmod 0644 codex-events.jsonl && : > codex-signals.jsonl && chmod 0644 codex-signals.jsonl',
+    args: ["sh", codexHooks()],
+    stdin: codexConfig(
+      run.model,
+      `${run.apiUrl}/v1/model-proxy`,
+      run.mcp,
+      run.keptAt,
+      codexNotify(),
+    ),
   }),
   // The proxy takes the trial's credential, and so does the gateway of its MCP servers (goal 068).
   env: (run) =>
@@ -90,7 +102,7 @@ export const codexProgram: CliProgram<CodexTally> = {
       tmp: run.tmp,
       extra: run.env,
     }),
-  args: (run, session) => codexArgs(run.model, { session }),
+  args: (run, session) => codexArgs(run.model, { session, hooks: true }),
   newTally: newCodexTally,
   read: readCodexEvents,
   found: (t) => t.compactions.splice(0),
@@ -105,6 +117,10 @@ export const codexProgram: CliProgram<CodexTally> = {
   exitWords: codexExitWords,
   // Its rollout of the thread, compared with its output at the trial's end (goal 169).
   sessionLog: (run, t) => rolloutTally(run, t.session),
+  signals: {
+    adapter: () => hookSignals("codex"),
+    how: { "after-tool": "Codex's PostToolUse hook", "turn-end": "Codex's Stop hook" },
+  },
   call: {
     setup: (c) => ({
       script: "mkdir -p home/.codex tmp && cat > home/.codex/config.toml",

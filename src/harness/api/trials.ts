@@ -2,13 +2,15 @@ import type { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { KEEP_TRIAL_PROMPT } from "../../core/api/harness/prompts.ts";
+import { TURN_OFFER, TURN_TAKEN } from "../../core/api/harness/turn.ts";
 import { compactionOf, KEPT_MAX } from "../compactions.ts";
 import { type ApiContext, limitOf } from "./context.ts";
 
 /**
  * A running trial's own routes, each bound to the trial by its token: its session's lines for the
- * live log, the owner's messages waiting for it and its receipt for them, its ideas and field
- * notes, the compactions of its conversation, and the later turns its worker sent in it.
+ * live log, the owner's messages waiting for it and its receipt for them (a Pi worker's, or its
+ * program's hook or plugin's inside the agent's turn), its ideas and field notes, the compactions
+ * of its conversation, and the later turns its worker sent in it.
  */
 export function trialRoutes(app: Hono, { service, trialOf }: ApiContext): void {
   // A worker's own lines for the live log: its trial decides the source, lane and run.
@@ -73,13 +75,30 @@ export function trialRoutes(app: Hono, { service, trialOf }: ApiContext): void {
   });
 
   // The worker's receipt: these messages reached its agent (only messages waiting for it count).
+  // Only a Pi worker sends one: it steers each message in before its agent's next model call.
   app.post("/v1/trial/messages/read", bodyLimit({ maxSize: 16 * 1024 }), async (c) => {
     const { trial } = trialOf(c.req.header("authorization"));
     const body = z
       .object({ ids: z.array(z.number().int().positive()).min(1).max(100) })
       .parse(await c.req.json());
-    service.trialInbox({ id: trial.id, run: trial.run, lane: trial.lane }).given(body.ids);
+    service
+      .trialInbox({ id: trial.id, run: trial.run, lane: trial.lane })
+      .given(body.ids, "next-call");
     return c.json({ ok: true });
+  });
+
+  // A program's hook or plugin asks for the owner's next message inside the agent's turn (goal
+  // 169): the trial's token decides the trial, so it gets only what that trial's agent may have.
+  // The offer reads nothing; its receipt, once the program has the text, reads the message.
+  app.post(TURN_OFFER.path, limitOf(TURN_OFFER), async (c) => {
+    const { trial } = trialOf(c.req.header("authorization"));
+    const { at } = TURN_OFFER.body.parse(await c.req.json());
+    return c.json(service.turnOffer(trial.id, at) ?? { offer: null, text: "" });
+  });
+  app.post(TURN_TAKEN.path, limitOf(TURN_TAKEN), async (c) => {
+    const { trial } = trialOf(c.req.header("authorization"));
+    const { offer } = TURN_TAKEN.body.parse(await c.req.json());
+    return c.json({ messages: service.turnTaken(trial.id, offer) });
   });
 
   // A worker's idea for its run's queue: proposed by its lane (its trial decides run and lane).

@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
 import { CliCompactions } from "../../../agents/compaction/index.ts";
-import { readNew } from "../../../agents/programs/index.ts";
+import { readNew, SIGNALS_VAR } from "../../../agents/programs/index.ts";
 import { messageText, type Prompt } from "../../../agents/prompt.ts";
 import {
   renderResearchWorker,
@@ -22,6 +22,7 @@ import {
   trialEnd,
   turnsUp,
 } from "./common.ts";
+import { TrialSignals, TurnMessages } from "./in-turn.ts";
 import type { CliProgram, CliRun, CliSetup, CliTally, CliTrial, CliTrialDeps } from "./program.ts";
 
 /**
@@ -97,9 +98,10 @@ function startRun<T extends CliTally>(
  * as long as the owner's messages wait and the agent keeps working. A research trial works in its
  * lane's working area of the research folder and ends when the agent stops; a run that ends with
  * the owner's messages waiting is continued with them, for as long as they wait and the agent keeps
- * working. No program takes a message into a running session: a message waits until the run ends,
- * and goes into the continuation's prompt. A run cut short by a provider's failure waits and goes
- * on in its session. A turn cap, when the rig sets one, is kept by counting its turns.
+ * working. A program with hooks or Thermite's plugin takes an owner's message inside the agent's
+ * turn, after a tool or at the turn's end (goal 169; in-turn.ts); a message still waiting when a
+ * run ends goes into the continuation's prompt. A run cut short by a provider's failure waits and
+ * goes on in its session. A turn cap, when the rig sets one, is kept by counting its turns.
  */
 export async function runCliTrial<T extends CliTally>(
   p: CliProgram<T>,
@@ -114,6 +116,9 @@ export async function runCliTrial<T extends CliTally>(
   const before = code ? " before a submission" : "";
   const area = code ? (trial.spec.workspaceRoot ?? dirname(trial.spec.workspace)) : trial.area;
   const events = join(area, `${p.prefix}-events.jsonl`);
+  // What its hooks or plugin say inside the agent's turn (goal 169).
+  const signalsFile = join(area, `${p.prefix}-signals.jsonl`);
+  const signals = p.signals ? new TrialSignals(p.signals.adapter(), signalsFile) : undefined;
   const tally = p.newTally();
   const result: TrialResult = {
     stopped: code ? "no_submission" : "finished",
@@ -152,6 +157,7 @@ export async function runCliTrial<T extends CliTally>(
         }
       : {}),
     [p.eventsVar]: events,
+    ...(signals ? { [SIGNALS_VAR]: signalsFile } : {}),
   };
   // Each compaction the program reported, with its own conversation before it (goal 070).
   const compactions = new CliCompactions({
@@ -200,6 +206,24 @@ export async function runCliTrial<T extends CliTally>(
   const carried = new CarriedMessages(deps.messages);
   // The later turns of this trial (goal 166), numbered after its first message.
   let said = 0;
+  // The owner's messages its hooks or plugin take inside the agent's turn (goal 169), each as
+  // the role's later turn, numbered with the continuations.
+  const inTurn = p.signals
+    ? new TurnMessages({
+        inbox: deps.messages,
+        render: (text, turn) =>
+          code
+            ? renderWorkerTurn({ program: p.id, turn, kind: "owner", text })
+            : renderResearchWorkerTurn({ program: p.id, turn, kind: "owner", text }),
+        next: () => ++said,
+        held: () => carried.holding(),
+        taking: () => !submitted(),
+        sent: deps.sent,
+        live: deps.live,
+        how: p.signals.how,
+      })
+    : undefined;
+  if (inTurn) deps.inTurn?.(inTurn);
   /**
    * What a continued run goes on from: its role's later turn after a provider's error (`failed`:
    * its words), or else the one that tells it to go on, with the owner's messages that wait for it.
@@ -217,6 +241,7 @@ export async function runCliTrial<T extends CliTally>(
   const pump = () => {
     const r = readNew(events, offset);
     offset = r.next;
+    signals?.read();
     const live = p.read(r.lines, tally);
     if (live.length) deps.live(live);
     compactions.take(live, p.found(tally, { area, count: compactions.count, at: live.length }));
@@ -251,6 +276,7 @@ export async function runCliTrial<T extends CliTally>(
     }
     // Kept whole as it is sent, the first message and each later turn (goal 166).
     deps.sent?.(message);
+    inTurn?.open();
     const running = startRun(p, deps.runner, run, {
       cwd: code ? trial.spec.workspace : trial.folder.work,
       env,
@@ -283,6 +309,7 @@ export async function runCliTrial<T extends CliTally>(
       }
     }
     const outcome = await running;
+    inTurn?.close();
     pump();
     if (p.closeRun) {
       p.closeRun(tally);
@@ -380,5 +407,7 @@ export async function runCliTrial<T extends CliTally>(
   result.tokensOut = tally.tokensOut;
   if (compactions.count) result.compactions = compactions.count;
   compareSessionLog(p, run, tally);
+  signals?.report({ trial: run.trialId, program: p.id });
+  if (inTurn) deps.inTurn?.(undefined);
   return result;
 }

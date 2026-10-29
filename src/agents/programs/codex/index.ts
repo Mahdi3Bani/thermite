@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { codexCompactPrompt, compactionTokens, type KeptAt } from "../../compaction/index.ts";
 import { gatewayUrl, type McpAccess } from "../../mcp/index.ts";
 import type { ModelConfig } from "../../model/index.ts";
+import { hookArgv, hookShellLine } from "../hooks/index.ts";
 import { agentPath } from "../path.ts";
 
 export type { CodexTally } from "./events.ts";
@@ -64,12 +65,16 @@ export function tomlString(s: string): string {
  * takes a compaction prompt of its own (`compact_prompt`, which replaces its built-in one): Thermite
  * gives it its own summary prompt, which names that folder, and reads the conversation from
  * Codex's rollout of the thread once Codex reports the compaction.
+ *
+ * `notify` (a trial's, goal 169): the command Codex runs at the end of each turn, with the turn's
+ * JSON as its last argument (Thermite's hook program, which writes it to the trial's signals).
  */
 export function codexConfig(
   m: ModelConfig,
   proxyRoot: string,
   mcp?: Pick<McpAccess, "apiUrl" | "servers"> | undefined,
   keptAt?: KeptAt | undefined,
+  notify?: readonly string[] | undefined,
 ): string {
   const effort = m.reasoning === "off" ? "none" : m.reasoning;
   const servers = (mcp?.servers ?? []).flatMap((s) => [
@@ -91,6 +96,7 @@ export function codexConfig(
       ? [`model_context_window = ${m.contextWindow}`, `model_auto_compact_token_limit = ${point}`]
       : []),
     ...(keptAt ? [`compact_prompt = ${tomlString(codexCompactPrompt(keptAt))}`] : []),
+    ...(notify ? [`notify = [${notify.map(tomlString).join(", ")}]`] : []),
     'web_search = "disabled"',
     "check_for_update_on_startup = false",
     // No AGENTS.md of the project's (goal 166): the prompt is what the role's definition rendered.
@@ -119,20 +125,56 @@ export function codexConfig(
  * The flags every headless Codex run here has: JSON events, no git check (a check or a plan runs
  * in an empty directory), no execution-policy rules from the project, approvals and its sandbox
  * off; the prompt on stdin ("-"). A session is resumed by its thread's id.
+ *
+ * `hooks` (a trial's, goal 169): Thermite's hooks run. `codex exec` runs a hook only once its
+ * hash is trusted in the configuration (`[hooks.state]`, which Codex writes when someone trusts
+ * the hook in its terminal) or with `--dangerously-bypass-hook-trust`, for this run only.
+ * Thermite writes the hooks itself, in a home of the trial's own, so it passes the flag.
  */
-export function codexArgs(m: ModelConfig, o: { session?: string | undefined } = {}): string[] {
+export function codexArgs(
+  m: ModelConfig,
+  o: { session?: string | undefined; hooks?: boolean | undefined } = {},
+): string[] {
   return [
     "exec",
     "--json",
     "--skip-git-repo-check",
     "--ignore-rules",
     "--dangerously-bypass-approvals-and-sandbox",
+    ...(o.hooks ? ["--dangerously-bypass-hook-trust"] : []),
     "--model",
     m.model,
     ...(o.session ? ["resume", o.session] : []),
     "-",
   ];
 }
+
+/**
+ * The hooks whose signals Thermite follows in a trial (goal 169), as Codex 0.162 names them, each
+ * running Thermite's hook program (../hooks/main.ts). Its PostToolUse and Stop hooks also give the
+ * agent the owner's messages inside its turn.
+ */
+export const CODEX_SIGNAL_HOOKS = [
+  "SessionStart",
+  "UserPromptSubmit",
+  "PreToolUse",
+  "PostToolUse",
+  "Stop",
+  "Interrupt",
+  "SessionEnd",
+] as const;
+
+/**
+ * A trial's `$CODEX_HOME/hooks.json` (goal 169): Codex takes the same form as Claude Code's
+ * hooks, and runs each command through a shell.
+ */
+export function codexHooks(): string {
+  const hook = [{ hooks: [{ type: "command", command: hookShellLine("codex"), timeout: 30 }] }];
+  return JSON.stringify({ hooks: Object.fromEntries(CODEX_SIGNAL_HOOKS.map((e) => [e, hook])) });
+}
+
+/** Codex's notify in a trial: the hook program, given the turn's JSON as its last argument. */
+export const codexNotify = (): string[] => hookArgv("codex-notify");
 
 /** The environment Codex runs in: its home, Thermite's command and the run's proxy credential. */
 export function codexEnv(o: {

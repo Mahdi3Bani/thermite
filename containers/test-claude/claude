@@ -5,7 +5,14 @@
 // planner's JSON plan, a trial's change and its submission with thermite-trial, or an advisor's
 // answer (the prompt on stdin, as the supervisor's advisors send it). It reports
 // what it was given (its user, whether the token came and how, and the safety flags), never the
-// token itself. It refuses to run without THERMITE_FAKE_CLAUDE=1, so it can't stand in by mistake.
+// token itself. It runs the hooks Thermite's settings name, as Claude Code does (goal 169):
+// SessionStart, UserPromptSubmit, PreToolUse and PostToolUse around each command, Stop at the end
+// of each turn (a Stop that blocks sends it on with the reason) and SessionEnd, each with its input
+// on stdin, and takes a PostToolUse hook's added context in. In a trial's first run it first
+// waits, at most WAIT_MESSAGES_MS, for two of the owner's messages to wait for it (as an agent may
+// look with its trial's token), so the acceptance can see one given after a tool and one at the
+// turn's end; a run whose Stop hook does not block ends there, as Claude Code's `-p` does.
+// It refuses to run without THERMITE_FAKE_CLAUDE=1, so it can't stand in by mistake.
 const { execSync } = require("node:child_process");
 if (process.env.THERMITE_FAKE_CLAUDE !== "1" && !require("node:fs").existsSync("/opt/fake-claude/enabled")) {
   process.stderr.write("test-claude: not enabled\n");
@@ -24,8 +31,38 @@ const turn = (content) =>
     type: "assistant",
     message: { id: `msg_${++n}`, content, usage: { input_tokens: 100, cache_read_input_tokens: 900, output_tokens: 20 } },
   });
+// Thermite's hooks for the run, from its settings, as Claude Code runs them: without a shell, the
+// input on stdin; what a hook prints is its answer.
+const hooks = (() => {
+  try {
+    return JSON.parse(val("--settings") ?? "{}").hooks ?? {};
+  } catch {
+    return {};
+  }
+})();
+const transcript = require("node:path").join(process.env.HOME ?? "/tmp", ".claude", "projects", "-workspace", `${session}.jsonl`);
+let hooksRun = 0;
+const hook = (event, fields) => {
+  const h = hooks[event]?.[0]?.hooks?.[0];
+  if (!h) return {};
+  const r = require("node:child_process").spawnSync(h.command, h.args ?? [], {
+    input: JSON.stringify({ session_id: session, transcript_path: transcript, cwd: process.cwd(), permission_mode: "bypassPermissions", hook_event_name: event, ...fields }),
+    encoding: "utf8",
+    timeout: (h.timeout ?? 60) * 1000,
+  });
+  if (r.status === 0) hooksRun++;
+  try {
+    return JSON.parse(r.stdout || "{}");
+  } catch {
+    return {};
+  }
+};
+// What the hooks gave it inside its turns: a PostToolUse hook's added context, a Stop's reason.
+const steered = [];
 const bash = (command) => {
-  turn([{ type: "tool_use", id: `tu_${n + 1}`, name: "Bash", input: { command } }]);
+  const id = `tu_${n + 1}`;
+  hook("PreToolUse", { tool_name: "Bash", tool_input: { command }, tool_use_id: id });
+  turn([{ type: "tool_use", id, name: "Bash", input: { command } }]);
   let output;
   let isError = false;
   try {
@@ -34,8 +71,36 @@ const bash = (command) => {
     output = `${e.stdout ?? ""}${e.stderr ?? ""}`;
     isError = true;
   }
-  out({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: `tu_${n}`, content: output, is_error: isError }] } });
+  out({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: id, content: output, is_error: isError }] } });
+  const after = hook("PostToolUse", { tool_name: "Bash", tool_input: { command }, tool_response: { stdout: output, stderr: "", interrupted: false }, tool_use_id: id });
+  const context = after.hookSpecificOutput?.additionalContext;
+  if (context) steered.push(`after-tool:${/owner/.test(context) ? "owner" : "other"}`);
   return output;
+};
+/** The end of a turn: the Stop hook, which may send it on; true when it did. */
+const stop = (last) => {
+  const said = hook("Stop", { stop_hook_active: steered.some((x) => x.startsWith("turn-end")), last_assistant_message: last });
+  if (said.decision !== "block" || !said.reason) return false;
+  steered.push(`turn-end:${/owner/.test(said.reason) ? "owner" : "other"}`);
+  return true;
+};
+/** Waits, at most `ms`, until `count` of the owner's messages wait for this trial. */
+const WAIT_MESSAGES_MS = 90_000;
+const waitMessages = async (count, ms = WAIT_MESSAGES_MS) => {
+  const url = process.env.THERMITE_HARNESS_URL;
+  const auth = process.env.THERMITE_TRIAL_AUTH ?? "";
+  if (!url || !auth.startsWith("trial.")) return 0;
+  const end = Date.now() + ms;
+  for (;;) {
+    try {
+      const r = await fetch(`${url}/v1/trial/messages`, { headers: { authorization: `Bearer ${auth}` } });
+      const got = (await r.json()).messages?.length ?? 0;
+      if (got >= count || Date.now() > end) return got;
+    } catch {
+      if (Date.now() > end) return 0;
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
 };
 // The token: on the file descriptor the harness or the supervisor names, as Claude Code reads it
 // there. A token in the environment as well shows as env+fd3, and alone as env.
@@ -60,6 +125,7 @@ const facts = [
   `no_settings=${val("--setting-sources") === ""}`,
   `model=${val("--model")}`,
 ].join(" ");
+const hookFacts = () => `hooks=${hooksRun} steered=${steered.join(",") || "none"}`;
 // One compaction, as Claude Code makes one (goal 070): its transcript in its home, then the
 // PreCompact hook Thermite's settings name (run without a shell, its input on stdin), the
 // PostCompact hook with the summary, which names what the first hook said, then the boundary and
@@ -106,6 +172,7 @@ out({
   },
 });
 let answer = "done";
+let trial = false;
 const word = /run exactly this command: echo (thermite-[a-z0-9]+)/.exec(prompt)?.[1];
 if (word) {
   answer = bash(`echo ${word}`).trim();
@@ -127,8 +194,29 @@ if (word) {
   });
   turn([{ type: "text", text: answer }]);
 } else if (/thermite-trial submit/.test(prompt)) {
-  const kept = compact();
-  bash(`printf '\\n/* tidied by claude code */\\n' >> src/kernel/matmul.c && thermite-trial submit --hypothesis 'claude code harness: a tidied kernel (compacted=${kept} ${facts})'`);
-  turn([{ type: "text", text: "Submitted." }]);
+  trial = true;
 }
-out({ type: "result", subtype: "success", is_error: false, result: answer, num_turns: n, usage: { input_tokens: 100 * n, output_tokens: 20 * n } });
+(async () => {
+  if (trial && !val("--resume")) {
+    // The first run: it reads the kernel. The owner's messages, when the acceptance sends two:
+    // the first goes in after its command, the second at the end of its turn, which goes on with
+    // it to the submission. With none, the run ends there, and the continuation submits.
+    hook("SessionStart", { source: "startup", model: val("--model") });
+    hook("UserPromptSubmit", { prompt: prompt.slice(0, 2000) });
+    await waitMessages(2);
+    bash("true");
+    turn([{ type: "text", text: "Read the kernel." }]);
+    if (!stop("Read the kernel.")) trial = false;
+  } else if (trial) {
+    hook("SessionStart", { source: "resume", model: val("--model") });
+    hook("UserPromptSubmit", { prompt: prompt.slice(0, 2000) });
+  }
+  if (trial) {
+    const kept = compact();
+    bash(`printf '\\n/* tidied by claude code */\\n' >> src/kernel/matmul.c && thermite-trial submit --hypothesis 'claude code harness: a tidied kernel (compacted=${kept} ${hookFacts()} ${facts})'`);
+    turn([{ type: "text", text: "Submitted." }]);
+    stop("Submitted.");
+  }
+  if (Object.keys(hooks).length) hook("SessionEnd", { reason: "other" });
+  out({ type: "result", subtype: "success", is_error: false, result: answer, num_turns: n, usage: { input_tokens: 100 * n, output_tokens: 20 * n } });
+})();

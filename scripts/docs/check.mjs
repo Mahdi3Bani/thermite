@@ -324,6 +324,10 @@ const internalSettings = new Map([
   ["THERMITE_CLAUDE_PROMPT", "the controller tells the shell where a Claude Code run's prompt is"],
   ["THERMITE_CODEX_EVENTS", "the controller's event log path for a Codex trial"],
   [
+    "THERMITE_SIGNALS",
+    "the controller tells a trial's hooks and Thermite's OpenCode plugin where its signals go",
+  ],
+  [
     "THERMITE_COMPACTION_DROPS",
     "the controller or the supervisor tells Thermite's OpenCode plugin where to keep a conversation",
   ],

@@ -81,6 +81,15 @@ describe("the later turns inside a call (goal 166)", () => {
         }),
       ],
       [
+        "worker in a program: an owner's message inside its turn, through its hook or plugin",
+        renderWorkerTurn({
+          ...at,
+          program: "claude-code",
+          kind: "owner",
+          text: "Prefer a change a reader can follow.",
+        }),
+      ],
+      [
         "worker in a program: its run ended without a submission, with two owner's messages",
         renderWorkerTurn({
           ...at,

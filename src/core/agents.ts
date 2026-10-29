@@ -83,3 +83,27 @@ export function routeRefusal(
 /** The advisors' roles, as messages, answers and field notes name them (goal 074's names). */
 export const ADVISOR_ROLES = ["teachers", "auditor", "review_panel"] as const;
 export type AdvisorRole = (typeof ADVISOR_ROLES)[number];
+
+/**
+ * How an owner's message reached a trial's agent, as its read receipt says (goal 169):
+ * - `brief`: in the trial's first message;
+ * - `next-call`: in Pi, as a turn of its own before the agent's next model call;
+ * - `after-tool`: in Claude Code, Codex or OpenCode, inside the agent's turn, after the tool that
+ *   ran: Claude Code's and Codex's PostToolUse hook, or Thermite's OpenCode plugin;
+ * - `turn-end`: in Claude Code or Codex, at the end of the agent's turn: its Stop hook sends the
+ *   agent on with the message;
+ * - `continuation`: in Claude Code, Codex or OpenCode, in the prompt that continues the session
+ *   after a run of the program ended.
+ */
+export const MESSAGE_HOW = [
+  "brief",
+  "next-call",
+  "after-tool",
+  "turn-end",
+  "continuation",
+] as const;
+export type MessageHow = (typeof MESSAGE_HOW)[number];
+
+/** Where a program's hook or plugin takes an owner's message inside the agent's turn. */
+export const IN_TURN = ["after-tool", "turn-end"] as const satisfies readonly MessageHow[];
+export type InTurn = (typeof IN_TURN)[number];

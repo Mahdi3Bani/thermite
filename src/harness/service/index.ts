@@ -8,6 +8,7 @@ import {
 import type { Prompt } from "../../agents/prompt.ts";
 import { buildInfo } from "../../common/build-info.ts";
 import type { McpConnect } from "../../common/mcp-client.ts";
+import type { InTurn } from "../../core/agents.ts";
 import type { AdvisorQueueRequest } from "../../core/api/harness/advisors.ts";
 import type { SubmitRequest } from "../../core/api/harness/proposer.ts";
 import type { CardSubmission, PaperSubmission } from "../../core/api/harness/research.ts";
@@ -17,7 +18,7 @@ import type { Hardware } from "../../core/hardware.ts";
 import { LiveLog } from "../../core/live.ts";
 import { type McpUse, McpUses } from "../../core/mcp.ts";
 import type { BuildInfo } from "../../core/version.ts";
-import type { ControlRoute, ModelSource } from "../agents/index.ts";
+import type { ControlRoute, ModelSource, TurnDelivery } from "../agents/index.ts";
 import type { Compactions } from "../compactions.ts";
 import { Journal } from "../journal.ts";
 import { Knowledge } from "../knowledge.ts";
@@ -565,6 +566,19 @@ export class HarnessService {
 
   trialAtWork(id: string): void {
     this.inboxes.trialAtWork(id);
+  }
+
+  /** A running trial's way to take the owner's messages inside its turn (goal 169). */
+  inTurn(id: string, d: TurnDelivery | undefined): void {
+    this.inboxes.inTurn(id, d);
+  }
+
+  turnOffer(id: string, at: InTurn): { offer: string; text: string } | undefined {
+    return this.inboxes.turnOffer(id, at);
+  }
+
+  turnTaken(id: string, offer: string): number[] {
+    return this.inboxes.turnTaken(id, offer);
   }
 
   /** A trial ended. Its brief's messages are read only if its agent ever got to work. */

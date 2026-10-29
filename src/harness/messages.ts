@@ -1,4 +1,4 @@
-import { ADVISOR_ROLES, type AdvisorRole } from "../core/agents.ts";
+import { ADVISOR_ROLES, type AdvisorRole, type MessageHow } from "../core/agents.ts";
 import { type Contract, MAX_LANES } from "../core/contract.ts";
 import type { LiveLog } from "../core/live.ts";
 import type { RigSettings } from "../core/rig-settings.ts";
@@ -296,16 +296,22 @@ export class OwnerMessages {
   /**
    * Records that a reader received messages (a lane in a trial, the planner, an advisor role):
    * the first read by each reader is an event, and every read a line on the reader's live
-   * source. Reading the same message twice in one trial records it once. `round`: the planner's
-   * round that read them, so control can show its answer (the rules it made, its notes) with them.
+   * source. Reading the same message twice in one trial records it once. `at.trial`: the trial a
+   * lane read them in, and `at.how`, how its agent was given them (goal 169); `at.round`: the
+   * planner's round that read them, so control can show its answer (the rules it made, its
+   * notes) with them.
    */
   read(
     ids: number[],
     reader: string,
-    trial?: { id: string; run: string; lane: string } | undefined,
-    round?: number | undefined,
+    at: {
+      trial?: { id: string; run: string; lane: string } | undefined;
+      round?: number | undefined;
+      how?: MessageHow | undefined;
+    } = {},
   ): void {
-    const at = this.now();
+    const { trial, round, how } = at;
+    const now = this.now();
     const done: MessageRow[] = [];
     this.ledger.tx(() => {
       for (const id of [...new Set(ids)]) {
@@ -313,7 +319,7 @@ export class OwnerMessages {
         if (!m || (trial && m.run !== trial.run)) continue;
         const seen = this.ledger.messages.readIn(id, reader);
         if (seen.includes(trial?.id ?? null)) continue;
-        this.ledger.messages.recordRead(id, reader, trial?.id ?? null, at);
+        this.ledger.messages.recordRead(id, reader, trial?.id ?? null, now);
         if (!seen.length)
           this.ledger.appendEvent(
             trial ? `trial:${trial.id}` : reader === "planner" ? "planner" : "supervisor",
@@ -324,6 +330,7 @@ export class OwnerMessages {
               by: reader,
               ...(trial ? { trial: trial.id } : {}),
               ...(round !== undefined ? { round } : {}),
+              ...(how ? { how } : {}),
             },
           );
         done.push(m);

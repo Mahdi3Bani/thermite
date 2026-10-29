@@ -6,14 +6,18 @@ import type {
 } from "../../../agents/compaction/index.ts";
 import type { McpAccess } from "../../../agents/mcp/index.ts";
 import type { ModelConfig } from "../../../agents/model/index.ts";
-import type { PlanWindows, SessionTally } from "../../../agents/programs/index.ts";
+import type {
+  PlanWindows,
+  SessionLogAdapter,
+  SessionTally,
+} from "../../../agents/programs/index.ts";
 import type { Prompt } from "../../../agents/prompt.ts";
 import type { ResearchFolderPaths } from "../../../agents/tools/index.ts";
-import type { Harness } from "../../../core/agents.ts";
+import type { Harness, InTurn } from "../../../core/agents.ts";
 import type { LiveKind } from "../../../core/live.ts";
 import type { CallUsage } from "../../../core/usage.ts";
 import type { Role, Runner } from "../../broker/index.ts";
-import type { MessageInbox, TrialProgress } from "../live-session.ts";
+import type { MessageInbox, TrialProgress, TurnDelivery } from "../live-session.ts";
 import type { ProviderLink } from "../provider-errors.ts";
 import type { ResearchTrialSpec } from "../research/index.ts";
 import type { SubmitOutcome, TrialResult, TrialSpec } from "../worker/index.ts";
@@ -180,6 +184,12 @@ export interface CliProgram<T extends CliTally> {
    * Undefined when there is none to read.
    */
   sessionLog?(run: CliRun, t: T): { tally: SessionTally; unknown: Map<string, number> } | undefined;
+  /**
+   * Its hooks or Thermite's plugin in a trial (goal 169): the adapter that reads the signals they
+   * write to the trial's signals file into events, and how the program takes the owner's
+   * messages inside the agent's turn, at each place, in words.
+   */
+  signals?: { adapter(): SessionLogAdapter<unknown>; how: Record<InTurn, string> } | undefined;
   /** A one-prompt call in it (cli/once.ts). */
   call: CliCallEntry<T>;
   /** Its answer to a one-prompt call (else its last text). */
@@ -228,11 +238,16 @@ export interface CliTrialDeps extends ProviderLink {
   /** The trial's submission, once it has one (from the ledger); a research trial makes none. */
   submitted?(): SubmitOutcome | undefined;
   /**
-   * The owner's messages for this trial. No program takes a message into a running session: one
-   * waiting when a run ends is given by continuing the session with it, and is read once the
-   * agent starts on that prompt.
+   * The owner's messages for this trial. A program with hooks or Thermite's plugin takes them
+   * inside the agent's turn (`inTurn`); one still waiting when a run ends is given by continuing
+   * the session with it, and is read once the agent starts on that prompt.
    */
   messages?: MessageInbox | undefined;
+  /**
+   * Lets the trial's hooks or plugin take the owner's messages inside the agent's turn, through
+   * the trial's routes (goal 169): set when the trial starts, undefined when it ends.
+   */
+  inTurn?: ((d: TurnDelivery | undefined) => void) | undefined;
   /** The subscription's windows, whenever the program reports them (Claude Code). */
   usage?: ((u: PlanWindows) => void) | undefined;
   /** The lane's build caches (ccache and the like). */

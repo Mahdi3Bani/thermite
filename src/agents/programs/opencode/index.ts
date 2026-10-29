@@ -26,7 +26,7 @@ const OWN_EXT = extname(fileURLToPath(import.meta.url));
 /** Thermite's OpenCode plugin (plugin.ts, in this folder), which OpenCode loads. */
 export const OPENCODE_PLUGIN = fileURLToPath(new URL(`./plugin${OWN_EXT}`, import.meta.url));
 /** Where OpenCode finds the plugin, under its home: a link in its own settings' plugins folder. */
-export const OPENCODE_PLUGIN_LINK = `.config/opencode/plugins/thermite-compaction${OWN_EXT}`;
+export const OPENCODE_PLUGIN_LINK = `.config/opencode/plugins/thermite${OWN_EXT}`;
 /** The folder in an OpenCode run's own area where the plugin keeps each compaction's session. */
 export const OPENCODE_DROPS = "opencode-compactions";
 

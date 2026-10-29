@@ -8,6 +8,10 @@
 //     (in no environment) and the safety flags, edits the code and submits with thermite-trial;
 //   - it compacts once: Thermite's PreCompact hook copies its transcript and names the file in
 //     the summary, and the harness keeps the conversation and records the compaction;
+//   - Thermite's hooks run in it as the lane's user and reach the harness with the trial's token:
+//     of two owner's messages sent to the running trial, the PostToolUse hook gives the first
+//     after a command and the Stop hook the second at the end of the turn, each read once with
+//     how it went in;
 //   - the auditor, given the subscription's model on Edit rig, audits a large gain in Claude
 //     Code in the supervisor, with no tools, no settings or MCP, its effort, and the token on
 //     file descriptor 3 (in no environment), without the scrub;
@@ -20,6 +24,7 @@ import {
   api,
   assign,
   candidatePatch,
+  command,
   control,
   dc,
   events,
@@ -160,6 +165,16 @@ try {
       assignments: epoch.body.assignments,
     },
   );
+  // Goal 169: two messages to the trial while it runs; the stand-in waits for both to wait.
+  const started = await until(
+    "the Claude Code trial started",
+    async () => (await events()).find((e) => e.kind === "trial_started" && e.subject === "smoke-1"),
+    300_000,
+    2000,
+  );
+  const trialId = String(started.body.trial);
+  for (const text of ["Look at the inner loop first.", "Keep the change small."])
+    await command("message_agent", { run: "smoke-1", to: `trial:${trialId}`, text });
   const attempt = await until(
     "a trial in Claude Code submitted",
     async () =>
@@ -196,6 +211,17 @@ try {
     "the controller followed Claude Code's output (turns counted)",
     Number(trial.body.turns) >= 1,
     trial.body,
+  );
+  const reads = (await events()).filter(
+    (e) => e.kind === "agent_message_read" && e.body.trial === trialId,
+  );
+  check(
+    "Thermite's hooks ran in Claude Code and gave the owner's messages inside its turn: one after a command, one at the turn's end, each read once with how",
+    /hooks=\d+ steered=after-tool:owner,turn-end:owner /.test(said) &&
+      Number(/hooks=(\d+)/.exec(said)?.[1]) >= 5 &&
+      reads.length === 2 &&
+      reads.map((e) => e.body.how).join(",") === "after-tool,turn-end",
+    { said, reads: reads.map((e) => e.body) },
   );
   // Goal 070: Claude Code's PreCompact hook (Thermite's program, in the image, run as the lane's
   // user) copied the transcript and told the summary where the run keeps it; the harness kept

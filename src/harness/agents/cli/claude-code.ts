@@ -15,7 +15,9 @@ import {
   claudeExitWords,
   claudeHookSettings,
   claudeShell,
+  claudeTrialSettings,
   closeClaudeRun,
+  hookSignals,
   newClaudeTally,
   PROMPT_VAR,
   readClaudeEvents,
@@ -94,7 +96,7 @@ export const claudeProgram: CliProgram<ClaudeTally> = {
   setup: (run) => {
     const mcp = claudeMcpConfig(run.mcp);
     return {
-      script: `mkdir -p claude-home claude-tmp ${CLAUDE_DROPS} && chmod 0755 ${CLAUDE_DROPS} && : > claude-events.jsonl && chmod 0644 claude-events.jsonl${mcp ? " && umask 077 && cat > claude-home/mcp.json" : ""}`,
+      script: `mkdir -p claude-home claude-tmp ${CLAUDE_DROPS} && chmod 0755 ${CLAUDE_DROPS} && : > claude-events.jsonl && chmod 0644 claude-events.jsonl && : > claude-signals.jsonl && chmod 0644 claude-signals.jsonl${mcp ? " && umask 077 && cat > claude-home/mcp.json" : ""}`,
       stdin: mcp,
     };
   },
@@ -110,16 +112,17 @@ export const claudeProgram: CliProgram<ClaudeTally> = {
     ...claudeCompactionEnv(run.model),
     [PROMPT_VAR]: join(run.area, CLAUDE_PROMPT),
   }),
-  // Before each compaction, Claude Code's hook copies its transcript into the run's own area and
-  // tells the summary where the harness keeps it (goal 070).
+  // Its hooks signal each turn and tool and give the agent the owner's messages inside its turn
+  // (goal 169); before each compaction, its hook copies its transcript into the run's own area
+  // and tells the summary where the harness keeps it (goal 070).
   args: (run, session) => [
     "-p",
     ...claudeArgs(run.model, {
       session,
       mcpConfig: run.mcp ? join(run.home, "mcp.json") : undefined,
-      settings: run.keptAt
-        ? claudeHookSettings(join(run.area, CLAUDE_DROPS), run.keptAt)
-        : undefined,
+      settings: claudeTrialSettings(
+        run.keptAt ? { drops: join(run.area, CLAUDE_DROPS), at: run.keptAt } : undefined,
+      ),
     }),
   ],
   // The token comes on stdin, which the shell moves to file descriptor 3 for Claude Code.
@@ -139,6 +142,10 @@ export const claudeProgram: CliProgram<ClaudeTally> = {
       session: () => t.session,
     }),
   exitWords: claudeExitWords,
+  signals: {
+    adapter: () => hookSignals("claude-code"),
+    how: { "after-tool": "Claude Code's PostToolUse hook", "turn-end": "Claude Code's Stop hook" },
+  },
   // The prompt, written by the lane into its own area, for Claude Code's stdin.
   beforeRun: (prompt, run, runner) => writeClaudePrompt(runner, run.role, run.area, prompt),
   // A run cut off before its result (a submission, the cap) keeps what its stream showed.

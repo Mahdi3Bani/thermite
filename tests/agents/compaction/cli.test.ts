@@ -464,7 +464,7 @@ describe("each harness's own conversation, kept before its compaction and named 
         if (!req.argv.includes("run")) return ok;
         // OpenCode, compacting once with Thermite's plugin loaded, as its settings link it.
         const mod = (await import(OPENCODE_PLUGIN)) as {
-          compactionPlugin: (env: NodeJS.ProcessEnv) => {
+          thermitePlugin: (env: NodeJS.ProcessEnv) => {
             setup: (ctx: OpencodePluginContext) => Promise<(() => void) | undefined>;
           };
         };
@@ -492,7 +492,7 @@ describe("each harness's own conversation, kept before its compaction and named 
             }),
           },
         };
-        const stop = await mod.compactionPlugin(req.env ?? {}).setup(ctx);
+        const stop = await mod.thermitePlugin(req.env ?? {}).setup(ctx);
         const e: OpencodeCompaction = { sessionID: "ses_1", system: [], messages: [] };
         await hook?.(e);
         line = e.system[0]?.text ?? "";
@@ -535,7 +535,7 @@ describe("each harness's own conversation, kept before its compaction and named 
     const setup = runs[0] as RunRequest;
     assert.match(
       setup.argv[2] ?? "",
-      /ln -sf "\$1" opencode-home\/\.config\/opencode\/plugins\/thermite-compaction\.(ts|js)/,
+      /ln -sf "\$1" opencode-home\/\.config\/opencode\/plugins\/thermite\.(ts|js)/,
     );
     assert.deepEqual(setup.argv.slice(3), ["sh", OPENCODE_PLUGIN]);
     const run = runs.find((x) => x.argv.includes("run")) as RunRequest;

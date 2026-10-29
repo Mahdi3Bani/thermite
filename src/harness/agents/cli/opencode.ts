@@ -14,6 +14,7 @@ import {
   opencodeExitWords,
   opencodeFound,
   opencodeKeepEnv,
+  opencodeSession,
   readOpencodeEvents,
   runEnv,
 } from "../../../agents/programs/index.ts";
@@ -56,13 +57,14 @@ export const opencodeProgram: CliProgram<OpencodeTally> = {
   bin: opencodeBin,
   exe: opencodeExe,
   // The configuration may hold the trial's own token (its MCP servers): only the lane reads it.
-  // With a place to keep the conversation, Thermite's compaction plugin is linked into its
-  // settings, and the plugin's folder is made (goal 070).
+  // Thermite's plugin is linked into its settings: it writes OpenCode's events to the trial's
+  // signals file and steers the owner's messages in inside the agent's turn (goal 169), and, with
+  // a place to keep the conversation, keeps it before each compaction in its folder (goal 070).
   setup: (run) => {
     const keep = run.keptAt !== undefined;
     return {
-      script: `mkdir -p opencode-home/.config/opencode opencode-tmp && umask 077 && cat > opencode-home/.config/opencode/opencode.jsonc && : > opencode-events.jsonl && chmod 0644 opencode-events.jsonl${keep ? ` && mkdir -p opencode-home/.config/opencode/plugins ${OPENCODE_DROPS} && chmod 0755 ${OPENCODE_DROPS} && ln -sf "$1" opencode-home/${OPENCODE_PLUGIN_LINK}` : ""}`,
-      args: keep ? ["sh", OPENCODE_PLUGIN] : [],
+      script: `mkdir -p opencode-home/.config/opencode/plugins opencode-tmp && ln -sf "$1" opencode-home/${OPENCODE_PLUGIN_LINK} && : > opencode-signals.jsonl && chmod 0644 opencode-signals.jsonl${keep ? ` && mkdir -p ${OPENCODE_DROPS} && chmod 0755 ${OPENCODE_DROPS}` : ""} && umask 077 && cat > opencode-home/.config/opencode/opencode.jsonc && : > opencode-events.jsonl && chmod 0644 opencode-events.jsonl`,
+      args: ["sh", OPENCODE_PLUGIN],
       stdin: JSON.stringify(opencodeConfig(run.model, `${run.apiUrl}/v1/model-proxy`, run.mcp)),
     };
   },
@@ -82,6 +84,15 @@ export const opencodeProgram: CliProgram<OpencodeTally> = {
   // Each compaction Thermite's plugin saw end, with the session it kept before it (goal 070).
   own: (run) => opencodeOwn({ root: run.area, drops: [OPENCODE_DROPS], title: run.title }),
   exitWords: opencodeExitWords,
+  // OpenCode's events, as Thermite's plugin writes them (goal 169). It steers a message in after a
+  // tool; at the turn's end `opencode run` ends, and the continuation carries it.
+  signals: {
+    adapter: () => opencodeSession,
+    how: {
+      "after-tool": "Thermite's OpenCode plugin",
+      "turn-end": "Thermite's OpenCode plugin",
+    },
+  },
   call: {
     // Thermite's compaction plugin, when the call's conversation is kept (goal 070).
     setup: (c) => {

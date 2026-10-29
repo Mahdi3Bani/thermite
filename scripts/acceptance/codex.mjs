@@ -10,6 +10,10 @@
 //     approvals and sandbox off, edits the code and submits with thermite-trial;
 //   - it compacts once: its compaction prompt (Thermite's) names where the run keeps the
 //     conversation, and the harness keeps the conversation from Codex's rollout and records it;
+//   - Thermite's hooks run in it (`codex exec` with --dangerously-bypass-hook-trust) as the
+//     lane's user and reach the harness with the trial's token: of two owner's messages sent to
+//     the running trial, the PostToolUse hook gives the first after a command and the Stop hook
+//     the second at the end of the turn, each read once with how it went in;
 //   - the auditor, given the same model in Codex over REST (goal 073), audits a large gain in
 //     the Codex CLI in the supervisor: in its own folder, with the read-only sandbox, no
 //     approvals asked, no shell, through the supervisor's proxy for the call with a credential
@@ -30,6 +34,7 @@ import {
   api,
   assign,
   candidatePatch,
+  command,
   control,
   dc,
   events,
@@ -179,6 +184,16 @@ try {
       /proxied=200 /.test(planned),
     { source: epoch.body.source, valid: epoch.body.planner_valid, notes: planned },
   );
+  // Goal 169: two messages to the trial while it runs; the stand-in waits for both to wait.
+  const started = await until(
+    "the Codex trial started",
+    async () => (await events()).find((e) => e.kind === "trial_started" && e.subject === "smoke-1"),
+    300_000,
+    2000,
+  );
+  const trialId = String(started.body.trial);
+  for (const text of ["Look at the inner loop first.", "Keep the change small."])
+    await command("message_agent", { run: "smoke-1", to: `trial:${trialId}`, text });
   const attempt = await until(
     "a trial in Codex submitted",
     async () =>
@@ -215,6 +230,17 @@ try {
     "the controller followed Codex's output (turns counted)",
     Number(trial.body.turns) >= 1,
     trial.body,
+  );
+  const reads = (await events()).filter(
+    (e) => e.kind === "agent_message_read" && e.body.trial === trialId,
+  );
+  check(
+    "Thermite's hooks ran in Codex and gave the owner's messages inside its turn: one after a command, one at the turn's end, each read once with how",
+    /hooks=\d+ steered=after-tool:owner,turn-end:owner /.test(said) &&
+      Number(/hooks=(\d+)/.exec(said)?.[1]) >= 5 &&
+      reads.length === 2 &&
+      reads.map((e) => e.body.how).join(",") === "after-tool,turn-end",
+    { said, reads: reads.map((e) => e.body) },
   );
   // Goal 070: Codex's compaction prompt named where the run keeps the conversation; the harness
   // read Codex's rollout of the thread from the lane's area and kept it in the run's research

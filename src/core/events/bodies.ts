@@ -1,4 +1,4 @@
-import type { AdvisorRole, Harness } from "../agents.ts";
+import type { AdvisorRole, Harness, MessageHow } from "../agents.ts";
 import type { Mode } from "../contract.ts";
 import type { GoalCellValues, GoalCheck } from "../goal/index.ts";
 import type { HeldOutCell } from "../held-out.ts";
@@ -399,6 +399,8 @@ export interface EventBodies {
     by: string;
     trial?: string | undefined;
     round?: number | undefined;
+    /** How a trial's agent was given it (goal 169). */
+    how?: MessageHow | undefined;
   };
   agent_message_unkept: { message: number };
   /** A prompt a run's agent was sent (goal 166): its sections and sources (core/prompts.ts). */

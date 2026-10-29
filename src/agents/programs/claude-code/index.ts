@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { COMPACT_AT_DEFAULT } from "../../../core/compaction.ts";
 import { type KeptAt, keptLine } from "../../compaction/index.ts";
 import type { ModelConfig } from "../../model/index.ts";
+import { hookArgv } from "../hooks/index.ts";
 import { agentPath } from "../path.ts";
 import { CLAUDE_BASE_ENV } from "./shell.ts";
 
@@ -125,14 +126,49 @@ export const CLAUDE_DROPS = "claude-compactions";
  * these copies are what the harness reads.
  */
 export function claudeHookSettings(drops: string, at: KeptAt): string {
-  const hook = (args: string[]) => [
-    { hooks: [{ type: "command", command: process.execPath, args, timeout: 60 }] },
-  ];
+  return JSON.stringify({ hooks: compactionHooks(drops, at) });
+}
+
+/** One of Claude Code's hooks: a program run by Node without a shell, with its arguments. */
+const commandHook = ([command, ...args]: string[], timeout: number) => [
+  { hooks: [{ type: "command", command, args, timeout }] },
+];
+
+function compactionHooks(drops: string, at: KeptAt) {
+  return {
+    PreCompact: commandHook([process.execPath, CLAUDE_HOOK, "claude", drops, keptLine(at)], 60),
+    PostCompact: commandHook([process.execPath, CLAUDE_HOOK, "claude-post", drops], 60),
+  };
+}
+
+/**
+ * The hooks whose signals Thermite follows in a trial (goal 169), each running Thermite's hook
+ * program (../hooks/main.ts). Its PostToolUse and Stop hooks also give the agent the owner's
+ * messages inside its turn, and wait for the harness at most a few seconds.
+ */
+export const CLAUDE_SIGNAL_HOOKS = [
+  "SessionStart",
+  "UserPromptSubmit",
+  "PreToolUse",
+  "PostToolUse",
+  "PostToolUseFailure",
+  "Stop",
+  "StopFailure",
+  "Notification",
+  "SessionEnd",
+] as const;
+
+/**
+ * Claude Code's settings for a trial (`--settings`): the hooks that signal each turn and tool
+ * and give the agent the owner's messages inside its turn (goal 169), and, where the trial's
+ * conversation is kept, its compaction hooks (claudeHookSettings).
+ */
+export function claudeTrialSettings(keep?: { drops: string; at: KeptAt } | undefined): string {
+  const signals = Object.fromEntries(
+    CLAUDE_SIGNAL_HOOKS.map((e) => [e, commandHook(hookArgv("claude-code"), 30)]),
+  );
   return JSON.stringify({
-    hooks: {
-      PreCompact: hook([CLAUDE_HOOK, "claude", drops, keptLine(at)]),
-      PostCompact: hook([CLAUDE_HOOK, "claude-post", drops]),
-    },
+    hooks: { ...signals, ...(keep ? compactionHooks(keep.drops, keep.at) : {}) },
   });
 }
 

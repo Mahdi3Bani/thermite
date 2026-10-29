@@ -165,6 +165,9 @@ export function agentLinks(
       progress: (progress) => service.trialReport(trial, { progress }),
       submitted: () => service.trialSubmission(spec.trialId),
       messages: service.trialInbox(trial),
+      // Its hooks or plugin take the owner's messages inside the agent's turn, through the
+      // trial's routes (goal 169).
+      inTurn: (d) => service.inTurn(spec.trialId, d),
       usage: windows,
       // A compaction the program reported (goal 070): kept and recorded as a Pi worker's are,
       // with the program's own conversation where Thermite could read it.

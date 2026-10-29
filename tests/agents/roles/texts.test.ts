@@ -124,7 +124,7 @@ const TEXTS: Record<string, string> = {
   "trials.cut-off": CUT_OFF_TURN,
   "trials.context-full": CONTEXT_FULL_TURN,
   "trials.failed": FAILED_GO_ON,
-  "trials.owner-pi": OWNER_TURN_HEAD,
+  "trials.owner-turn": OWNER_TURN_HEAD,
   "trials.owner-program": OWNER_LINE_HEAD,
   "trials.time-left": [1, 18].map((n) => timeLeftWords(n * 60_000)).join("\n"),
   "compaction.goes-on-trial": TRIAL_GOES_ON,

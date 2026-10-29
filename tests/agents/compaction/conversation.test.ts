@@ -41,8 +41,8 @@ import {
   claudeHookSettings,
 } from "../../../src/agents/programs/claude-code/index.ts";
 import {
-  compactionPlugin,
   type OpencodeCompaction,
+  thermitePlugin,
 } from "../../../src/agents/programs/opencode/plugin.ts";
 
 /**
@@ -620,14 +620,14 @@ describe("Thermite's OpenCode plugin (goal 070)", () => {
     const m = (await import("../../../src/agents/programs/opencode/plugin.ts")) as {
       default: { id: unknown; setup: unknown };
     };
-    assert.equal(m.default.id, "thermite-compaction");
+    assert.equal(m.default.id, "thermite");
     assert.equal(typeof m.default.setup, "function");
   });
 
   test("before each compaction it keeps the session and adds the line naming the file; it marks each one that ends", async () => {
     const dir = join(tmp("plugin"), "opencode-compactions");
     const f = fakeOpencode();
-    const stop = await compactionPlugin({
+    const stop = await thermitePlugin({
       THERMITE_COMPACTION_DROPS: dir,
       THERMITE_COMPACTION_LINE: "Kept in /r/compactions/t-3-{n}.md.",
     }).setup(f.ctx);
@@ -670,7 +670,7 @@ describe("Thermite's OpenCode plugin (goal 070)", () => {
   test("a subagent's session and a plugin with no folder are left alone", async () => {
     const dir = join(tmp("plugin-child"), "drops");
     const child = fakeOpencode({ parent: "ses_1" });
-    await compactionPlugin({
+    await thermitePlugin({
       THERMITE_COMPACTION_DROPS: dir,
       THERMITE_COMPACTION_LINE: "x {n}",
     }).setup(child.ctx);
@@ -678,7 +678,7 @@ describe("Thermite's OpenCode plugin (goal 070)", () => {
     assert.equal(e.system.length, 1);
     assert.deepEqual(readdirSync(dir), []);
     const none = fakeOpencode();
-    assert.equal(await compactionPlugin({}).setup(none.ctx), undefined);
+    assert.equal(await thermitePlugin({}).setup(none.ctx), undefined);
     assert.equal((await none.compact()).system.length, 1);
   });
 });

@@ -58,9 +58,10 @@ export function trialEnd(
 export const AFTER_SUBMIT_MS = 5_000;
 
 /**
- * The owner's messages carried by the prompt of a continued session (OpenCode or Claude Code):
- * they are read once the agent has started on that prompt (its first step or tool call), and
- * stay waiting if it never does.
+ * The owner's messages carried by the prompt of a continued session (OpenCode, Claude Code or
+ * Codex): those its hooks or plugin did not take inside the agent's turn (TurnMessages, goal
+ * 169). They are read once the agent has started on that prompt (its first step or tool call),
+ * and stay waiting if it never does.
  */
 export class CarriedMessages {
   private carrying: { ids: number[]; turns: number; calls: number } | undefined;
@@ -84,7 +85,12 @@ export class CarriedMessages {
     const c = this.carrying;
     if (!c || (tally.turns <= c.turns && tally.toolCalls <= c.calls)) return;
     this.carrying = undefined;
-    this.inbox?.given(c.ids);
+    this.inbox?.given(c.ids, "continuation");
+  }
+
+  /** The messages the prompt now carries, until they are read: never offered inside a turn. */
+  holding(): readonly number[] {
+    return this.carrying?.ids ?? [];
   }
 
   /** The run ended: what it never started on stays waiting (for the next prompt or trial). */

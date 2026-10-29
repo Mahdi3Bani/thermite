@@ -92,8 +92,7 @@ export async function planEpoch(
     sched.o.service.messages.read(
       owner.map((m) => m.id),
       "planner",
-      undefined,
-      n,
+      { round: n },
     );
   // New directions, with the rules that named them before the run had them, and the old rules
   // in words converted to them (goal 066).

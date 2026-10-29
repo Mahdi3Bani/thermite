@@ -74,7 +74,7 @@ const { pathToFileURL } = require("node:url");
 fs.readFileSync(0, "utf8");
 (async () => {
   const dir = path.join(process.env.HOME, ".config", "opencode", "plugins");
-  const file = fs.readdirSync(dir).find((f) => f.startsWith("thermite-compaction."));
+  const file = fs.readdirSync(dir).find((f) => f.startsWith("thermite."));
   const plugin = (await import(pathToFileURL(path.join(dir, file)).href)).default;
   let hook;
   let wake;

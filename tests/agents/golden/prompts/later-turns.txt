@@ -14,6 +14,10 @@ The model call failed (503 the server is busy). Continue where you left off.
 A message from the campaign's owner, who is watching this session:
 
 Prefer a change a reader can follow.
+# worker in a program: an owner's message inside its turn, through its hook or plugin (worker, claude-code)
+A message from the campaign's owner, who is watching this session:
+
+Prefer a change a reader can follow.
 # worker in a program: its run ended without a submission, with two owner's messages (worker, codex)
 You have not submitted yet. Keep working: make your change, build and test it, then run `thermite-trial submit --hypothesis "..."` once. If you find no change worth judging, say why in one sentence.
 

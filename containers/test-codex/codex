@@ -6,8 +6,17 @@
 // auditor's answer in the supervisor (what its configuration and its call gave it, as reasons). It
 // sends one request to the provider its configuration names, as Codex would, to show the route
 // goes through the harness's proxy with the run's own credential. It reports what it was given
-// (its user, its home, the flags, the proxy's answer), never a credential itself. It refuses to
-// run without THERMITE_FAKE_CODEX=1 or its mounted folder, so it can't stand in by mistake.
+// (its user, its home, the flags, the proxy's answer), never a credential itself. With
+// --dangerously-bypass-hook-trust it runs the hooks of $CODEX_HOME/hooks.json, as `codex exec`
+// does (goal 169; without the flag an untrusted hook does not run): SessionStart,
+// UserPromptSubmit, PreToolUse and PostToolUse around each command and Stop at the end of each
+// turn, each through a shell with its input on stdin; it takes a PostToolUse hook's added context
+// in, a Stop that blocks sends it on with the reason, and it runs its configuration's notify at the
+// end of each turn. In a trial's first run it first waits, at most WAIT_MESSAGES_MS, for two of the
+// owner's messages to wait for it (as an agent may look with its trial's token), so the acceptance
+// can see one given after a command and one at the turn's end; a run whose Stop hook does not
+// block ends there. It refuses to run without THERMITE_FAKE_CODEX=1 or its mounted folder, so it
+// can't stand in by mistake.
 const { execSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -36,7 +45,77 @@ const envKey = setting("env_key");
 const credential = envKey ? (process.env[envKey] ?? "") : "";
 let n = 0;
 const item = (type, fields) => ({ id: `item_${n++}`, type, ...fields });
+// Thermite's hooks, run only as `codex exec` runs them: trusted, here by the flag.
+const hooks = (() => {
+  if (!args.includes("--dangerously-bypass-hook-trust")) return {};
+  try {
+    return JSON.parse(fs.readFileSync(path.join(home, "hooks.json"), "utf8")).hooks ?? {};
+  } catch {
+    return {};
+  }
+})();
+const notify = (() => {
+  const m = /^notify = (\[.*\])$/m.exec(config);
+  try {
+    return m ? JSON.parse(m[1]) : undefined;
+  } catch {
+    return undefined;
+  }
+})();
+let hooksRun = 0;
+const hook = (event, fields) => {
+  const h = hooks[event]?.[0]?.hooks?.[0];
+  if (!h) return {};
+  const r = require("node:child_process").spawnSync("/bin/sh", ["-c", h.command], {
+    input: JSON.stringify({ session_id: thread, cwd: process.cwd(), hook_event_name: event, model: val("--model"), permission_mode: "bypassPermissions", ...fields }),
+    encoding: "utf8",
+    timeout: (h.timeout ?? 60) * 1000,
+  });
+  if (r.status === 0) hooksRun++;
+  try {
+    return JSON.parse(r.stdout || "{}");
+  } catch {
+    return {};
+  }
+};
+// What the hooks gave it inside its turns: a PostToolUse hook's added context, a Stop's reason.
+const steered = [];
+const hookFacts = () => `hooks=${hooksRun} steered=${steered.join(",") || "none"}`;
+/** The end of a turn: the Stop hook, which may send it on (true), and notify. */
+const stop = (last) => {
+  const said = hook("Stop", { stop_hook_active: steered.some((x) => x.startsWith("turn-end")), last_assistant_message: last });
+  if (said.decision === "block" && said.reason) {
+    steered.push(`turn-end:${/owner/.test(said.reason) ? "owner" : "other"}`);
+    return true;
+  }
+  if (notify?.length)
+    require("node:child_process").spawnSync(notify[0], [
+      ...notify.slice(1),
+      JSON.stringify({ type: "agent-turn-complete", "thread-id": thread, cwd: process.cwd(), "last-assistant-message": last }),
+    ]);
+  return false;
+};
+/** Waits, at most `ms`, until `count` of the owner's messages wait for this trial. */
+const WAIT_MESSAGES_MS = 90_000;
+const waitMessages = async (count, ms = WAIT_MESSAGES_MS) => {
+  const url = process.env.THERMITE_HARNESS_URL;
+  const auth = process.env.THERMITE_TRIAL_AUTH ?? "";
+  if (!url || !auth.startsWith("trial.")) return 0;
+  const end = Date.now() + ms;
+  for (;;) {
+    try {
+      const r = await fetch(`${url}/v1/trial/messages`, { headers: { authorization: `Bearer ${auth}` } });
+      const got = (await r.json()).messages?.length ?? 0;
+      if (got >= count || Date.now() > end) return got;
+    } catch {
+      if (Date.now() > end) return 0;
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+};
 const shell = (command) => {
+  const callId = `call_${n}`;
+  hook("PreToolUse", { tool_name: "Bash", tool_input: { command }, tool_use_id: callId });
   const started = item("command_execution", {
     command,
     aggregated_output: "",
@@ -56,6 +135,9 @@ const shell = (command) => {
     type: "item.completed",
     item: { ...started, aggregated_output: output, exit_code: code, status: code ? "failed" : "completed" },
   });
+  const after = hook("PostToolUse", { tool_name: "Bash", tool_input: { command }, tool_response: output, tool_use_id: callId });
+  const context = after.hookSpecificOutput?.additionalContext;
+  if (context) steered.push(`after-tool:${/owner/.test(context) ? "owner" : "other"}`);
   return output;
 };
 const say = (text) => out({ type: "item.completed", item: item("agent_message", { text }) });
@@ -88,6 +170,20 @@ const say = (text) => out({ type: "item.completed", item: item("agent_message", 
   ].join(" ");
   out({ type: "thread.started", thread_id: thread });
   out({ type: "turn.started" });
+  /**
+   * A trial's first run (none resumed): it reads the kernel. The owner's messages, when the
+   * acceptance sends two: the first goes in after its command, the second at the end of its
+   * turn, which goes on with it to the submission (true).
+   */
+  const firstTurn = async () => {
+    hook("SessionStart", { source: resumed ? "resume" : "startup" });
+    hook("UserPromptSubmit", { prompt: prompt.slice(0, 2000) });
+    if (resumed) return true;
+    await waitMessages(2);
+    shell("true");
+    say("Read the kernel.");
+    return stop("Read the kernel.");
+  };
   out({ type: "item.completed", item: item("reasoning", { text: "**Reading the task**" }) });
   const word = /run exactly this command: echo (thermite-[a-z0-9]+)/.exec(prompt)?.[1];
   if (/You audit a candidate change/.test(prompt)) {
@@ -123,6 +219,9 @@ const say = (text) => out({ type: "item.completed", item: item("agent_message", 
         notes: `planned by the Codex stand-in (${facts})`,
       }),
     );
+  } else if (/thermite-trial submit/.test(prompt) && !(await firstTurn())) {
+    // The first run read the kernel and its Stop hook did not send it on: the run ends there,
+    // and the continuation submits.
   } else if (/thermite-trial submit/.test(prompt)) {
     // One compaction, as Codex makes one (goal 070): the thread in its rollout, with the summary
     // its compaction prompt asked for (naming where Thermite keeps the conversation), then the
@@ -154,12 +253,14 @@ const say = (text) => out({ type: "item.completed", item: item("agent_message", 
       compacted = "rollout";
     }
     shell(
-      `printf '\\n/* tidied by codex */\\n' >> src/kernel/matmul.c && thermite-trial submit --hypothesis 'codex harness: a tidied kernel (compacted=${compacted} ${facts})'`,
+      `printf '\\n/* tidied by codex */\\n' >> src/kernel/matmul.c && thermite-trial submit --hypothesis 'codex harness: a tidied kernel (compacted=${compacted} ${hookFacts()} ${facts})'`,
     );
     say("Submitted.");
+    stop("Submitted.");
   } else {
     say("done");
   }
+  if (Object.keys(hooks).length) hook("SessionEnd", { reason: "other" });
   out({
     type: "turn.completed",
     usage: {

@@ -1,10 +1,17 @@
 import { z } from "zod";
 import { stalledFor } from "../../agents/model/index.ts";
 import { log } from "../../common/env.ts";
+import type { InTurn } from "../../core/agents.ts";
 import { ExperimentText } from "../../core/commands.ts";
 import type { LiveKind } from "../../core/live.ts";
 import { measurementIn, measurementRefusal } from "../../core/research-check.ts";
-import { KIND_WORDS, type ProviderErrorKind, Registry } from "../agents/index.ts";
+import {
+  KIND_WORDS,
+  type MessageInbox,
+  type ProviderErrorKind,
+  Registry,
+  type TurnDelivery,
+} from "../agents/index.ts";
 import { Journal } from "../journal.ts";
 import { LedgerError } from "../ledger/index.ts";
 import { messageText, type OwnerMessages } from "../messages.ts";
@@ -186,10 +193,7 @@ export class TrialInboxes {
    * its harness says it gave them to the agent. Only messages waiting for this trial can be
    * marked; a read is recorded only when they were given.
    */
-  trialInbox(trial: { id: string; run: string; lane: string }): {
-    waiting(): { id: number; text: string }[];
-    given(ids: number[]): void;
-  } {
+  trialInbox(trial: { id: string; run: string; lane: string }): MessageInbox {
     // Messages its brief already carries are not given again.
     const waiting = () => {
       const briefed = new Set(this.briefMessages.get(trial.id)?.ids ?? []);
@@ -197,12 +201,12 @@ export class TrialInboxes {
     };
     return {
       waiting: () => waiting().map((m) => ({ id: m.id, text: messageText(m) })),
-      given: (ids) => {
+      given: (ids, how) => {
         const ok = new Set(waiting().map((m) => m.id));
         this.svc.messages.read(
           ids.filter((id) => ok.has(id)),
           trial.lane,
-          trial,
+          { trial, how },
         );
       },
     };
@@ -218,12 +222,35 @@ export class TrialInboxes {
     const b = this.briefMessages.get(id);
     if (!b) return;
     this.briefMessages.delete(id);
-    this.svc.messages.read(b.ids, b.trial.lane, b.trial);
+    this.svc.messages.read(b.ids, b.trial.lane, { trial: b.trial, how: "brief" });
   }
 
-  /** A trial ended: its brief's messages are no longer kept for it. */
+  /**
+   * Each running trial in Claude Code, Codex or OpenCode whose hook or plugin can take the
+   * owner's messages inside its turn (goal 169): its trial loop sets it while the trial runs.
+   */
+  private readonly turns = new Map<string, TurnDelivery>();
+
+  /** A trial's way to take messages inside its turn; undefined: it has none now. */
+  inTurn(id: string, d: TurnDelivery | undefined): void {
+    if (d) this.turns.set(id, d);
+    else this.turns.delete(id);
+  }
+
+  /** The next message offered to a trial's hook or plugin; undefined: none, or no way in now. */
+  turnOffer(id: string, at: InTurn): { offer: string; text: string } | undefined {
+    return this.turns.get(id)?.offer(at);
+  }
+
+  /** The hook or plugin gave an offer's text to its program: the ids read. */
+  turnTaken(id: string, offer: string): number[] {
+    return this.turns.get(id)?.taken(offer) ?? [];
+  }
+
+  /** A trial ended: its brief's messages and its way in are no longer kept for it. */
   forget(id: string): void {
     this.briefMessages.delete(id);
+    this.turns.delete(id);
   }
 }
 

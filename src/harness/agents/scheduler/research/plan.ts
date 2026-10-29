@@ -140,8 +140,7 @@ export async function planResearchEpoch(
       sched.o.service.messages.read(
         owner.map((m) => m.id),
         "planner",
-        undefined,
-        n,
+        { round: n },
       );
     for (const h of r.handout) {
       const x = sched.o.service.queue.get(h.experiment);

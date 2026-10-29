@@ -268,13 +268,13 @@ The model's context was full, so the harness compacted the conversation. Continu
 Continue where you left off.
 ```
 
-### Worker: a later turn in Pi: your message, after this line and a blank one
+### Worker: a later turn, in Pi or inside another program's turn: your message, after this line and a blank one
 
 ```text
 A message from the campaign's owner, who is watching this session:
 ```
 
-### Worker: in another program, each of your messages in the run's continuation, after this
+### Worker: in another program, each of your messages still waiting when its run ends, in the run's continuation, after this
 
 ```text
 A message from the campaign's owner:
@@ -335,13 +335,13 @@ The model's context was full, so the harness compacted the conversation. Continu
 Continue where you left off.
 ```
 
-### Research worker: a later turn in Pi: your message, after this line and a blank one
+### Research worker: a later turn, in Pi or inside another program's turn: your message, after this line and a blank one
 
 ```text
 A message from the campaign's owner, who is watching this session:
 ```
 
-### Research worker: in another program, each of your messages in the run's continuation, after this
+### Research worker: in another program, each of your messages still waiting when its run ends, in the run's continuation, after this
 
 ```text
 A message from the campaign's owner:

@@ -80,7 +80,10 @@ export type TrialTurn =
   | { kind: "context-full" }
   /** A model call failed and the trial waited; `words`: the provider's. */
   | { kind: "failed"; words: string }
-  /** In Pi: a message from the campaign's owner, as a turn of its own. */
+  /**
+   * A message from the campaign's owner, as a turn of its own: in Pi, before its next model call;
+   * in another program, inside its turn, through its hook or Thermite's plugin (goal 169).
+   */
   | { kind: "owner"; text: string };
 
 /** Told to a worker in Pi whose reply was cut off before it made a tool call. */
@@ -97,7 +100,10 @@ export const FAILED_GO_ON = "Continue where you left off.";
 /** The most characters of the provider's words a failed call's turn gives. */
 const FAILED_WORDS_MAX = 200;
 
-/** An owner's message put to an agent in Pi, as a turn of its own: the message follows it. */
+/**
+ * An owner's message put to an agent as a turn of its own, in Pi or inside a program's turn: the
+ * message follows it.
+ */
 export const OWNER_TURN_HEAD = "A message from the campaign's owner, who is watching this session:";
 
 /** An owner's message put to an agent in a program, in its run's continuation: the message follows. */
@@ -144,13 +150,13 @@ export const TRIAL_TURN_TEXTS: readonly RoleText[] = [
     text: FAILED_GO_ON,
   },
   {
-    id: "owner-pi",
-    what: "a later turn in Pi: your message, after this line and a blank one",
+    id: "owner-turn",
+    what: "a later turn, in Pi or inside another program's turn: your message, after this line and a blank one",
     text: OWNER_TURN_HEAD,
   },
   {
     id: "owner-program",
-    what: "in another program, each of your messages in the run's continuation, after this",
+    what: "in another program, each of your messages still waiting when its run ends, in the run's continuation, after this",
     text: OWNER_LINE_HEAD,
   },
 ];
