@@ -113,18 +113,21 @@ try {
   console.log("events at control:", kinds.join(", "));
   console.log("verdict:", verdict);
   if (!bus) {
-    // The rig reported over HTTP: the reports stream holds none of its pages.
+    // The rig reported over HTTP: no page of it ever reached the reports stream.
     const state = busState();
-    if (state.messages !== 0)
-      throw new Error(`the rig is off the bus, but the reports stream holds ${state.messages}`);
-    console.log("reports over HTTP: the reports stream holds none");
+    if (state.lastSeq !== 0)
+      throw new Error(`the rig is off the bus, but the reports stream took ${state.lastSeq} pages`);
+    console.log("reports over HTTP: the reports stream took none");
   } else {
-    // The reports came over the bus: the stream holds them, and control acked each one it folded.
+    // The reports came over the bus: the stream took them, and, an inbox, holds none once control
+    // has taken each one it folded.
     const state = await until(
       "control folded every report on the bus",
       async () => {
         const s = busState();
-        return s.messages > 0 && s.pending === 0 && s.ackedTo === s.lastSeq ? s : undefined;
+        return s.lastSeq > 0 && s.messages === 0 && s.pending === 0 && s.ackedTo === s.lastSeq
+          ? s
+          : undefined;
       },
       60_000,
       1000,
