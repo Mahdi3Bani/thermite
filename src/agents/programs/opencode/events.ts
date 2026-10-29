@@ -1,4 +1,4 @@
-import { closeSync, existsSync, openSync, readSync, statSync } from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
 import { type LiveKind, liveText, summarizeArgs } from "../../../core/live.ts";
 import { type CallUsage, callUsage } from "../../../core/usage.ts";
 
@@ -169,22 +169,25 @@ export function readOpencodeEvents(
   return live;
 }
 
-/** Reads what a growing file gained since `from`: whole lines only. */
+/**
+ * Reads what a growing file gained since `from`: whole lines only. The file is the lane's (its run
+ * appends to it), so it is read as a plain file and never through a link.
+ */
 export function readNew(path: string, from: number): { lines: string[]; next: number } {
-  if (!existsSync(path)) return { lines: [], next: from };
-  const size = statSync(path).size;
-  if (size <= from) return { lines: [], next: from };
-  const fd = openSync(path, "r");
+  let fd: number;
   try {
-    const buf = Buffer.alloc(size - from);
-    readSync(fd, buf, 0, buf.length, from);
-    const text = buf.toString("utf8");
-    const end = text.lastIndexOf("\n");
+    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  } catch {
+    return { lines: [], next: from };
+  }
+  try {
+    const st = fstatSync(fd);
+    if (!st.isFile() || st.size <= from) return { lines: [], next: from };
+    const buf = Buffer.alloc(st.size - from);
+    const got = readSync(fd, buf, 0, buf.length, from);
+    const end = buf.subarray(0, got).lastIndexOf(0x0a);
     if (end < 0) return { lines: [], next: from };
-    return {
-      lines: text.slice(0, end).split("\n"),
-      next: from + Buffer.byteLength(text.slice(0, end + 1)),
-    };
+    return { lines: buf.subarray(0, end).toString("utf8").split("\n"), next: from + end + 1 };
   } finally {
     closeSync(fd);
   }
