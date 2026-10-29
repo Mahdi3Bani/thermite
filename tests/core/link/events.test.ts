@@ -41,14 +41,15 @@ const event = (o: Partial<ReportEvent> = {}): ReportEvent => ({
   ...o,
 });
 
-/** A message as the bus hands it over, from an event message. */
+/** A message as the bus hands it over, from an event message: its id among its headers. */
 const asRead = (m: {
   subject: string;
   data: string;
-  id: string;
+  id: string | undefined;
   headers: Record<string, string>;
 }) => {
-  const headers: Record<string, string> = { ...m.headers, "Nats-Msg-Id": m.id };
+  const headers: Record<string, string> = { ...m.headers };
+  if (m.id !== undefined) headers["Nats-Msg-Id"] = m.id;
   return {
     subject: m.subject,
     data: new TextEncoder().encode(m.data),
@@ -168,6 +169,8 @@ describe("the events stream's contract", () => {
     assert.deepEqual(JSON.parse(own.data), { ...event(), run: null, body: {} });
     assert.equal(own.headers[EVENT_HEADERS.seq], "41");
     assert.equal(own.headers[EVENT_HEADERS.report], undefined);
+    // A row control copies from its table carries its place there, and no id.
+    assert.equal(own.id, undefined);
   });
 
   test("a message's ledger, page and seq must be ones a header holds", () => {
@@ -237,6 +240,10 @@ describe("the events stream's contract", () => {
       /Thermite-Seq is not a place: "07"/,
     );
     refused({ ...sent, headers: { ...h, "Thermite-Seq": "0" } }, /Thermite-Seq is not a place/);
+    // An id or a seq, one at least: a row copied from control's table has its seq and no id.
+    refused({ ...sent, id: undefined }, /it has neither an id nor a seq/);
+    const copied = { ...sent, id: undefined, headers: { ...h, "Thermite-Seq": "12" } };
+    assert.equal(readEventMessage(asRead(copied)).seq, 12);
     // The rig's own subject is the event's too, for a run the registry gives another rig.
     const own = { ...sent, subject: "thermite.rig.rig-a.ev.trial_started" };
     assert.equal(readEventMessage(asRead(own)).event.id, 7);
@@ -263,7 +270,10 @@ describe("the events stream's contract", () => {
       "Nats-Batch-Sequence": "1000",
       "Nats-Batch-Commit": "1",
     };
-    const bytes = Object.entries({ ...m.headers, ...batch, "Nats-Msg-Id": m.id }).reduce(
+    // An id and a seq both, and the stream's last place a batch's first message expects.
+    const id = eventMessageId("r".repeat(40), "l".repeat(128), Number.MAX_SAFE_INTEGER);
+    const expects = { "Nats-Expected-Last-Sequence": String(Number.MAX_SAFE_INTEGER) };
+    const bytes = Object.entries({ ...m.headers, ...batch, ...expects, "Nats-Msg-Id": id }).reduce(
       (n, [k, v]) => n + k.length + v.length + 4,
       12,
     );

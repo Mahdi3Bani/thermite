@@ -21,7 +21,8 @@ export interface Kept {
   subject: string;
   /** Its place in its stream. */
   seq: number;
-  id: string;
+  /** Its id; none for a message published without one. */
+  id: string | undefined;
   data: string;
   headers: Record<string, string>;
 }
@@ -45,6 +46,12 @@ const INCOMPLETE = {
   err_code: 10176,
   description: "atomic publish batch is incomplete",
 };
+/** The server's words for a batch whose first message expects another last place. */
+const WRONG_LAST = (seq: number) => ({
+  code: 400,
+  err_code: 10071,
+  description: `wrong last sequence: ${seq}`,
+});
 /** The server's words for a message over its stream's largest. */
 const TOO_LARGE = {
   code: 400,
@@ -97,6 +104,10 @@ export class FakeBus
   refuse: ((subject: string) => boolean) | undefined;
   /** Set: the server's store is full, and it refuses every publish, as the real one does. */
   full = false;
+  /** Set: how many more batches pass before `failing` is set, as when the server goes away. */
+  failAfter: number | undefined;
+  /** Set: the next batch is stored and its ack lost: its publish fails all the same. */
+  loseAck = false;
 
   async makeStream(stream: StreamSettings): Promise<void> {
     this.made.set(stream.name, stream);
@@ -136,11 +147,11 @@ export class FakeBus
   /** Stores a message the checks passed, unless its stream has its id. */
   private store(stream: string, m: Outgoing): Published {
     const ids = this.idsOf(stream);
-    if (ids.has(m.id)) {
+    if (m.id !== undefined && ids.has(m.id)) {
       const had = this.kept.find((k) => k.stream === stream && k.id === m.id);
       return { seq: had?.seq ?? this.lastOf(stream), duplicate: true };
     }
-    ids.add(m.id);
+    if (m.id !== undefined) ids.add(m.id);
     const seq = this.lastOf(stream) + 1;
     this.seqs.set(stream, seq);
     const { subject, id, data } = m;
@@ -165,19 +176,24 @@ export class FakeBus
   /**
    * As the server: every message checked first, and one refused refuses the batch, which stores
    * nothing (with that message's own refusal, where the server says only that the batch is
-   * incomplete). A batch whose stream has some of its ids is published a message at a time, as
+   * incomplete); a first message that expects another last place than the stream's refuses it
+   * too. A batch whose stream has some of its ids is published a message at a time, as
    * common/bus.ts does.
    */
   async publishBatch(batch: readonly Outgoing[]): Promise<BatchPublished> {
     await this.hold;
+    if (this.failAfter !== undefined && this.failAfter-- <= 0) this.failing = true;
     if (batch.length < 1 || batch.length > BUS_BATCH_MAX)
       throw new Error(`a batch holds 1 to ${BUS_BATCH_MAX} messages, not ${batch.length}`);
-    if (new Set(batch.map((m) => m.id)).size !== batch.length)
-      throw new Error("a batch holds each message id once");
+    const ids = batch.flatMap((m) => (m.id ? [m.id] : []));
+    if (new Set(ids).size !== ids.length) throw new Error("a batch holds each message id once");
     const streams = new Set(batch.map((m) => this.check(m).name));
     const [stream = ""] = streams;
     if (!this.made.get(stream)?.allow_atomic) throw new JetStreamApiError(NOT_ATOMIC);
     if (streams.size > 1) throw new JetStreamApiError(INCOMPLETE);
+    const expected = batch[0]?.headers?.["Nats-Expected-Last-Sequence"];
+    if (expected !== undefined && Number(expected) !== this.lastOf(stream))
+      throw new JetStreamApiError(WRONG_LAST(this.lastOf(stream)));
     // Stored whole when the stream has none of its ids; else a message at a time: the same here.
     let seq = 0;
     let stored = 0;
@@ -185,6 +201,10 @@ export class FakeBus
       const ack = this.store(stream, m);
       seq = ack.seq;
       if (!ack.duplicate) stored++;
+    }
+    if (this.loseAck) {
+      this.loseAck = false;
+      throw new Error("TimeoutError: no ack from the server");
     }
     return { seq, stored, duplicate: stored === 0 };
   }
@@ -312,7 +332,8 @@ export class FakeBus
 
 /** A kept message as a handler sees it, its id among its headers as the server keeps it. */
 export function asMessage(m: Kept): BusMessage {
-  const headers: Record<string, string> = { ...m.headers, "Nats-Msg-Id": m.id };
+  const headers: Record<string, string> = { ...m.headers };
+  if (m.id !== undefined) headers["Nats-Msg-Id"] = m.id;
   return {
     subject: m.subject,
     seq: m.seq,

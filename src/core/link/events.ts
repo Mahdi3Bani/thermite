@@ -81,7 +81,7 @@ export function eventSubject(
 /**
  * The headers of an event's message. The rig's is the one a live message names its rig in; the
  * report's names the page the event came in (its message id, reportMessageId); the seq's is the
- * event's place in control's own table of events, for a row moved from it.
+ * event's place in control's own table of events, for a row control copied from it.
  */
 export const EVENT_HEADERS = {
   rig: LIVE_RIG_HEADER,
@@ -97,7 +97,12 @@ const LEDGER_ID = /^[\x21-\x39\x3b-\x7e]{1,128}$/;
 
 /**
  * An event's message id: its rig, its ledger and its id there, so that an event published twice
- * is kept once while the stream remembers the id.
+ * is kept once while the stream remembers the id. A row control copies from its own table carries
+ * its place there instead, and no id: the copy's one writer goes on after the place of the
+ * stream's last message, and each batch it publishes names the stream's last place it expects,
+ * so an id would guard nothing more; and the server keeps every id for the duplicate window, in
+ * memory, which a copy at full speed fills with every row's (the server, at 256 MiB, was stopped
+ * at about 950,000 ids).
  */
 export function eventMessageId(rig: string, ledger: string, id: number): string {
   return `${rig}:${ledger}:${id}`;
@@ -117,11 +122,11 @@ export function eventFits(bytes: number): boolean {
   return bytes + HEADER_ROOM <= EVENT_MAX_BYTES;
 }
 
-/** An event's message, ready for the bus: its subject, its data, its id and its headers. */
+/** An event's message, ready for the bus: its subject, its data, its id (or none) and headers. */
 export interface EventMessage {
   subject: string;
   data: string;
-  id: string;
+  id: string | undefined;
   headers: Record<string, string>;
 }
 
@@ -134,7 +139,8 @@ function eventData(e: ReportEvent): string {
 /**
  * An event's message: on its subject (eventSubject, with `runIsTheRigs`), its data the event, its
  * id, and its headers. `report` names the page it came in; `seq` is its place in control's own
- * table, for a row moved from it. Throws, in words, on a name a subject or a header can't hold.
+ * table, for a row control copies from it, which then has no id (eventMessageId). Throws, in
+ * words, on a name a subject or a header can't hold.
  */
 export function eventMessage(o: {
   rig: string;
@@ -164,7 +170,7 @@ export function eventMessage(o: {
   return {
     subject,
     data: eventData(o.event),
-    id: eventMessageId(o.rig, o.ledger, o.event.id),
+    id: o.seq === undefined ? eventMessageId(o.rig, o.ledger, o.event.id) : undefined,
     headers,
   };
 }
@@ -183,8 +189,8 @@ export interface EventRead {
 /**
  * An event message as a reader reads it: the event from its data, and its rig and ledger from its
  * headers. Refused, in words, when the headers and the data disagree: no rig or ledger, an id that
- * names another event, a subject that is not the event's, or a seq that is not a place. Throws
- * when the data is not an event at all (a SyntaxError or a ZodError).
+ * names another event, neither an id nor a seq, a subject that is not the event's, or a seq that
+ * is not a place. Throws when the data is not an event at all (a SyntaxError or a ZodError).
  */
 export function readEventMessage(m: {
   subject: string;
@@ -198,12 +204,13 @@ export function readEventMessage(m: {
   if (!LEDGER_ID.test(ledger)) throw refuse(`its ${EVENT_HEADERS.ledger} names no ledger`);
   const { event, unknown } = readReportEvent(JSON.parse(new TextDecoder().decode(m.data)));
   const id = m.header(MSG_ID_HEADER);
-  if (id !== eventMessageId(rig, ledger, event.id))
-    throw refuse(`its id ${JSON.stringify(id ?? null)} is not that of event ${event.id}`);
+  const seqHeader = m.header(EVENT_HEADERS.seq);
+  if (id === undefined && seqHeader === undefined) throw refuse("it has neither an id nor a seq");
+  if (id !== undefined && id !== eventMessageId(rig, ledger, event.id))
+    throw refuse(`its id ${JSON.stringify(id)} is not that of event ${event.id}`);
   const subjects = [eventSubject(rig, event, true), eventSubject(rig, event, false)];
   if (!subjects.includes(m.subject))
     throw refuse(`it is not the subject of a ${event.kind} event of rig ${rig}`);
-  const seqHeader = m.header(EVENT_HEADERS.seq);
   const seq = seqHeader === undefined ? undefined : Number(seqHeader);
   if (seq !== undefined && !(Number.isSafeInteger(seq) && seq >= 1 && String(seq) === seqHeader))
     throw refuse(`its ${EVENT_HEADERS.seq} is not a place: ${JSON.stringify(seqHeader)}`);

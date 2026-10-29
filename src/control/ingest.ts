@@ -11,6 +11,7 @@ import {
   type SignedReport,
 } from "../core/link/report.ts";
 import { type BuildInfo, buildFromHeaders, readBuild } from "../core/version.ts";
+import { tooLargeForBus } from "./events/index.ts";
 import type { ControlStore } from "./store/index.ts";
 import { checkRig } from "./versions.ts";
 
@@ -33,8 +34,8 @@ type Refused = { error: string; expected_cursor?: number | undefined };
 
 /**
  * Takes a report for `rig`, read by readReport: its signature against the rig's pinned key (pinned
- * or held here at first contact), its place in the rig's event stream, its time, and the harness's
- * build. The status and the answer.
+ * or held here at first contact), its events' sizes, its place in the rig's event stream, its
+ * time, and the harness's build. The status and the answer.
  */
 export function takeReport(
   t: Intake,
@@ -52,6 +53,13 @@ export function takeReport(
   if (!reportSignedBy(body, offered)) {
     store.auditLog.add(`rig:${rig}`, "report_rejected", { reason: "bad signature" });
     return [403, { error: "bad report signature" }];
+  }
+  // Every event control keeps goes on the message bus too (control/events): a page with one the
+  // bus can't carry is refused before anything of it is stored, the rig's key too.
+  const tooLarge = tooLargeForBus(body);
+  if (tooLarge) {
+    store.auditLog.add(`rig:${rig}`, "report_refused", { reason: tooLarge });
+    return [409, { error: tooLarge }];
   }
   if (!key.pubkey) {
     // First contact: pinned, unless the owner must accept every rig's first key.

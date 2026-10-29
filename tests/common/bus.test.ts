@@ -206,7 +206,7 @@ describe("the bus's batches, as the server takes them (the fake bus)", () => {
     bus.full = true;
     for (const p of [
       bus.publishBatch([ev(1)]),
-      bus.publish(ev(2).subject, ev(2).data, { id: ev(2).id }),
+      bus.publish(ev(2).subject, ev(2).data, { id: "rig-a:l-1:2" }),
       bus.publish(reportSubject("rig-a"), "{}", { id: "page-0" }),
     ]) {
       const err = await p.catch((e) => e);

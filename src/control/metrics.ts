@@ -75,11 +75,12 @@ export function metricsText(store: ControlStore, staleAfterMs: number, now = Dat
 
 /**
  * The message bus's series, with the bus on (goal 168): whether control reached its server, each
- * stream's messages and bytes and each consumer's backlog, the live stream's lines (those control
- * took and refused, and those each rig's supervisor published and dropped), and the config
- * bucket's values (those control wrote and failed to write, and the updates each rig's supervisor
- * took and refused). Bounded: by stream, consumer (two for each rig at most), rig, config key, and
- * the fixed reasons for a refusal. Empty with the bus off.
+ * stream's messages and bytes and each consumer's backlog, the mirror of control's events table
+ * (the table's last seq, the stream's, the rows behind, those published, and whether it stopped),
+ * the live stream's lines (those control took and refused, and those each rig's supervisor
+ * published and dropped), and the config bucket's values (those control wrote and failed to write,
+ * and the updates each rig's supervisor took and refused). Bounded: by stream, consumer (two for
+ * each rig at most), rig, config key, and the fixed reasons for a refusal. Empty with the bus off.
  */
 export async function busMetricsText(
   store: ControlStore,
@@ -106,6 +107,25 @@ export async function busMetricsText(
       lines.push(`thermite_bus_consumer_pending{${l}} ${c.pending}`);
       lines.push(`thermite_bus_consumer_ack_pending{${l}} ${c.ack_pending}`);
     }
+  const events = state.events;
+  help("thermite_events_table_seq", "gauge", "The last seq of control's events table");
+  lines.push(`thermite_events_table_seq ${events.table_seq}`);
+  help(
+    "thermite_events_stream_seq",
+    "gauge",
+    "The Thermite-Seq of the events stream's last message",
+  );
+  help("thermite_events_behind", "gauge", "Rows of control's events table the stream lacks");
+  if (events.stream_seq !== null) lines.push(`thermite_events_stream_seq ${events.stream_seq}`);
+  if (events.behind !== null) lines.push(`thermite_events_behind ${events.behind}`);
+  help("thermite_events_published_total", "counter", "Events control published to the stream");
+  lines.push(`thermite_events_published_total ${events.published}`);
+  help(
+    "thermite_events_mirror_stopped",
+    "gauge",
+    "1 when the mirror stopped on what it can't copy",
+  );
+  lines.push(`thermite_events_mirror_stopped ${events.stopped ? 1 : 0}`);
   const live = state.live;
   help("thermite_live_lines_taken_total", "counter", "Live lines control added from the bus");
   for (const r of live.rigs)

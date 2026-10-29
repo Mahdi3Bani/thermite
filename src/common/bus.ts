@@ -81,12 +81,12 @@ export interface Published {
 
 /**
  * A message to publish: its subject, its data, its id (a stream keeps one message for each id it
- * remembers, within its duplicate window) and its headers.
+ * remembers, within its duplicate window; none, and it remembers nothing) and its headers.
  */
 export interface Outgoing {
   subject: string;
   data: string;
-  id: string;
+  id?: string | undefined;
   headers?: Record<string, string> | undefined;
 }
 
@@ -177,8 +177,8 @@ export interface Bus {
     o: { id: string; headers?: Record<string, string> | undefined },
   ): Promise<Published>;
   /**
-   * Publishes 1 to BUS_BATCH_MAX messages, each with an id of its own, as one atomic batch to one
-   * stream that allows it (`allow_atomic`), and waits for the server's ack: the stream stores them
+   * Publishes 1 to BUS_BATCH_MAX messages, each with an id of its own or none, as one atomic batch
+   * to one stream that allows it (`allow_atomic`), and waits for the server's ack: it stores them
    * all, next to each other and in order, or none, and the batch fails. A batch the stream has
    * every message of already, by the ids it remembers (its duplicate window), is acked as a
    * duplicate. One it has only some of (the server refuses the whole batch then) is published
@@ -427,15 +427,15 @@ interface BatchAnswer {
 async function sendBatch(nc: NatsConnection, batch: readonly Outgoing[]): Promise<number> {
   if (batch.length < 1 || batch.length > BUS_BATCH_MAX)
     throw new Error(`a batch holds 1 to ${BUS_BATCH_MAX} messages, not ${batch.length}`);
-  if (new Set(batch.map((m) => m.id)).size !== batch.length)
-    throw new Error("a batch holds each message id once");
+  const ids = batch.flatMap((m) => (m.id ? [m.id] : []));
+  if (new Set(ids).size !== ids.length) throw new Error("a batch holds each message id once");
   const id = randomUUID();
   let answer: BatchAnswer = {};
   for (const [i, m] of batch.entries()) {
     const last = i === batch.length - 1;
     const h = headers();
     for (const [k, v] of Object.entries(m.headers ?? {})) h.set(k, v);
-    h.set("Nats-Msg-Id", m.id);
+    if (m.id) h.set("Nats-Msg-Id", m.id);
     h.set("Nats-Batch-Id", id);
     h.set("Nats-Batch-Sequence", String(i + 1));
     if (last) h.set("Nats-Batch-Commit", "1");

@@ -799,7 +799,7 @@ A `server` is `{name, url, auth, header, client_id, scope, secret_hint, signed_i
 
 | Route | Token | What it does | Request | Answer |
 | --- | --- | --- | --- | --- |
-| `GET /v1/bus` | Owner or reader | The [message bus](../explanation/how-the-parts-talk.md#the-buss-state) as control sees it now. MCP's `bus_state` answers the same | None | Without the bus: `{"on":false}`. With it: `{on, server, reachable, error, streams, live, config}`, as below |
+| `GET /v1/bus` | Owner or reader | The [message bus](../explanation/how-the-parts-talk.md#the-buss-state) as control sees it now. MCP's `bus_state` answers the same | None | Without the bus: `{"on":false}`. With it: `{on, server, reachable, error, streams, events, live, config}`, as below |
 
 With the bus, the answer holds:
 
@@ -807,7 +807,8 @@ With the bus, the answer holds:
 | --- | --- |
 | `server` | The bus's server, its host and port |
 | `reachable`, `error` | Whether control reached the server just now, and why not in words, such as `no answer within 5 seconds`, or `null` |
-| `streams` | Each stream control makes and the server has, in this order: `REPORTS`, `COMMANDS`, `LIVE`, `CONFIG`. Each is `{name, messages, bytes, subjects, first_at, last_at, consumers, consumers_left_out}`: the messages and bytes it keeps, how many subjects hold them, when its oldest and newest came (`null` while it holds none), and each consumer as `{name, pending, ack_pending, redelivered}`: the messages it has not been handed yet, those it was handed and has not acked, and those it was handed more than once. At most 200 consumers of a stream; `consumers_left_out` counts the rest. Empty when the server was not reached |
+| `streams` | Each stream control makes and the server has, in this order: `REPORTS`, `EVENTS`, `COMMANDS`, `LIVE`, `CONFIG`. Each is `{name, messages, bytes, subjects, first_at, last_at, consumers, consumers_left_out}`: the messages and bytes it keeps, how many subjects hold them, when its oldest and newest came (`null` while it holds none), and each consumer as `{name, pending, ack_pending, redelivered}`: the messages it has not been handed yet, those it was handed and has not acked, and those it was handed more than once. At most 200 consumers of a stream; `consumers_left_out` counts the rest. Empty when the server was not reached |
+| `events` | The copy of control's events table in the `EVENTS` stream ([Control's events on the message bus](../explanation/how-the-parts-talk.md#controls-events-on-the-message-bus)): `{stream, since, table_seq, stream_seq, behind, published, waiting, stopped}`. `table_seq` is the last seq of control's events table; `stream_seq`, the `Thermite-Seq` of the stream's last message, as the server has it: 0 for a stream with none, `null` when the server was not reached or its last message names none; `behind`, how many rows of the table come after it (`null` with `stream_seq`); `published`, the events control published to the stream since it started, at `since`; `waiting`, why the copy waits now, such as `the bus's store is full: insufficient resources`, or `null`; `stopped`, `null`, or why the copy stopped until control starts again, `{rig, ledger, seq, bytes, error}`: the row it can't copy, its rig, ledger, seq and size in bytes (each `null` for a stream it can't go on from), and why in words |
 | `live.kept` | How much the `LIVE` stream keeps: `{seconds, messages_per_subject, bytes, message_bytes}`, `message_bytes` being the largest message |
 | `live.taken` | What control took from the `LIVE` stream since it started: `{since, messages, lines, left_out, refused}`. `lines` counts the lines it added to its live view, a line it had already not again; `left_out`, the lines of a kind or source it does not know, or of another subject; `refused`, the messages it refused, by why: `not a live subject`, `no rig named`, `no such rig: control has no token for it`, `this rig is retired in control`, `a run control does not give this rig`, `not a live message`, `rig mismatch`, `the rig's report key is not accepted yet`, `live lines must be signed with the rig's pinned key`, `bad live signature` or `unsigned lines must be the supervisor's own` |
 | `live.rigs` | Each rig with live lines on the bus: `{rig, taken, supervisor}`, `taken` being the lines control added from the bus since it started, and `supervisor` the rig's supervisor's own figures since it started, `{published, dropped, subjects, at}` (`null` before its first figures with them): the lines it published and dropped, in all, and by subject for the 100 subjects it used last, each `{published, dropped}`, and when control had those figures |
@@ -861,6 +862,7 @@ Each rig's supervisor calls these with the rig's own token, for its own rig only
 | 403 | `rig mismatch` |
 | 400 | `unsigned report` |
 | 403 | `bad report signature` |
+| 409 | `event <id> (<kind>) is too large for the message bus: it is <n> bytes, more than a message on the bus holds (8388608 bytes with its headers)`. Control keeps every event on the message bus too, so it takes nothing of such a page, the rig's key included, bus or no bus ([Control's events on the message bus](../explanation/how-the-parts-talk.md#controls-events-on-the-message-bus)) |
 | 409 | `the rig's key waits for the owner's acceptance` |
 | 409 | `rig key changed: the owner must accept the new key` |
 | 409 | `a report from a ledger the rig has left` |
@@ -995,6 +997,10 @@ With the [message bus](#the-message-bus), these follow. Their labels are only th
 | `thermite_bus_up` | gauge | none | 1 when control reached the bus's server just now, else 0 |
 | `thermite_bus_stream_messages`, `thermite_bus_stream_bytes` | gauge | `stream` | The messages and bytes each stream keeps |
 | `thermite_bus_consumer_pending`, `thermite_bus_consumer_ack_pending` | gauge | `stream`, `consumer` | The messages a consumer has not been handed yet, and those it was handed and has not acked |
+| `thermite_events_table_seq` | gauge | none | The last seq of control's events table |
+| `thermite_events_stream_seq`, `thermite_events_behind` | gauge | none | The `Thermite-Seq` of the `EVENTS` stream's last message, and how many rows of control's events table come after it. Left out when the server was not reached |
+| `thermite_events_published_total` | counter | none | Events control published to the `EVENTS` stream, since control started |
+| `thermite_events_mirror_stopped` | gauge | none | 1 when the copy of control's events table stopped at what it can't copy, until control starts again, else 0 |
 | `thermite_live_lines_taken_total` | counter | `rig` | Live lines control added to its live view from the bus, since control started |
 | `thermite_live_lines_left_out_total` | counter | none | Live lines control left out of a message: of a kind or source it does not know, or of another subject |
 | `thermite_live_messages_refused_total` | counter | `reason` | Live messages control refused, by why: the words `GET /v1/bus` lists under `live.taken.refused` |

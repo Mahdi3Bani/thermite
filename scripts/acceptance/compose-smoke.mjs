@@ -5,9 +5,10 @@
 //
 // The stack runs with the message bus, as compose.yaml does by default (goal 168): the supervisor
 // sends its reports and live lines over it, over TLS, and the smoke checks that they reached
-// control that way. With THERMITE_NATS_URL set to nothing (THERMITE_NATS_URL= node …), the stack
-// runs without it, everything over HTTP, as a deployment that turns the bus off does. Either way it
-// prints how long events took to reach control.
+// control that way, and that control's events table is mirrored to the events stream. With
+// THERMITE_NATS_URL set to nothing (THERMITE_NATS_URL= node …), the stack runs without it,
+// everything over HTTP, as a deployment that turns the bus off does. Either way it prints how long
+// events took to reach control.
 import {
   api,
   assign,
@@ -44,13 +45,24 @@ function eventDelays() {
     .sort((a, b) => a - b);
 }
 
-/** The reports stream and control's consumer of it, from the NATS server's own monitoring. */
-function busState() {
+/** A stream's state, from the NATS server's own monitoring; undefined before it is made. */
+function streamState(name) {
   const url = "http://127.0.0.1:8222/jsz?streams=true&consumers=true";
   const jsz = JSON.parse(stack("exec", "-T", "nats", "wget", "-q", "-O", "-", url));
-  const stream = (jsz.account_details ?? [])
+  return (jsz.account_details ?? [])
     .flatMap((a) => a.stream_detail ?? [])
-    .find((s) => s.name === "REPORTS");
+    .find((s) => s.name === name);
+}
+
+/** Control's events table, from its own store: how many rows it holds, and its last seq. */
+function eventsTable() {
+  const read = `const {DatabaseSync}=require("node:sqlite");const db=new DatabaseSync("/var/lib/thermite-control/control.db",{readOnly:true});process.stdout.write(JSON.stringify(db.prepare("select count(*) as rows, coalesce(max(seq), 0) as last from rig_event").get()))`;
+  return JSON.parse(stack("exec", "-T", "control", "node", "-e", read));
+}
+
+/** The reports stream and control's consumer of it, from the NATS server's own monitoring. */
+function busState() {
+  const stream = streamState("REPORTS");
   const consumer = (stream?.consumer_detail ?? []).find((c) => c.name === "control-reports");
   return {
     messages: stream?.state?.messages ?? 0,
@@ -134,6 +146,27 @@ try {
       1000,
     );
     console.log("live lines on the bus:", JSON.stringify(live));
+    // Control's events table is mirrored to the events stream: as many messages as the table has
+    // rows, and the Thermite-Seq of the stream's last message, as control's state of the bus reads
+    // it from the server, is the table's last seq.
+    const mirrored = await until(
+      "control's events table mirrored to the events stream",
+      async () => {
+        const table = eventsTable();
+        const messages = streamState("EVENTS")?.state?.messages ?? 0;
+        const { events: e } = (await api("/v1/bus")).body;
+        return table.rows > 0 &&
+          messages === table.rows &&
+          e?.stream_seq === table.last &&
+          e.behind === 0 &&
+          e.stopped === null
+          ? { table, messages, stream_seq: e.stream_seq, published: e.published }
+          : undefined;
+      },
+      60_000,
+      1000,
+    );
+    console.log("events on the bus:", JSON.stringify(mirrored));
   }
   const delays = eventDelays();
   const at = (q) => delays[Math.min(delays.length - 1, Math.floor(q * delays.length))] ?? 0;

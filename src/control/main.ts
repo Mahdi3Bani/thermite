@@ -23,6 +23,7 @@ import {
 } from "./bus/index.ts";
 import { Credential } from "./credential.ts";
 import { mountDashboard } from "./dashboard/index.ts";
+import { EventsMirror } from "./events/index.ts";
 import { followReports } from "./ingest.ts";
 import { sendCommandsOn } from "./issue/index.ts";
 import { KitRepos } from "./kits/index.ts";
@@ -136,12 +137,14 @@ async function main(): Promise<void> {
           reload: (seed) => reloadBus(natsUrl, seed, trust),
         })
       : undefined;
-  // Control's connection to the bus, signed in as its own user; and what it took from the live
-  // stream and wrote to the config bucket, which the bus's state shows.
+  // Control's connection to the bus, signed in as its own user; the mirror of its events table
+  // there; and what it took from the live stream and wrote to the config bucket, which the bus's
+  // state shows.
   const bus =
     natsUrl && busUsers
       ? natsBus(natsUrl, "control", { seed: busUsers.controlSeed, trust })
       : undefined;
+  const eventsMirror = bus ? new EventsMirror({ store, bus }) : undefined;
   const liveTaken = new LiveTaken();
   const configWritten = new ConfigWritten();
   // What the dashboard, REST, MCP and the loops below share, made once here (parts.ts): the test
@@ -169,8 +172,14 @@ async function main(): Promise<void> {
           : undefined,
       rigBus: rigBusUrl && busTls ? { url: rigBusUrl, ca: busTls.caCert } : undefined,
       bus:
-        bus && natsUrl
-          ? { server: new URL(natsUrl).host, bus, live: liveTaken, config: configWritten }
+        bus && natsUrl && eventsMirror
+          ? {
+              server: new URL(natsUrl).host,
+              bus,
+              events: eventsMirror,
+              live: liveTaken,
+              config: configWritten,
+            }
           : undefined,
     },
     { staleAfterMs, offlineAfterMs, control: buildInfo() },
@@ -211,15 +220,18 @@ async function main(): Promise<void> {
     bus: natsUrl ? new URL(natsUrl).host : null,
     bus_for_rigs: rigBusUrl ? new URL(rigBusUrl).host : null,
   });
-  // Reports from the bus, folded through the ingest route's checks as they arrive; live lines,
-  // folded into the live view as they arrive; each command control issues, published to its
-  // rig's subject as well as kept in the store; and each rig's config, written when it changes.
-  // The users file is written first, so that the server can start, and kept up to date after.
+  // Reports from the bus, folded through the ingest route's checks as they arrive; the events
+  // table, mirrored to the events stream, from the stream's last row to the table's end at start
+  // and then as reports arrive, by HTTP or by the bus; live lines, folded into the live view as
+  // they arrive; each command control issues, published to its rig's subject as well as kept in
+  // the store; and each rig's config, written when it changes. The users file is written first,
+  // so that the server can start, and kept up to date after.
   let usersSync: NodeJS.Timeout | undefined;
   let configWrite: NodeJS.Timeout | undefined;
-  if (bus && busUsers && busConfig) {
+  if (bus && busUsers && busConfig && eventsMirror) {
     void busUsers.sync();
     usersSync = setInterval(() => void busUsers.sync(), BUS_USERS_SYNC_MS);
+    void eventsMirror.start();
     void busConfig.start().then(() => busConfig.write());
     configWrite = setInterval(() => void busConfig.write(), CONFIG_WRITE_MS);
     followReports(bus, { store, control: buildInfo(), requireKeyAcceptance }).catch((err) =>

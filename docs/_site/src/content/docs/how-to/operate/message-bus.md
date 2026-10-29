@@ -1,12 +1,12 @@
 ---
 title: "Run the message bus"
-description: "Check the message bus beside control, open its port to rigs on other machines and clusters, give it more memory or disk, and turn it off."
+description: "Check the message bus beside control, follow the move of control's events to it, open its port to rigs on other machines and clusters, give it more memory or disk, and turn it off."
 type: how-to
 sidebar:
   order: 11
 ---
 
-The message bus carries the rigs' reports and live lines to control, and control's commands and each rig's config to the rigs, as soon as each is there. It is a NATS server with JetStream, and it runs beside control: the compose stack's `nats` service. This page says how to tell that it works, what to open so that rigs on other machines and clusters reach it, what control keeps for its certificate, how to give it more memory or disk, and how to turn it off. [How the parts talk](../../explanation/how-the-parts-talk.md#reports-over-the-message-bus) explains what travels on it and why.
+The message bus carries the rigs' reports and live lines to control, and control's commands and each rig's config to the rigs, as soon as each is there, and it keeps control's copy of every rig's events. It is a NATS server with JetStream, and it runs beside control: the compose stack's `nats` service. This page says how to tell that it works, what you see while control copies its events to it, what to open so that rigs on other machines and clusters reach it, what control keeps for its certificate, how to give it more memory or disk, and how to turn it off. [How the parts talk](../../explanation/how-the-parts-talk.md#reports-over-the-message-bus) explains what travels on it and why.
 
 ```sh
 docker compose ps nats                      # or: podman compose ps nats
@@ -37,6 +37,29 @@ curl -fsS http://127.0.0.1:8800/v1/health   # {"ok":true,"bus":"connected"}
 3. For the bus's streams and what each consumer still has to take, ask `GET /v1/bus` with the owner's token, or call the MCP tool `bus_state`: [The message bus](../../reference/rest-api.md#the-message-bus).
 
 A rig on the bus has the step "Its key on the message bus registered" in its history, on its page. A rig that never got that step reports over HTTP.
+
+## Follow the move of control's events
+
+With the bus, control copies every event it holds to the bus's `EVENTS` stream, and each new one as it arrives ([Control's events on the message bus](../../explanation/how-the-parts-talk.md#controls-events-on-the-message-bus)). Nothing reads the stream yet, so nothing you see on control's pages changes. When control starts, it copies the events the stream lacks: the first time, all of them. Control serves and takes reports meanwhile; a million events took about 41 seconds when measured.
+
+1. Read control's log as it starts:
+
+   ```sh
+   docker compose logs control | grep "events"     # or: podman compose logs control | grep "events"
+   ```
+
+   `control's events go on the bus after the stream's last` says where the copy starts and how many events it has to copy (`behind`). For more than 1,000, `moving control's events to the bus` follows every 100,000, with how many it `copied` and how many are `left`, and `control's events moved to the bus` says when it is done, and in how many seconds.
+2. Or ask the bus's state, with the owner's token:
+
+   ```sh
+   curl -fsS -H "Authorization: Bearer $(cat .dev/secrets/control-admin-token)" http://127.0.0.1:8800/v1/bus
+   ```
+
+   Under `events`, `behind` falls to 0 while `stream_seq` climbs to `table_seq`; after that, each report's events follow within a second. `/metrics` has the same figures, `thermite_events_behind` among them.
+
+To tell that it worked: `behind` is 0, `stopped` is `null`, and under `streams` the `EVENTS` stream holds as many messages as control has events.
+
+If `waiting` names a reason, such as `the bus's store is full`, the copy waits for the bus and tries again every 5 seconds: give the bus more disk (below), or bring its server back. If `stopped` names an event, with its rig, ledger, seq and size, the copy stopped there: an event control kept before it refused events too large for the bus. Control works as before, and tries again when it starts again.
 
 ## Let rigs on other machines reach it
 
@@ -78,7 +101,7 @@ Keep `bus-ca.key` with control's other state: a backup of the `control-state` vo
 
 ## Give it more memory or disk
 
-The bus keeps its messages on disk, on the `nats-data` volume. Its memory holds the index of each stream's subjects and the blocks a read loads. Compose gives it 256 MiB, and tells the server's Go runtime 78% of that, so that it frees what a read loaded before the limit is reached. Its disk is 75% of the volume's free space when it starts.
+The bus keeps its messages on disk, on the `nats-data` volume. The `EVENTS` stream keeps every rig's events for good, so the store grows with the rigs' history. Its memory holds the index of each stream's subjects and the blocks a read loads. Compose gives it 256 MiB, and tells the server's Go runtime 78% of that, so that it frees what a read loaded before the limit is reached. Its disk is 75% of the volume's free space when it starts.
 
 1. In `.env`, set either or both:
 
@@ -104,7 +127,7 @@ To run everything over HTTP, as Thermite did before the bus, set `THERMITE_NATS_
 THERMITE_NATS_URL=
 ```
 
-Control and both of the stack's supervisors then leave the bus, and `/v1/health` says `"bus":"off"`. The `nats` container still starts: on the files control wrote while the bus was on, or, on a new stack, it waits for them, which control no longer writes. Control reads nothing from it. Rigs that control sets up from then on get no bus.
+Control and both of the stack's supervisors then leave the bus, and `/v1/health` says `"bus":"off"`. Control keeps its events in its own store, as before; when you turn the bus on again, it copies to the bus the events it took meanwhile. The `nats` container still starts: on the files control wrote while the bus was on, or, on a new stack, it waits for them, which control no longer writes. Control reads nothing from it. Rigs that control sets up from then on get no bus.
 
 A rig that control set up on a machine or a cluster while the bus was on keeps the bus's address until it moves onto new images: what it publishes there reaches no one until then. Turn the bus off before you set such rigs up, or move each onto new images after. To turn the bus on again, take the line out of `.env` and start the stack again.
 

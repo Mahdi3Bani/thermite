@@ -1,4 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
+import { log } from "../../common/env.ts";
+import { errorText } from "../../common/errors.ts";
 import { canonicalJson } from "../../core/canonical.ts";
 import { currentEvent } from "../../core/names.ts";
 import { MODEL_CALL_EVENT, ModelCallBody } from "../../core/usage.ts";
@@ -19,9 +21,45 @@ export function eventsInOrderIndex(db: DatabaseSync): void {
   db.exec("create index if not exists rig_event_ledger_seq on rig_event (rig, ledger_id, seq)");
 }
 
+/** An event as control's table keeps it: its place there, its rig and ledger, and the event. */
+export interface StoredEvent {
+  seq: number;
+  rig: string;
+  ledger_id: string;
+  event: { id: number; at: string; actor: string; kind: string; subject: string | null };
+  /** The event's body, as the table keeps it: canonical JSON. */
+  body: string;
+  run: string | null;
+}
+
 export class RigEvents extends StorePart {
-  /** Stores a rig's report. Returns how many events were new. */
+  /** Told each time ingest stores new events: the copy on the message bus (control/events). */
+  private readonly watchers = new Set<() => void>();
+
+  /** Tells `fn` each time ingest stores new events, until the function it returns is called. */
+  watch(fn: () => void): () => void {
+    this.watchers.add(fn);
+    return () => {
+      this.watchers.delete(fn);
+    };
+  }
+
+  /** Stores a rig's report. Returns how many events were new; tells the watchers when any were. */
   ingest(report: IngestReport): number {
+    const added = this.keepReport(report);
+    if (!added) return added;
+    for (const fn of this.watchers) {
+      try {
+        fn();
+      } catch (err) {
+        const what = { rig: report.rig, error: errorText(err) };
+        log("control", "a watcher of the events table failed", what, "error");
+      }
+    }
+    return added;
+  }
+
+  private keepReport(report: IngestReport): number {
     const now = new Date().toISOString();
     return this.tx(() => {
       this.store.reportedRigs.noteReport(report, now);
@@ -138,5 +176,48 @@ export class RigEvents extends StorePart {
       .prepare("select max(seq) as seq from rig_event where seq > ? and +rig = ?")
       .get(after, rig) as { seq: number | null } | undefined;
     return r?.seq ?? null;
+  }
+
+  /** The table's last seq: 0 while it holds no event. */
+  lastSeq(): number {
+    const r = this.db.prepare("select max(seq) as seq from rig_event").get() as {
+      seq: number | null;
+    };
+    return Number(r.seq ?? 0);
+  }
+
+  /** How many events the table holds after a seq. */
+  countAfter(seq: number): number {
+    const r = this.db.prepare("select count(*) as n from rig_event where seq > ?").get(seq) as {
+      n: number;
+    };
+    return Number(r.n);
+  }
+
+  /**
+   * Every rig's events after a seq, in the table's order, `limit` at most, as the table keeps them:
+   * for the copy on the message bus, which keeps each as the rig recorded it.
+   */
+  inOrder(after: number, limit: number): StoredEvent[] {
+    const rows = this.db
+      .prepare(
+        `select seq, rig, ledger_id, event_id, at, actor, kind, subject, body, run from rig_event
+           where seq > ? order by seq limit ?`,
+      )
+      .all(after, limit) as Row[];
+    return rows.map((r) => ({
+      seq: Number(r.seq),
+      rig: String(r.rig),
+      ledger_id: String(r.ledger_id),
+      event: {
+        id: Number(r.event_id),
+        at: String(r.at),
+        actor: String(r.actor),
+        kind: String(r.kind),
+        subject: r.subject === null ? null : String(r.subject),
+      },
+      body: String(r.body),
+      run: r.run === null ? null : String(r.run),
+    }));
   }
 }

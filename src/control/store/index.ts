@@ -64,6 +64,7 @@ export type {
   ClusterRigSize,
 } from "./clusters.ts";
 export type { CommandRow, Decision } from "./commands.ts";
+export type { StoredEvent } from "./events.ts";
 export type { RigExport } from "./exports.ts";
 export type { GitAccess } from "./git-access.ts";
 export type { JoinedRig } from "./joined.ts";
