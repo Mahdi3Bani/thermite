@@ -17,6 +17,7 @@ import {
   AFTER_SUBMIT_MS,
   breachError,
   CarriedMessages,
+  compareSessionLog,
   takeUsage,
   trialEnd,
   turnsUp,
@@ -378,5 +379,6 @@ export async function runCliTrial<T extends CliTally>(
   result.tokensIn = tally.tokensIn;
   result.tokensOut = tally.tokensOut;
   if (compactions.count) result.compactions = compactions.count;
+  compareSessionLog(p, run, tally);
   return result;
 }

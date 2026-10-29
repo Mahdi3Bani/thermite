@@ -36,6 +36,7 @@ export {
   claudeShell,
   PROMPT_VAR,
 } from "./shell.ts";
+export { claudeTranscript, type TranscriptState } from "./transcript.ts";
 export type { PlanWindows, UsageWindow } from "./windows.ts";
 export { mergeUsage } from "./windows.ts";
 

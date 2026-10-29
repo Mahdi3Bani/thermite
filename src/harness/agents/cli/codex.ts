@@ -1,4 +1,6 @@
-import { codexOwn } from "../../../agents/compaction/index.ts";
+import { lstatSync } from "node:fs";
+import { join } from "node:path";
+import { codexOwn, findCodexRollout, readUnder } from "../../../agents/compaction/index.ts";
 import type { ModelConfig } from "../../../agents/model/index.ts";
 import {
   type CodexTally,
@@ -8,14 +10,16 @@ import {
   codexEnv,
   codexExe,
   codexExitWords,
+  codexRollout,
   newCodexTally,
   readCodexEvents,
+  tallyLog,
 } from "../../../agents/programs/index.ts";
 import type { RigCheckReport } from "../model/index.ts";
 import type { TrialResult, TrialSpec } from "../worker/index.ts";
 import { runCliTrial } from "./loop.ts";
 import { type CliOnceDeps, type CliOnceOptions, cliModelCheck, cliOnce } from "./once.ts";
-import type { CliProgram, CliTrialDeps } from "./program.ts";
+import type { CliProgram, CliRun, CliTrialDeps } from "./program.ts";
 
 /**
  * Trials, model checks and planner calls in the Codex CLI, OpenAI's open-source agent program,
@@ -39,6 +43,24 @@ import type { CliProgram, CliTrialDeps } from "./program.ts";
  * that ends without a submission is resumed (`codex exec resume`) with a nudge or the owner's
  * messages.
  */
+
+/** Where a trial's Codex home is, under the trial's area: CODEX_HOME. */
+const CODEX_HOME = ["codex-home", ".codex"];
+
+/** The largest rollout read to compare with the output, in bytes: a larger one is not compared. */
+const ROLLOUT_COMPARE_MAX = 16 * 1024 * 1024;
+
+/**
+ * The thread's rollout, which `codex exec` writes as the trial goes (readable by the harness: Codex
+ * writes it 0644), read whole into a tally; undefined when there is none, or it is too large.
+ */
+function rolloutTally(run: CliRun, thread: string | undefined) {
+  const parts = findCodexRollout(run.area, CODEX_HOME, thread);
+  if (!parts) return undefined;
+  if (lstatSync(join(run.area, ...parts)).size > ROLLOUT_COMPARE_MAX) return undefined;
+  const text = readUnder(run.area, parts, ROLLOUT_COMPARE_MAX);
+  return text === undefined ? undefined : tallyLog(codexRollout, text);
+}
 
 /**
  * Codex in the CLI trial loop and the one-prompt call: `codex exec` resumes its thread with each
@@ -76,11 +98,13 @@ export const codexProgram: CliProgram<CodexTally> = {
   own: (run, t) =>
     codexOwn({
       root: run.area,
-      home: ["codex-home", ".codex"],
+      home: CODEX_HOME,
       title: run.title,
       thread: () => t.session,
     }),
   exitWords: codexExitWords,
+  // Its rollout of the thread, compared with its output at the trial's end (goal 169).
+  sessionLog: (run, t) => rolloutTally(run, t.session),
   call: {
     setup: (c) => ({
       script: "mkdir -p home/.codex tmp && cat > home/.codex/config.toml",

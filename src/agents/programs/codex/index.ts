@@ -7,6 +7,7 @@ import { agentPath } from "../path.ts";
 
 export type { CodexTally } from "./events.ts";
 export { newCodexTally, readCodexEvents } from "./events.ts";
+export { codexRollout, type RolloutState } from "./rollout.ts";
 
 /**
  * The Codex CLI as Thermite starts it, for the harness's agents and the supervisor's advisors: its

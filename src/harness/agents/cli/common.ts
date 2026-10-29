@@ -1,14 +1,19 @@
+import { tallyDifferences } from "../../../agents/programs/index.ts";
+import { errorText } from "../../../common/errors.ts";
+import { log, logDebug, logWarn } from "../../../common/log.ts";
 import type { LaneLimitValues } from "../../../core/contract.ts";
 import type { CallUsage } from "../../../core/usage.ts";
 import type { Role, RunOutcome } from "../../broker/index.ts";
 import type { MessageInbox } from "../live-session.ts";
 import type { ProgramStep } from "../provider-errors.ts";
 import type { TrialResult } from "../worker/index.ts";
+import type { CliProgram, CliRun, CliTally } from "./program.ts";
 
 /**
  * What the trial loops of the agent programs that run as command-line programs (OpenCode,
  * Claude Code, Codex) share (goal 125, T7): the limits as the agent reads them, why a limit
- * stopped the program, the owner's messages a continued session carries, and the usage hand-over
+ * stopped the program, the owner's messages a continued session carries, the usage hand-over, and
+ * the comparison of a program's own session log with its output (goal 169)
  * (the PATH their agent's shell gets is in src/agents/programs/path.ts). What a continued session
  * is told comes from its role's definition (src/agents/roles/, goal 166).
  */
@@ -94,6 +99,41 @@ export function takeUsage(
   usage: ((u: CallUsage) => void) | undefined,
 ): void {
   for (const u of t.calls.splice(0)) usage?.(u);
+}
+
+/**
+ * Compares a program's own session log with what its output said, once at a trial's end, where
+ * its entry can read one (goal 169): a log line names each count that differs and each kind of
+ * record the log's adapter does not know. It changes nothing in the trial, never fails it, and
+ * costs only a look when there is no log to read.
+ */
+export function compareSessionLog<T extends CliTally>(
+  p: CliProgram<T>,
+  run: CliRun,
+  tally: T,
+): void {
+  if (!p.sessionLog) return;
+  try {
+    const read = p.sessionLog(run, tally);
+    if (!read) return;
+    const differ = tallyDifferences(tally, read.tally);
+    const fields = { trial: run.trialId, program: p.id, session: tally.session };
+    if (!Object.keys(differ).length && !read.unknown.size) {
+      logDebug("harness", `${p.name}'s session log agrees with its output`, fields);
+      return;
+    }
+    log("harness", `${p.name}'s session log and its output differ`, {
+      ...fields,
+      differ,
+      unknown: Object.fromEntries(read.unknown),
+    });
+  } catch (err) {
+    logWarn("harness", `could not compare ${p.name}'s session log with its output`, {
+      trial: run.trialId,
+      program: p.id,
+      error: errorText(err),
+    });
+  }
 }
 
 /**

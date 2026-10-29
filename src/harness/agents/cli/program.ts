@@ -6,7 +6,7 @@ import type {
 } from "../../../agents/compaction/index.ts";
 import type { McpAccess } from "../../../agents/mcp/index.ts";
 import type { ModelConfig } from "../../../agents/model/index.ts";
-import type { PlanWindows } from "../../../agents/programs/index.ts";
+import type { PlanWindows, SessionTally } from "../../../agents/programs/index.ts";
 import type { Prompt } from "../../../agents/prompt.ts";
 import type { ResearchFolderPaths } from "../../../agents/tools/index.ts";
 import type { Harness } from "../../../core/agents.ts";
@@ -173,6 +173,13 @@ export interface CliProgram<T extends CliTally> {
   windows?(t: T): PlanWindows | undefined;
   /** Its own reason to end the trial after a run (Claude Code: a full usage window). */
   stopAfterRun?(t: T): OwnStop | undefined;
+  /**
+   * Its own session log, read whole into a tally, where a headless run writes one the harness
+   * can read (Codex's rollout; Claude Code keeps its transcript to the lane's user, and OpenCode
+   * writes none): the loop compares it with its output once, at the trial's end (goal 169).
+   * Undefined when there is none to read.
+   */
+  sessionLog?(run: CliRun, t: T): { tally: SessionTally; unknown: Map<string, number> } | undefined;
   /** A one-prompt call in it (cli/once.ts). */
   call: CliCallEntry<T>;
   /** Its answer to a one-prompt call (else its last text). */
