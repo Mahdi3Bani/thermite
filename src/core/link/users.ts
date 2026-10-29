@@ -3,8 +3,9 @@ import { sha256Hex } from "../canonical.ts";
 import { RIG_ID } from "../ids.ts";
 import { COMMAND_STREAM, commandConsumerName, commandSubject } from "./commands.ts";
 import { CONFIG_STREAM, configConsumerConfig, configConsumerName } from "./config.ts";
+import { EVENT_STREAM } from "./events.ts";
 import { LIVE_RUNS_PER_RIG, liveSubject, rigLiveSubject } from "./live.ts";
-import { reportSubject } from "./report.ts";
+import { REPORT_STREAM, reportSubject } from "./report.ts";
 
 /**
  * Who may do what on the message bus (goal 168): only control and the rigs' supervisors hold a
@@ -71,7 +72,8 @@ const anySource = (subject: string) => subject.replace(/\.[^.]+$/, ".*");
  * read and take from its own consumer of the commands stream, and ack what it took; and make
  * again, read and take from its own consumer of its config keys, and ack what it took. The server
  * checks that a consumer it makes takes the rig's own subjects alone: the subject names the
- * consumer's filter. A run whose name a subject can't hold has no subject of its own.
+ * consumer's filter. A run whose name a subject can't hold has no subject of its own. Nothing on
+ * the events stream: control publishes a rig's events there, from its reports.
  */
 export function rigPermissions(rig: string, runs: readonly string[] = []): Permissions {
   const consumer = `${COMMAND_STREAM}.${commandConsumerName(rig)}`;
@@ -102,6 +104,23 @@ export function rigPermissions(rig: string, runs: readonly string[] = []): Permi
   };
 }
 
+/** The streams kept for good: the record of every rig's reports and events. */
+const STREAMS_KEPT_FOR_GOOD = [REPORT_STREAM, EVENT_STREAM] as const;
+
+/**
+ * What control's user may not do: delete or purge a stream kept for good. Such a stream refuses to
+ * delete a message or to be purged (`deny_delete`, `deny_purge`), and refuses an update that would
+ * undo that; but the server lets the stream itself be deleted. Both are denied here, so the rule
+ * holds whatever a stream's settings say. Control's user may do the rest.
+ */
+export function controlPermissions(): { publish: { deny: string[] } } {
+  const deny = STREAMS_KEPT_FOR_GOOD.flatMap((s) => [
+    `${API}.STREAM.DELETE.${s}`,
+    `${API}.STREAM.PURGE.${s}`,
+  ]);
+  return { publish: { deny } };
+}
+
 /** The subject control's system user asks the server with this id to reload its configuration. */
 export function reloadSubject(serverId: string): string {
   return `$SYS.REQ.SERVER.${serverId}.RELOAD`;
@@ -125,9 +144,10 @@ export interface BusUserKeys {
 
 /**
  * The server's users file, which its configuration includes: control's user, which may do
- * everything in the account; a user for each rig, which may do only what rigPermissions gives it;
- * and control's system user. A rig with no key has no user. The values are JSON, which the
- * server's configuration reads. Throws on a key or a rig's name that is not one.
+ * everything in the account but what controlPermissions denies it; a user for each rig, which may
+ * do only what rigPermissions gives it; and control's system user. A rig with no key has no user.
+ * The values are JSON, which the server's configuration reads. Throws on a key or a rig's name
+ * that is not one.
  */
 export function usersFile(u: BusUserKeys): string {
   for (const key of [u.control, u.system, ...u.rigs.map((r) => r.key)])
@@ -137,7 +157,7 @@ export function usersFile(u: BusUserKeys): string {
     [BUS_ACCOUNT]: {
       jetstream: "enabled",
       users: [
-        { nkey: u.control },
+        { nkey: u.control, permissions: controlPermissions() },
         ...rigs.map((r) => ({ nkey: r.key, permissions: rigPermissions(r.rig, r.runs) })),
       ],
     },

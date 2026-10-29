@@ -1,4 +1,4 @@
-import { X509Certificate } from "node:crypto";
+import { randomUUID, X509Certificate } from "node:crypto";
 import { isIP } from "node:net";
 import { type ConnectionOptions, checkServerIdentity } from "node:tls";
 import {
@@ -6,15 +6,18 @@ import {
   type ConsumerMessages,
   JetStreamApiCodes,
   JetStreamApiError,
+  type JsMsg,
   jetstream,
   jetstreamManager,
   type MsgRequest,
+  type StoredMsg,
   type StreamConfig,
 } from "@nats-io/jetstream";
 import {
   connect,
   errors,
   headers,
+  type MsgHdrs,
   type NatsConnection,
   nkeyAuthenticator,
   type TlsOptions,
@@ -25,11 +28,13 @@ import { log } from "./env.ts";
 /**
  * The message bus (goal 168): a NATS server with JetStream, which control runs. Control and the
  * rigs' supervisors reach it through this module alone, which hides the NATS library behind a few
- * calls: a publish that waits for the server's ack, a durable consumer whose messages are handed
- * over one at a time, a key-value bucket watched from the latest of each key, a subject's last
- * message, a stream made, a message removed, and the streams' state. Every connection is over
- * TLS, and trusts the server through the authority it is given (control's own, which control hands
- * every rig it sets up), or else the system's. The harness and the agents never reach the bus.
+ * calls: a publish that waits for the server's ack, a batch published whole or not at all, a
+ * durable consumer whose messages are handed over one at a time, a key-value bucket watched from
+ * the latest of each key, a read of a stream in order, a message by its place, a subject's last
+ * message, a stream's last place, a stream made, a message removed, and the streams' state. Every
+ * connection is over TLS, and trusts the server through the authority it is given (control's own,
+ * which control hands every rig it sets up), or else the system's. The harness and the agents
+ * never reach the bus.
  */
 
 /** The setting that names the server. Not set: the part keeps to HTTP. */
@@ -50,11 +55,59 @@ export const BUS_REMOVE_LOOK_MAX = 1000;
 export const BUS_RELOAD_TIMEOUT_MS = 10_000;
 /** How many consumers of a stream its state lists, at most: then it says how many it left out. */
 export const BUS_STATE_CONSUMERS_MAX = 200;
+/** How many messages a batch holds, at most: the server's own limit, which refuses a larger one. */
+export const BUS_BATCH_MAX = 1000;
+/** How long a look (a message, a last place, a read's start) waits for the server. It then fails. */
+export const BUS_LOOK_TIMEOUT_MS = 10_000;
+/** How many messages a read looks at, at most: the largest page control's API gives. */
+export const BUS_READ_MAX = 5000;
+/** How many bytes of messages a read gathers, at most: it ends after the message that passes it. */
+export const BUS_READ_MAX_BYTES = 64 * 1024 * 1024;
+/** How long a read may take: it then ends with what it has, and says it is not done. */
+export const BUS_READ_TIMEOUT_MS = 30_000;
+/** How many bytes the server sends a read at a time: twice the largest message (max_payload). */
+const READ_PULL_BYTES = 16 * 1024 * 1024;
+/**
+ * The server's code for a batch with an id the stream has (in its duplicate window), all or some:
+ * it stores none of it. The library says only "batch didn't contain number of published messages".
+ */
+const BATCH_HAS_A_KEPT_ID = 10201;
 
 /** The server's ack: the message's place in the stream, and whether it had the message's id. */
 export interface Published {
   seq: number;
   duplicate: boolean;
+}
+
+/**
+ * A message to publish: its subject, its data, its id (a stream keeps one message for each id it
+ * remembers, within its duplicate window) and its headers.
+ */
+export interface Outgoing {
+  subject: string;
+  data: string;
+  id: string;
+  headers?: Record<string, string> | undefined;
+}
+
+/** The server's ack of a batch. */
+export interface BatchPublished {
+  /** The place in the stream of the batch's last message. */
+  seq: number;
+  /** How many of its messages the stream stored now. */
+  stored: number;
+  /** Whether the stream had every message of the batch already, by its id, and stored none. */
+  duplicate: boolean;
+}
+
+/** What a read of a stream gave: its messages, where the next read starts, and whether it is done. */
+export interface BusRead {
+  /** The messages it looked at that passed its header test, in the stream's order. */
+  messages: BusMessage[];
+  /** The place after the last message it looked at: where the next read starts. */
+  next: number;
+  /** Whether it looked at the last message the stream had on its subjects. */
+  done: boolean;
 }
 
 /** A message from a stream, as the code that handles it sees it. */
@@ -123,6 +176,37 @@ export interface Bus {
     data: string,
     o: { id: string; headers?: Record<string, string> | undefined },
   ): Promise<Published>;
+  /**
+   * Publishes 1 to BUS_BATCH_MAX messages, each with an id of its own, as one atomic batch to one
+   * stream that allows it (`allow_atomic`), and waits for the server's ack: the stream stores them
+   * all, next to each other and in order, or none, and the batch fails. A batch the stream has
+   * every message of already, by the ids it remembers (its duplicate window), is acked as a
+   * duplicate. One it has only some of (the server refuses the whole batch then) is published
+   * again a message at a time, in order: the stream keeps those it had where they are, and stores
+   * the rest after them.
+   */
+  publishBatch(messages: readonly Outgoing[]): Promise<BatchPublished>;
+  /**
+   * Reads a stream in order from the place `from` (1, its first, when not given): its messages on
+   * `subjects` (any subject a stream's pattern names, `*` and `>` too; all its subjects when none
+   * are given), each that passes the header test `headers` (each named header with that value;
+   * others are looked at and passed over), until it has looked at `limit` messages (1 to
+   * BUS_READ_MAX), gathered BUS_READ_MAX_BYTES, reached the last message, or taken
+   * BUS_READ_TIMEOUT_MS. A stream not made yet has nothing to read.
+   */
+  read(
+    stream: string,
+    o: {
+      subjects?: readonly string[] | undefined;
+      from?: number | undefined;
+      limit: number;
+      headers?: Readonly<Record<string, string>> | undefined;
+    },
+  ): Promise<BusRead>;
+  /** The message at this place in the stream; undefined when it has none there, or no such stream. */
+  message(stream: string, seq: number): Promise<BusMessage | undefined>;
+  /** The place of the stream's last message: 0 when it has had none, or there is no such stream. */
+  lastSeq(stream: string): Promise<number>;
   /**
    * Makes sure the stream and its durable consumer exist, then hands each message to `handle`, in
    * order, one at a time, and acks it when `handle` returns, unless it asks for it again. A
@@ -308,6 +392,72 @@ async function ensureConsumer(
 
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Whether the server said there is no such stream. */
+const noSuchStream = (err: unknown) =>
+  err instanceof JetStreamApiError && err.code === JetStreamApiCodes.StreamNotFound;
+
+/** The words for a subject no stream takes, as before control made its stream. */
+const noStreamTakes = (subject: string, cause: unknown) =>
+  new Error(`no stream on the bus takes ${subject} yet: control makes it`, { cause });
+
+/** A message from the server (to a consumer, or by its place), as the code that handles it sees it. */
+const asBusMessage = (m: JsMsg | StoredMsg, h: MsgHdrs | undefined): BusMessage => ({
+  subject: m.subject,
+  seq: m.seq,
+  data: m.data,
+  header: (k) => h?.get(k) || undefined,
+});
+
+/** Whether a message has each of these headers with this value. */
+const passes = (m: BusMessage, test: Readonly<Record<string, string>> | undefined) =>
+  !test || Object.entries(test).every(([k, v]) => m.header(k) === v);
+
+/** The server's answer to a batch's first message (empty, once the batch began) or to its last. */
+interface BatchAnswer {
+  error?: { code: number; err_code: number; description: string };
+  seq?: number;
+  count?: number;
+}
+
+/**
+ * Sends a batch: each message with the batch's id and its place in it. The server answers the
+ * first, which begins the batch, and the last, which commits it; those between go without waiting,
+ * and the server holds them until the commit. Throws the server's refusal as a JetStreamApiError.
+ */
+async function sendBatch(nc: NatsConnection, batch: readonly Outgoing[]): Promise<number> {
+  if (batch.length < 1 || batch.length > BUS_BATCH_MAX)
+    throw new Error(`a batch holds 1 to ${BUS_BATCH_MAX} messages, not ${batch.length}`);
+  if (new Set(batch.map((m) => m.id)).size !== batch.length)
+    throw new Error("a batch holds each message id once");
+  const id = randomUUID();
+  let answer: BatchAnswer = {};
+  for (const [i, m] of batch.entries()) {
+    const last = i === batch.length - 1;
+    const h = headers();
+    for (const [k, v] of Object.entries(m.headers ?? {})) h.set(k, v);
+    h.set("Nats-Msg-Id", m.id);
+    h.set("Nats-Batch-Id", id);
+    h.set("Nats-Batch-Sequence", String(i + 1));
+    if (last) h.set("Nats-Batch-Commit", "1");
+    if (i > 0 && !last) {
+      nc.publish(m.subject, m.data, { headers: h });
+      continue;
+    }
+    const r = await nc
+      .request(m.subject, m.data, { headers: h, timeout: BUS_ACK_TIMEOUT_MS })
+      .catch((err: unknown) => {
+        if (err instanceof errors.RequestError && err.isNoResponders())
+          throw noStreamTakes(m.subject, err);
+        throw err;
+      });
+    answer = r.data.length ? r.json<BatchAnswer>() : {};
+    if (answer.error) throw new JetStreamApiError(answer.error);
+  }
+  if (answer.count !== batch.length || answer.seq === undefined)
+    throw new Error(`the bus acked a batch of ${batch.length} as ${JSON.stringify(answer)}`);
+  return answer.seq;
+}
+
 /**
  * The bus at `url`, as `name` (the part and its rig, shown in the server's list of connections),
  * signed in with `signIn` when given. It connects on first use, and again after a connection fails
@@ -376,12 +526,7 @@ export function natsBus(url: string, name: string, signIn?: BusSignIn): Bus {
         for await (const m of reading) {
           let handled: Handled;
           try {
-            handled = await handle({
-              subject: m.subject,
-              seq: m.seq,
-              data: m.data,
-              header: (k) => m.headers?.get(k) || undefined,
-            });
+            handled = await handle(asBusMessage(m, m.headers));
           } catch (err) {
             // Handed again after the wait; a consumer with one message in flight hands no later
             // message first.
@@ -406,22 +551,112 @@ export function natsBus(url: string, name: string, signIn?: BusSignIn): Bus {
       if (!closed) await pause(BUS_RETRY_MS);
     }
   };
+  /** Publishes one message and waits for the server's ack. */
+  const publishOne = async (m: Outgoing): Promise<Published> => {
+    const nc = await connection();
+    const h = headers();
+    for (const [k, v] of Object.entries(m.headers ?? {})) h.set(k, v);
+    const ack = await jetstream(nc)
+      .publish(m.subject, m.data, { msgID: m.id, headers: h, timeout: BUS_ACK_TIMEOUT_MS })
+      .catch((err: unknown) => {
+        // The library's words for a subject no stream takes, as before control made it.
+        if (err instanceof Error && err.name === "JetStreamNotEnabled")
+          throw noStreamTakes(m.subject, err);
+        throw err;
+      });
+    return { seq: ack.seq, duplicate: ack.duplicate };
+  };
+  /**
+   * A batch the stream has some or all of: each message published on its own, in order, those it
+   * has acked as duplicates and not stored again.
+   */
+  const publishEach = async (batch: readonly Outgoing[]): Promise<BatchPublished> => {
+    let seq = 0;
+    let stored = 0;
+    for (const m of batch) {
+      const ack = await publishOne(m);
+      seq = ack.seq;
+      if (!ack.duplicate) stored++;
+    }
+    const what = { messages: batch.length, stored, last_seq: seq };
+    if (!stored) log("bus", "the stream had this batch already", what);
+    else log("bus", "the stream had part of a batch; the rest stored one by one", what, "warn");
+    return { seq, stored, duplicate: stored === 0 };
+  };
   return {
-    async publish(subject, data, o) {
-      const nc = await connection();
-      const h = headers();
-      for (const [k, v] of Object.entries(o.headers ?? {})) h.set(k, v);
-      const ack = await jetstream(nc)
-        .publish(subject, data, { msgID: o.id, headers: h, timeout: BUS_ACK_TIMEOUT_MS })
+    publish(subject, data, o) {
+      return publishOne({ subject, data, id: o.id, headers: o.headers });
+    },
+    async publishBatch(batch) {
+      try {
+        const seq = await sendBatch(await connection(), batch);
+        return { seq, stored: batch.length, duplicate: false };
+      } catch (err) {
+        if (!(err instanceof JetStreamApiError && err.code === BATCH_HAS_A_KEPT_ID)) throw err;
+      }
+      return await publishEach(batch);
+    },
+    async read(stream, o) {
+      const from = o.from ?? 1;
+      if (!Number.isInteger(o.limit) || o.limit < 1 || o.limit > BUS_READ_MAX)
+        throw new Error(`a read looks at 1 to ${BUS_READ_MAX} messages, not ${o.limit}`);
+      if (!Number.isInteger(from) || from < 1)
+        throw new Error(`a read starts at 1 or after, not ${from}`);
+      const js = jetstream(await connection(), { timeout: BUS_LOOK_TIMEOUT_MS });
+      // An ordered consumer, made for this read alone, in the server's memory, and removed after.
+      const subjects = o.subjects?.length ? { filter_subjects: [...o.subjects] } : {};
+      const c = await js.consumers
+        .get(stream, { ...subjects, opt_start_seq: from })
         .catch((err: unknown) => {
-          // The library's words for a subject no stream takes, as before control made it.
-          if (err instanceof Error && err.name === "JetStreamNotEnabled")
-            throw new Error(`no stream on the bus takes ${subject} yet: control makes it`, {
-              cause: err,
-            });
+          if (noSuchStream(err)) return undefined;
           throw err;
         });
-      return { seq: ack.seq, duplicate: ack.duplicate };
+      const out: BusRead = { messages: [], next: from, done: true };
+      if (!c) return out;
+      try {
+        if ((await c.info(true)).num_pending === 0) return out;
+        out.done = false;
+        let looked = 0;
+        let bytes = 0;
+        const reading = await c.consume({ max_bytes: READ_PULL_BYTES });
+        const timer = setTimeout(() => reading.stop(), BUS_READ_TIMEOUT_MS);
+        try {
+          for await (const m of reading) {
+            looked++;
+            bytes += m.data.length;
+            out.next = m.seq + 1;
+            const message = asBusMessage(m, m.headers);
+            if (passes(message, o.headers)) out.messages.push(message);
+            out.done = m.info.pending === 0;
+            if (out.done || looked >= o.limit || bytes >= BUS_READ_MAX_BYTES) break;
+          }
+        } finally {
+          clearTimeout(timer);
+          reading.stop();
+        }
+        return out;
+      } finally {
+        await c.delete().catch((err: unknown) => {
+          // Not removed: the server removes it itself once it has gone unused for five minutes.
+          log("bus", "a read's consumer not removed", { stream, error: String(err) }, "debug");
+        });
+      }
+    },
+    async message(stream, seq) {
+      const jsm = await jetstreamManager(await connection(), { timeout: BUS_LOOK_TIMEOUT_MS });
+      const m = await jsm.streams.getMessage(stream, { seq }).catch((err: unknown) => {
+        if (noSuchStream(err)) return null;
+        throw err;
+      });
+      return m ? asBusMessage(m, m.header) : undefined;
+    },
+    async lastSeq(stream) {
+      const jsm = await jetstreamManager(await connection(), { timeout: BUS_LOOK_TIMEOUT_MS });
+      const info = await jsm.streams.info(stream).catch((err: unknown) => {
+        if (noSuchStream(err)) return undefined;
+        throw err;
+      });
+      return info?.state.last_seq ?? 0;
     },
     follow(stream, consumer, handle) {
       return consume(stream, consumer, handle, false);
@@ -434,17 +669,10 @@ export function natsBus(url: string, name: string, signIn?: BusSignIn): Bus {
       // The server finds the last message on a subject; the library's type names other ways to ask.
       const query = { last_by_subj: subject } as unknown as MsgRequest;
       const m = await jsm.streams.getMessage(stream, query).catch((err: unknown) => {
-        if (err instanceof JetStreamApiError && err.code === JetStreamApiCodes.StreamNotFound)
-          return null;
+        if (noSuchStream(err)) return null;
         throw err;
       });
-      if (!m) return undefined;
-      return {
-        subject: m.subject,
-        seq: m.seq,
-        data: m.data,
-        header: (k) => m.header?.get(k) || undefined,
-      };
+      return m ? asBusMessage(m, m.header) : undefined;
     },
     async makeStream(stream) {
       let failing = false;

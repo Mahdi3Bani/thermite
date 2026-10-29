@@ -17,6 +17,7 @@ import { SecretBox } from "../../../src/control/secrets.ts";
 import { ControlStore } from "../../../src/control/store/index.ts";
 import {
   BUS_ACCOUNT,
+  controlPermissions,
   rigPermissions,
   SYSTEM_ACCOUNT,
   userKeyFingerprint,
@@ -164,7 +165,11 @@ describe("each rig's key on the message bus", () => {
     assert.equal(statSync(s.file).mode & 0o777, 0o644);
     const accounts = accountsIn(s.file);
     const control = accounts[BUS_ACCOUNT]?.users[0];
-    assert.deepEqual(Object.keys(control ?? {}), ["nkey"], "control may do everything");
+    assert.deepEqual(
+      control?.permissions,
+      controlPermissions(),
+      "control may do everything but delete or purge a stream kept for good",
+    );
     assert.deepEqual(accounts[BUS_ACCOUNT]?.users.slice(1), [
       { nkey: keys.a, permissions: rigPermissions("rig-a") },
       { nkey: keys.b, permissions: rigPermissions("rig-b") },

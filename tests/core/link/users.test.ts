@@ -3,8 +3,11 @@ import { describe, test } from "node:test";
 import { createAccount, createUser } from "@nats-io/nkeys";
 import { commandConsumerConfig } from "../../../src/core/link/commands.ts";
 import { configConsumerConfig } from "../../../src/core/link/config.ts";
+import { EVENT_STREAM, EVENT_SUBJECTS } from "../../../src/core/link/events.ts";
+import { REPORT_STREAM } from "../../../src/core/link/report.ts";
 import {
   BUS_ACCOUNT,
+  controlPermissions,
   isUserKey,
   reloadSubject,
   rigInboxPrefix,
@@ -126,7 +129,7 @@ describe("who may do what on the message bus", () => {
     assert.deepEqual(Object.keys(accounts), [BUS_ACCOUNT, SYSTEM_ACCOUNT]);
     assert.equal(accounts[BUS_ACCOUNT]?.jetstream, "enabled");
     assert.deepEqual(accounts[BUS_ACCOUNT]?.users, [
-      { nkey: keys.control },
+      { nkey: keys.control, permissions: controlPermissions() },
       { nkey: keys.a, permissions: rigPermissions("rig-a", ["sort-3"]) },
       { nkey: keys.b, permissions: rigPermissions("rig-b") },
     ]);
@@ -142,7 +145,34 @@ describe("who may do what on the message bus", () => {
     assert.equal(reloadSubject("NABC"), "$SYS.REQ.SERVER.NABC.RELOAD");
     // With no rig: control's users alone.
     const none = readUsers(usersFile({ control: keys.control, system: keys.system, rigs: [] }));
-    assert.deepEqual(none.accounts[BUS_ACCOUNT]?.users, [{ nkey: keys.control }]);
+    assert.deepEqual(none.accounts[BUS_ACCOUNT]?.users, [
+      { nkey: keys.control, permissions: controlPermissions() },
+    ]);
+  });
+
+  test("control may do everything but delete or purge a stream kept for good", () => {
+    // A stream's deny_delete and deny_purge guard its messages; the stream itself is guarded here.
+    assert.deepEqual(controlPermissions(), {
+      publish: {
+        deny: [
+          `$JS.API.STREAM.DELETE.${REPORT_STREAM}`,
+          `$JS.API.STREAM.PURGE.${REPORT_STREAM}`,
+          `$JS.API.STREAM.DELETE.${EVENT_STREAM}`,
+          `$JS.API.STREAM.PURGE.${EVENT_STREAM}`,
+        ],
+      },
+    });
+    assert.equal(JSON.stringify(controlPermissions()).includes("allow"), false);
+  });
+
+  test("a rig has nothing on the events stream, whatever runs it has", () => {
+    const text = JSON.stringify(rigPermissions("rig-a", ["sort-3", "sort-2"]));
+    assert.ok(!text.includes(EVENT_STREAM));
+    for (const p of EVENT_SUBJECTS) {
+      const [, of, , kind] = p.split(".");
+      for (const name of ["rig-a", "sort-3"])
+        assert.ok(!text.includes(`thermite.${of}.${name}.${kind}`), `${of} ${name} ${kind}`);
+    }
   });
 
   test("a key that is not a user key never reaches the file", () => {

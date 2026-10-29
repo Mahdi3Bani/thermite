@@ -114,6 +114,18 @@ export const ReportPlace = z.object({
 });
 export type ReportPlace = z.infer<typeof ReportPlace>;
 
+/** One event of a rig's ledger, as a report carries it and control reads it. */
+export const ReportEvent = z.object({
+  id: z.number().int().positive(),
+  at: z.iso.datetime(),
+  actor: z.string(),
+  kind: z.string(),
+  subject: z.string().nullable(),
+  body: z.unknown(),
+  run: z.string().nullable().optional(),
+});
+export type ReportEvent = z.infer<typeof ReportEvent>;
+
 /**
  * The harness's signed report, as control reads it. A field this control does not know is
  * dropped, in the report or in an event, and the signature (over reportBody) is checked on what is
@@ -125,17 +137,7 @@ export const SignedReport = z.object({
   ledger_id: z.string().min(1),
   cursor: z.number().int().min(0),
   next: z.number().int().min(0),
-  events: z.array(
-    z.object({
-      id: z.number().int().positive(),
-      at: z.iso.datetime(),
-      actor: z.string(),
-      kind: z.string(),
-      subject: z.string().nullable(),
-      body: z.unknown(),
-      run: z.string().nullable().optional(),
-    }),
-  ),
+  events: z.array(ReportEvent),
   summary: z.unknown(),
   generated_at: z.iso.datetime(),
   latest_event: z.number().int().min(0),
@@ -145,7 +147,7 @@ export const SignedReport = z.object({
 export type SignedReport = z.infer<typeof SignedReport>;
 
 const REPORT_FIELDS = new Set(Object.keys(SignedReport.shape));
-const EVENT_FIELDS = new Set(Object.keys(SignedReport.shape.events.element.shape));
+const EVENT_FIELDS = new Set(Object.keys(ReportEvent.shape));
 
 /** How many fields of an object a reader does not know. */
 function unknownIn(x: unknown, known: Set<string>): number {
@@ -162,6 +164,14 @@ export function readReport(raw: unknown): { report: SignedReport; unknown: numbe
   let unknown = unknownIn(raw, REPORT_FIELDS);
   for (const e of (raw as { events: unknown[] }).events) unknown += unknownIn(e, EVENT_FIELDS);
   return { report, unknown };
+}
+
+/**
+ * One event as every reader reads it (owner's decision 6), as readReport reads a report's: it
+ * keeps the fields it knows and counts the rest. Throws a ZodError when it is not an event at all.
+ */
+export function readReportEvent(raw: unknown): { event: ReportEvent; unknown: number } {
+  return { event: ReportEvent.parse(raw), unknown: unknownIn(raw, EVENT_FIELDS) };
 }
 
 /**

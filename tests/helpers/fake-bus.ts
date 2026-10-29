@@ -1,16 +1,25 @@
+import { JetStreamApiError } from "@nats-io/jetstream";
 import { errors } from "@nats-io/transport-node";
-import type {
-  Bus,
-  BusMessage,
-  Handled,
-  Published,
-  StreamSettings,
-  StreamState,
+import {
+  type BatchPublished,
+  BUS_BATCH_MAX,
+  BUS_READ_MAX,
+  BUS_READ_MAX_BYTES,
+  type Bus,
+  type BusMessage,
+  type BusRead,
+  type Handled,
+  type Outgoing,
+  type Published,
+  type StreamSettings,
+  type StreamState,
 } from "../../src/common/bus.ts";
 
 /** A message the fake bus keeps. */
 export interface Kept {
+  stream: string;
   subject: string;
+  /** Its place in its stream. */
   seq: number;
   id: string;
   data: string;
@@ -26,15 +35,47 @@ function takes(pattern: string, subject: string): boolean {
   return new RegExp(`^${re}$`).test(subject);
 }
 
+/** The server's words for a store that is full: it refuses every publish, to any stream. */
+const FULL = { code: 503, err_code: 10023, description: "insufficient resources" };
+/** The server's words for a batch to a stream that takes none (`allow_atomic` not set). */
+const NOT_ATOMIC = { code: 400, err_code: 10174, description: "atomic publish is disabled" };
+/** The server's words for a batch with a message it did not take, as one for another stream. */
+const INCOMPLETE = {
+  code: 400,
+  err_code: 10176,
+  description: "atomic publish batch is incomplete",
+};
+/** The server's words for a message over its stream's largest. */
+const TOO_LARGE = {
+  code: 400,
+  err_code: 10054,
+  description: "message size exceeds maximum allowed",
+};
+
 /**
  * A stand-in for the NATS server, in memory, for tests of what control and the supervisor do on
  * the message bus (common/bus.ts talks to a real one). It keeps the streams made, each message
- * published to a subject one of them takes, once by its id, removes one by its id, and gives a
- * subject's newest. `take` hands a subject's messages to a handler as a work queue's consumer
- * does.
+ * published to a subject one of them takes, once by its id within its stream, each stream's
+ * places counted on their own; removes one by its id; gives a subject's newest, a message by its
+ * place, a stream's last place, and reads a stream in order. A batch is stored whole or not at
+ * all, as the server stores it. `take` hands a subject's messages to a handler as a work queue's
+ * consumer does.
  */
 export class FakeBus
-  implements Pick<Bus, "publish" | "makeStream" | "remove" | "streams" | "last" | "connected">
+  implements
+    Pick<
+      Bus,
+      | "publish"
+      | "publishBatch"
+      | "read"
+      | "message"
+      | "lastSeq"
+      | "makeStream"
+      | "remove"
+      | "streams"
+      | "last"
+      | "connected"
+    >
 {
   /** Whether the part holds a connection to the server now, as control's health says. */
   up = true;
@@ -44,18 +85,71 @@ export class FakeBus
   /** The streams made, by name. */
   readonly made = new Map<string, StreamSettings>();
   readonly kept: Kept[] = [];
-  /** The ids the bus remembers; forgetIds() stands for its duplicate window passing. */
-  private readonly ids = new Set<string>();
-  private seq = 0;
-  /** Set: every publish fails, as when the server's ack never comes. */
+  /** The ids each stream remembers; forgetIds() stands for its duplicate window passing. */
+  private readonly ids = new Map<string, Set<string>>();
+  /** Each stream's last place. */
+  private readonly seqs = new Map<string, number>();
+  /** Set: every publish fails, as when the server's ack never comes; nothing is stored. */
   failing = false;
   /** Set: each publish waits for it before the server answers. */
   hold: Promise<void> | undefined;
   /** Set: the subjects the publishing user may not publish to, as the server refuses them. */
   refuse: ((subject: string) => boolean) | undefined;
+  /** Set: the server's store is full, and it refuses every publish, as the real one does. */
+  full = false;
 
   async makeStream(stream: StreamSettings): Promise<void> {
     this.made.set(stream.name, stream);
+  }
+
+  /**
+   * Why the server would refuse this message, or else the stream that takes it. A refusal is the
+   * server's: a JetStreamApiError for the stream's, a PermissionViolationError for the user's.
+   */
+  private check(m: Outgoing): StreamSettings {
+    if (this.failing) throw new Error("TimeoutError: no ack from the server");
+    if (this.refuse?.(m.subject)) {
+      const why = `Permissions Violation for Publish to "${m.subject}"`;
+      throw new Error(why, {
+        cause: new errors.PermissionViolationError(why, "publish", m.subject),
+      });
+    }
+    const stream = [...this.made.values()].find((s) =>
+      (s.subjects ?? []).some((p) => takes(p, m.subject)),
+    );
+    if (!stream) throw new Error(`no stream on the bus takes ${m.subject} yet: control makes it`);
+    if (this.full) throw new JetStreamApiError(FULL);
+    const bytes =
+      Buffer.byteLength(m.data) +
+      Object.entries(m.headers ?? {}).reduce((n, [k, v]) => n + k.length + v.length + 4, 0);
+    const max = stream.max_msg_size ?? -1;
+    if (max >= 0 && bytes > max) throw new JetStreamApiError(TOO_LARGE);
+    return stream;
+  }
+
+  private idsOf(stream: string): Set<string> {
+    const ids = this.ids.get(stream) ?? new Set<string>();
+    this.ids.set(stream, ids);
+    return ids;
+  }
+
+  /** Stores a message the checks passed, unless its stream has its id. */
+  private store(stream: string, m: Outgoing): Published {
+    const ids = this.idsOf(stream);
+    if (ids.has(m.id)) {
+      const had = this.kept.find((k) => k.stream === stream && k.id === m.id);
+      return { seq: had?.seq ?? this.lastOf(stream), duplicate: true };
+    }
+    ids.add(m.id);
+    const seq = this.lastOf(stream) + 1;
+    this.seqs.set(stream, seq);
+    const { subject, id, data } = m;
+    this.kept.push({ stream, subject, seq, id, data, headers: m.headers ?? {} });
+    return { seq, duplicate: false };
+  }
+
+  private lastOf(stream: string): number {
+    return this.seqs.get(stream) ?? 0;
   }
 
   async publish(
@@ -64,19 +158,88 @@ export class FakeBus
     o: { id: string; headers?: Record<string, string> | undefined },
   ): Promise<Published> {
     await this.hold;
-    if (this.failing) throw new Error("TimeoutError: no ack from the server");
-    if (this.refuse?.(subject)) {
-      const why = `Permissions Violation for Publish to "${subject}"`;
-      throw new Error(why, { cause: new errors.PermissionViolationError(why, "publish", subject) });
+    const m = { subject, data, id: o.id, headers: o.headers };
+    return this.store(this.check(m).name, m);
+  }
+
+  /**
+   * As the server: every message checked first, and one refused refuses the batch, which stores
+   * nothing (with that message's own refusal, where the server says only that the batch is
+   * incomplete). A batch whose stream has some of its ids is published a message at a time, as
+   * common/bus.ts does.
+   */
+  async publishBatch(batch: readonly Outgoing[]): Promise<BatchPublished> {
+    await this.hold;
+    if (batch.length < 1 || batch.length > BUS_BATCH_MAX)
+      throw new Error(`a batch holds 1 to ${BUS_BATCH_MAX} messages, not ${batch.length}`);
+    if (new Set(batch.map((m) => m.id)).size !== batch.length)
+      throw new Error("a batch holds each message id once");
+    const streams = new Set(batch.map((m) => this.check(m).name));
+    const [stream = ""] = streams;
+    if (!this.made.get(stream)?.allow_atomic) throw new JetStreamApiError(NOT_ATOMIC);
+    if (streams.size > 1) throw new JetStreamApiError(INCOMPLETE);
+    // Stored whole when the stream has none of its ids; else a message at a time: the same here.
+    let seq = 0;
+    let stored = 0;
+    for (const m of batch) {
+      const ack = this.store(stream, m);
+      seq = ack.seq;
+      if (!ack.duplicate) stored++;
     }
-    const stream = [...this.made.values()].find((s) =>
-      (s.subjects ?? []).some((p) => takes(p, subject)),
+    return { seq, stored, duplicate: stored === 0 };
+  }
+
+  /** A stream's messages in order, as common/bus.ts reads them, the same limits and header test. */
+  async read(
+    stream: string,
+    o: {
+      subjects?: readonly string[] | undefined;
+      from?: number | undefined;
+      limit: number;
+      headers?: Readonly<Record<string, string>> | undefined;
+    },
+  ): Promise<BusRead> {
+    await this.hold;
+    if (this.failing) throw new Error("TimeoutError: no answer from the server");
+    const from = o.from ?? 1;
+    if (!Number.isInteger(o.limit) || o.limit < 1 || o.limit > BUS_READ_MAX)
+      throw new Error(`a read looks at 1 to ${BUS_READ_MAX} messages, not ${o.limit}`);
+    if (!Number.isInteger(from) || from < 1)
+      throw new Error(`a read starts at 1 or after, not ${from}`);
+    const out: BusRead = { messages: [], next: from, done: true };
+    if (!this.made.has(stream)) return out;
+    const on = this.kept.filter(
+      (m) =>
+        m.stream === stream &&
+        m.seq >= from &&
+        (!o.subjects?.length || o.subjects.some((p) => takes(p, m.subject))),
     );
-    if (!stream) throw new Error(`no stream on the bus takes ${subject} yet: control makes it`);
-    if (this.ids.has(o.id)) return { seq: this.seq, duplicate: true };
-    this.ids.add(o.id);
-    this.kept.push({ subject, seq: ++this.seq, id: o.id, data, headers: o.headers ?? {} });
-    return { seq: this.seq, duplicate: false };
+    let bytes = 0;
+    for (const [i, m] of on.entries()) {
+      bytes += Buffer.byteLength(m.data);
+      out.next = m.seq + 1;
+      const message = asMessage(m);
+      if (Object.entries(o.headers ?? {}).every(([k, v]) => message.header(k) === v))
+        out.messages.push(message);
+      out.done = i === on.length - 1;
+      if (i + 1 >= o.limit || bytes >= BUS_READ_MAX_BYTES) break;
+    }
+    return out;
+  }
+
+  /** The message at a place in a stream made; undefined when there is none there. */
+  async message(stream: string, seq: number): Promise<BusMessage | undefined> {
+    await this.hold;
+    if (this.failing) throw new Error("TimeoutError: no answer from the server");
+    const m = this.kept.find((k) => k.stream === stream && k.seq === seq);
+    return m ? asMessage(m) : undefined;
+  }
+
+  /** A stream's last place: 0 before its first message, or for a stream not made. */
+  async lastSeq(stream: string): Promise<number> {
+    await this.hold;
+    if (this.failing) throw new Error("TimeoutError: no answer from the server");
+    return this.lastOf(stream);
   }
 
   async remove(_stream: string, subject: string, id: string): Promise<boolean> {
@@ -98,11 +261,8 @@ export class FakeBus
   /** Each stream made, with the messages it keeps; no consumers. */
   async streams(names: readonly string[]): Promise<StreamState[]> {
     return names.flatMap((name) => {
-      const stream = this.made.get(name);
-      if (!stream) return [];
-      const kept = this.kept.filter((m) =>
-        (stream.subjects ?? []).some((p) => takes(p, m.subject)),
-      );
+      if (!this.made.has(name)) return [];
+      const kept = this.kept.filter((m) => m.stream === name);
       return [
         {
           name,
@@ -118,7 +278,7 @@ export class FakeBus
     });
   }
 
-  /** The duplicate window passes: a message id published before is new again. */
+  /** The duplicate window passes: a message id published before is new again, in every stream. */
   forgetIds(): void {
     this.ids.clear();
   }
@@ -150,13 +310,14 @@ export class FakeBus
   }
 }
 
-/** A kept message as a handler sees it. */
+/** A kept message as a handler sees it, its id among its headers as the server keeps it. */
 export function asMessage(m: Kept): BusMessage {
+  const headers: Record<string, string> = { ...m.headers, "Nats-Msg-Id": m.id };
   return {
     subject: m.subject,
     seq: m.seq,
     data: new TextEncoder().encode(m.data),
-    header: (name) => m.headers[name],
+    header: (name) => headers[name],
   };
 }
 
