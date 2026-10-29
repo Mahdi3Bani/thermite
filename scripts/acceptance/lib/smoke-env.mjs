@@ -8,6 +8,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 export const compose = (process.env.COMPOSE ?? "podman compose").split(" ");
+/**
+ * The container engine under the compose command, for the engine's own commands (build, run, exec,
+ * image prune): Docker for Docker's compose, Podman for the rest. Never the command's first word,
+ * which may be a launcher, as in `uvx podman-compose`.
+ */
+export const engine = compose.some((w) => /^docker(-compose)?$/.test(w)) ? "docker" : "podman";
 // THERMITE_PROJECT and THERMITE_CONTROL_PORT let a second stack (a long run) run beside the usual
 // one, with THERMITE_NATS_PUBLISH for its message bus's port (such as 127.0.0.1:4223).
 export const control = `http://127.0.0.1:${process.env.THERMITE_CONTROL_PORT ?? "8800"}`;
@@ -31,8 +37,8 @@ export function dc(env, ...args) {
  */
 export function cleanEngine() {
   try {
-    sh(compose[0], ["image", "prune", "-f"]);
-    if (compose[0] === "podman" && process.platform !== "linux")
+    sh(engine, ["image", "prune", "-f"]);
+    if (engine === "podman" && process.platform !== "linux")
       sh("podman", ["machine", "ssh", "sudo", "fstrim", "-a"]);
   } catch {}
 }

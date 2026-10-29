@@ -28,7 +28,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
 import { acceptanceChecks } from "./lib/checks.mjs";
-import { cleanEngine } from "./lib/smoke-env.mjs";
+import { cleanEngine, engine } from "./lib/smoke-env.mjs";
 
 // Control's side, in this process (Node.js strips the types of these files).
 const { createControlApi } = await import("../../src/control/api/index.ts");
@@ -38,7 +38,6 @@ const { ControlTunnels } = await import("../../src/control/runpod/tunnel.ts");
 const { generateSigningKeys } = await import("../../src/core/commands.ts");
 const { keySha256 } = await import("../../src/core/tunnel.ts");
 
-const engine = (process.env.COMPOSE ?? "podman compose").split(" ")[0];
 const harnessImage = "localhost/thermite-harness:rig-image-check";
 const rigImage = "localhost/thermite-rig:rig-image-check";
 const name = "thermite-rig-image-check";

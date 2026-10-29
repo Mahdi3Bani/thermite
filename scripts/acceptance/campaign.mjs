@@ -17,9 +17,9 @@ import { join } from "node:path";
 import { acceptanceChecks } from "./lib/checks.mjs";
 import {
   api,
-  compose,
   control,
   dc,
+  engine,
   events,
   latestVerdicts,
   prepare,
@@ -81,7 +81,7 @@ const daemon = spawn(
   ["daemon", "--reuseaddr", `--base-path=${root}`, `--port=${port}`, "--listen=0.0.0.0", root],
   { stdio: "ignore" },
 );
-const hostName = compose[0] === "docker" ? "host.docker.internal" : "host.containers.internal";
+const hostName = engine === "docker" ? "host.docker.internal" : "host.containers.internal";
 const gitBox = "thermite-acc-git";
 const projectUrl = `git://${hostName}:${port}/tiny.git`;
 
@@ -383,20 +383,16 @@ try {
 
   // The private path. A stand-in Git host on control's network accepts only keys in its
   // authorized_keys; control makes the deploy key in Providers and keeps its private half.
+  execFileSync(engine, ["build", "-q", "-t", "thermite-test-machine", "containers/test-machine"], {
+    stdio: ["ignore", "ignore", "inherit"],
+  });
   execFileSync(
-    compose[0],
-    ["build", "-q", "-t", "thermite-test-machine", "containers/test-machine"],
-    {
-      stdio: ["ignore", "ignore", "inherit"],
-    },
-  );
-  execFileSync(
-    compose[0],
+    engine,
     ["run", "-d", "--name", gitBox, "--network", "thermite_control", "thermite-test-machine"],
     { stdio: "ignore" },
   );
-  execFileSync(compose[0], ["cp", join(root, "tiny.git"), `${gitBox}:/home/thermite/tiny.git`]);
-  execFileSync(compose[0], [
+  execFileSync(engine, ["cp", join(root, "tiny.git"), `${gitBox}:/home/thermite/tiny.git`]);
+  execFileSync(engine, [
     "exec",
     gitBox,
     "chown",
@@ -428,7 +424,7 @@ try {
     /could not read/.test(before),
     before,
   );
-  execFileSync(compose[0], [
+  execFileSync(engine, [
     "exec",
     gitBox,
     "sh",
@@ -486,7 +482,7 @@ try {
 } finally {
   daemon.kill();
   try {
-    execFileSync(compose[0], ["rm", "-f", gitBox], { stdio: "ignore" });
+    execFileSync(engine, ["rm", "-f", gitBox], { stdio: "ignore" });
   } catch {}
   dc(composeEnv, "down", "-v");
 }

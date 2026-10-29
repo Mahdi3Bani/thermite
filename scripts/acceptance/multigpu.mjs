@@ -13,9 +13,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { acceptanceChecks } from "./lib/checks.mjs";
-import { cleanEngine } from "./lib/smoke-env.mjs";
+import { cleanEngine, engine } from "./lib/smoke-env.mjs";
 
-const engine = (process.env.COMPOSE ?? "podman compose").split(" ")[0];
 const image = "localhost/thermite-harness:multigpu-check";
 const names = [
   "thermite-multigpu-a",

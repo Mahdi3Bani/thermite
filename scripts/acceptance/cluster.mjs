@@ -19,10 +19,10 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { acceptanceChecks } from "./lib/checks.mjs";
-import { cleanEngine, compose, dc, natsService, secret, sh, until } from "./lib/smoke-env.mjs";
+import { cleanEngine, dc, engine, natsService, secret, sh, until } from "./lib/smoke-env.mjs";
 
 const { check, results } = acceptanceChecks();
-if (compose[0] !== "podman") {
+if (engine !== "podman") {
   console.log("cluster acceptance: needs Podman (kind's Podman provider)");
   process.exit(1);
 }

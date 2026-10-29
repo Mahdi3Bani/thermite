@@ -8,10 +8,9 @@
 // Usage: COMPOSE="podman compose" node scripts/acceptance/machine.mjs (or "docker compose").
 import { execFileSync } from "node:child_process";
 import { acceptanceChecks } from "./lib/checks.mjs";
-import { compose, control, dc, secret, sh, until } from "./lib/smoke-env.mjs";
+import { control, dc, engine, secret, sh, until } from "./lib/smoke-env.mjs";
 
 const { check, results } = acceptanceChecks();
-const engine = compose[0] === "docker" ? "docker" : "podman";
 const box = "thermite-test-machine";
 const run = (...a) => sh(engine, a);
 const onBox = (cmd, input) =>

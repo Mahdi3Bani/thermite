@@ -11,10 +11,10 @@
 // Usage: COMPOSE="podman compose" node scripts/acceptance/rig-deploy.mjs (Podman only).
 import { execSync } from "node:child_process";
 import { acceptanceChecks } from "./lib/checks.mjs";
-import { compose, control, dc, secret, sh, until } from "./lib/smoke-env.mjs";
+import { control, dc, engine, secret, sh, until } from "./lib/smoke-env.mjs";
 
 const { check, results } = acceptanceChecks();
-if (compose[0] !== "podman") {
+if (engine !== "podman") {
   console.log("rig deploy acceptance: needs Podman (a privileged systemd container)");
   process.exit(1);
 }

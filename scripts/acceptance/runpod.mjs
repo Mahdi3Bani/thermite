@@ -32,7 +32,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { acceptanceChecks } from "./lib/checks.mjs";
-import { cleanEngine } from "./lib/smoke-env.mjs";
+import { cleanEngine, engine } from "./lib/smoke-env.mjs";
 
 // Control's side, in this process (Node.js strips the types of these files).
 const { createControlApi } = await import("../../src/control/api/index.ts");
@@ -44,7 +44,6 @@ const { ControlTunnels } = await import("../../src/control/runpod/tunnel.ts");
 const { generateSigningKeys } = await import("../../src/core/commands.ts");
 const { FAKE_RUNPOD_KEY, fakeRunpod } = await import("../../tests/helpers/fake-runpod.ts");
 
-const engine = (process.env.COMPOSE ?? "podman compose").split(" ")[0];
 const harnessImage = "localhost/thermite-harness:runpod-check";
 const rigImage = "localhost/thermite-rig:runpod-check";
 /** Each pod's container and volume: thermite-runpod-check-<pid>-<pod>[-volume]. */

@@ -26,9 +26,8 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { generateKeyPairSync, randomBytes } from "node:crypto";
 import { resolve } from "node:path";
-import { cleanEngine } from "./lib/smoke-env.mjs";
+import { cleanEngine, engine } from "./lib/smoke-env.mjs";
 
-const engine = (process.env.COMPOSE ?? "podman compose").split(" ")[0];
 const version = process.env.CLAUDE_CODE_VERSION ?? "2.1.308";
 const image = process.env.IMAGE ?? "localhost/thermite-harness:claude-real-check";
 const name = "thermite-claude-real";
