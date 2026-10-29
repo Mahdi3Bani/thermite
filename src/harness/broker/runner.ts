@@ -100,6 +100,8 @@ export const RunRequest = z.object({
    * it alone is over the limit does the run end.
    */
   spareExe: z.string().min(1).startsWith("/").optional(),
+  /** The run's own first process is spared too: the terminal host, which holds the program. */
+  spareRoot: z.boolean().optional(),
   disk: z.object({ path: z.string().min(1), limitBytes: z.number().int().positive() }).optional(),
   /**
    * The role's processes and threads at once (RLIMIT_NPROC): a contract's lanes.limits.processes
@@ -203,6 +205,7 @@ export class LocalRunner implements Runner {
       timeoutMs: req.timeoutMs,
       rssLimitBytes: req.rssLimitBytes,
       spareExe: req.spareExe,
+      spareRoot: req.spareRoot,
       disk: req.disk,
       stdin: req.stdin,
       captureBytes: req.captureBytes,

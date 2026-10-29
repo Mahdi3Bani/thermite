@@ -78,6 +78,7 @@ Changes to some parts also need a test that starts containers. Each takes from a
 | The Claude Code harness, subscriptions in **Providers**, the agents' models on **Edit rig**, or the model routes | `COMPOSE="podman compose" node scripts/acceptance/claude.mjs` |
 | How the harness or the advisors start Claude Code (its environment, its token, its folders), or the images' packages for it | `COMPOSE="podman compose" node scripts/acceptance/claude-real.mjs` |
 | The Codex harness, the model proxy, the harness choice on **Edit rig** or in `set_rig_model`, or the model routes | `COMPOSE="podman compose" node scripts/acceptance/codex.mjs` |
+| The terminal host, a program's start in its own terminal, or node-pty's build in the harness image | `COMPOSE="podman compose" node scripts/acceptance/terminal.mjs` |
 | The advisors, audits, propagation, reviews, the lifecycle drivers or a full reset | `COMPOSE="podman compose" node scripts/acceptance/steering.mjs` |
 | The quick start's pages, the images or compose, the release bundle, or the sample in `examples/` | `COMPOSE="podman compose" node scripts/acceptance/quick-start.mjs` |
 

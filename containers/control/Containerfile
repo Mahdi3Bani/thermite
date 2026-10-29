@@ -4,11 +4,14 @@ ARG NODE_IMAGE=docker.io/library/node:22.23.4-bookworm-slim@sha256:de170b39439eb
 FROM ${NODE_IMAGE} AS build
 WORKDIR /src
 COPY package.json package-lock.json tsconfig.json tsconfig.build.json ./
-# npm ci runs it after the install: it patches Pi's streaming tool-call parse (goal 140).
+# It patches Pi's streaming tool-call parse after the install (goal 140).
 COPY scripts/patch-pi-ai.mjs ./scripts/
-RUN npm ci --no-fund --no-audit
+# No package's install script runs: this stage has no compiler for node-pty's native part, and no
+# other package Thermite runs needs its own. node-pty, the one optional dependency, is the
+# harness's terminal host's (goal 169), so it is left out here with what it alone needs.
+RUN npm ci --no-fund --no-audit --ignore-scripts && node scripts/patch-pi-ai.mjs
 COPY src ./src
-RUN npm run build && npm prune --omit=dev --no-fund --no-audit
+RUN npm run build && npm prune --omit=dev --omit=optional --no-fund --no-audit
 # kubectl, for rigs control sets up on Kubernetes clusters: a pinned release, checked by sha256.
 # The final stage carries its Apache License 2.0, the LICENSE of kubernetes/kubernetes at this
 # tag (containers/control/kubectl/; update it with the version).

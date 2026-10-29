@@ -14,6 +14,12 @@ import { agentPath } from "../path.ts";
 export { newTally, type OpencodeTally, readNew, readOpencodeEvents } from "./events.ts";
 export { NO_OPENCODE, opencodeBin, opencodeExe, opencodeExitWords } from "./run.ts";
 export { type OpencodeLogState, opencodeSession } from "./session-events.ts";
+export {
+  OPENCODE_TERMINAL,
+  opencodeServerArgs,
+  opencodeServerUrl,
+  opencodeTerminalArgs,
+} from "./terminal.ts";
 
 /**
  * OpenCode as Thermite starts it, for the harness's agents and the supervisor's advisors: its

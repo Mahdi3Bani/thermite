@@ -5,10 +5,18 @@ import { gatewayUrl, type McpAccess } from "../../mcp/index.ts";
 import type { ModelConfig } from "../../model/index.ts";
 import { hookArgv, hookShellLine } from "../hooks/index.ts";
 import { agentPath } from "../path.ts";
+import { tomlString } from "./toml.ts";
 
 export type { CodexTally } from "./events.ts";
 export { newCodexTally, readCodexEvents } from "./events.ts";
 export { codexRollout, type RolloutState } from "./rollout.ts";
+export {
+  CODEX_TERMINAL,
+  codexTerminalArgs,
+  codexTerminalConfig,
+  codexTerminalLog,
+} from "./terminal.ts";
+export { tomlString } from "./toml.ts";
 
 /**
  * The Codex CLI as Thermite starts it, for the harness's agents and the supervisor's advisors: its
@@ -39,18 +47,6 @@ export function codexExe(): string | undefined {
     if (dir && existsSync(p)) return p;
   }
   return undefined;
-}
-
-/** A TOML basic string (the configuration Codex reads). */
-export function tomlString(s: string): string {
-  let out = '"';
-  for (const ch of s) {
-    const c = ch.codePointAt(0) ?? 0;
-    if (ch === "\\" || ch === '"') out += `\\${ch}`;
-    else if (c < 0x20 || c === 0x7f) out += `\\u${c.toString(16).padStart(4, "0")}`;
-    else out += ch;
-  }
-  return `${out}"`;
 }
 
 /**

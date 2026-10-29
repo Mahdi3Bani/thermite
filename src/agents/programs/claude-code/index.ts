@@ -21,6 +21,7 @@ import { CLAUDE_BASE_ENV } from "./shell.ts";
  * mode, which refuses file edits and most commands in a headless run.
  */
 
+export { claudeArgs, claudeModelId, claudeTerminalArgs } from "./args.ts";
 export type { ClaudeTally } from "./events.ts";
 export {
   claudeResultUsage,
@@ -37,6 +38,13 @@ export {
   claudeShell,
   PROMPT_VAR,
 } from "./shell.ts";
+export {
+  CLAUDE_TERMINAL,
+  CLAUDE_TERMINAL_ENV,
+  claudeTerminalLog,
+  claudeTerminalSeeds,
+  claudeTerminalSettings,
+} from "./terminal.ts";
 export { claudeTranscript, type TranscriptState } from "./transcript.ts";
 export type { PlanWindows, UsageWindow } from "./windows.ts";
 export { mergeUsage } from "./windows.ts";
@@ -102,11 +110,6 @@ export function claudeEnv(o: {
   };
 }
 
-/** Claude Code's model name for a route's model (claude-code:opus-5.5[1m] → claude-opus-5-5[1m]). */
-export function claudeModelId(m: ModelConfig): string {
-  return m.model;
-}
-
 /** Claude Code's PreCompact hook, as a program (compaction-hook.ts, in this folder). */
 export const CLAUDE_HOOK = fileURLToPath(
   new URL(`./compaction-hook${extname(fileURLToPath(import.meta.url))}`, import.meta.url),
@@ -170,42 +173,4 @@ export function claudeTrialSettings(keep?: { drops: string; at: KeptAt } | undef
   return JSON.stringify({
     hooks: { ...signals, ...(keep ? compactionHooks(keep.drops, keep.at) : {}) },
   });
-}
-
-/**
- * The flags every headless Claude Code run here has: no settings files, no MCP, permissions
- * bypassed; `settings`, Thermite's own (its PreCompact hook), when given.
- */
-export function claudeArgs(
-  m: ModelConfig,
-  o: {
-    tools?: string | undefined;
-    session?: string | undefined;
-    /** A file with the MCP servers it may use (at the harness's gateway), and only those. */
-    mcpConfig?: string | undefined;
-    /** Thermite's settings for the run, as JSON (claudeHookSettings). */
-    settings?: string | undefined;
-  },
-) {
-  return [
-    "--output-format",
-    "stream-json",
-    "--verbose",
-    "--model",
-    claudeModelId(m),
-    "--permission-mode",
-    "bypassPermissions",
-    "--setting-sources",
-    "",
-    "--strict-mcp-config",
-    ...(o.mcpConfig ? ["--mcp-config", o.mcpConfig] : []),
-    ...(o.settings ? ["--settings", o.settings] : []),
-    ...(o.tools !== undefined ? ["--tools", o.tools] : []),
-    ...(m.effort
-      ? ["--effort", m.effort]
-      : m.reasoning && m.reasoning !== "off"
-        ? ["--effort", m.reasoning]
-        : []),
-    ...(o.session ? ["--resume", o.session] : []),
-  ];
 }

@@ -1,0 +1,78 @@
+import type { Harness } from "../../core/agents.ts";
+
+/**
+ * An agent program in its own terminal (goal 169), as Thermite's terminal host
+ * (src/harness/terminal/) drives it: the keys it may be sent by name, the shape of each program's
+ * steps to interrupt the agent's turn and to end the program, the files seeded before it starts
+ * and where its session log is. Each program's own are in its folder (`terminal.ts`), and the
+ * table of their profiles in index.ts. What each program does with a key is what the spike of
+ * 2026-10-29 saw, on Claude Code 2.1.308, Codex 0.162.1 and OpenCode 2.1.4.
+ */
+
+/** The programs that run in a terminal: every agent program but Pi, which runs in the harness. */
+export type TerminalProgram = Exclude<Harness, "pi">;
+
+/** Their ids, as the terminal host's start names them. */
+export const TERMINAL_PROGRAMS = [
+  "claude-code",
+  "codex",
+  "opencode",
+] as const satisfies readonly TerminalProgram[];
+
+/**
+ * The keys that may be sent by name, the owner's list for a program's menus (2026-10-26): Enter,
+ * Esc, Tab, the arrows, the digits, Page Up and Page Down. Ctrl+C is not one: it exits Codex on an
+ * empty composer and Claude Code on a second press. An interrupt is each program's own steps.
+ */
+export const TERMINAL_KEYS = [
+  "enter",
+  "esc",
+  "tab",
+  "up",
+  "down",
+  "left",
+  "right",
+  "page-up",
+  "page-down",
+  "0",
+  "1",
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "7",
+  "8",
+  "9",
+] as const;
+export type TerminalKey = (typeof TERMINAL_KEYS)[number];
+
+/** One step of an interrupt or an end: keys, text typed and then Enter, or a pause. */
+export type TerminalStep = { keys: TerminalKey[] } | { text: string } | { pauseMs: number };
+
+/** How the terminal host interrupts a program's turn and ends the program cleanly. */
+export interface TerminalProfile {
+  interrupt: readonly TerminalStep[];
+  /** After these, the host waits for the program to exit, then sends it SIGTERM. */
+  end: readonly TerminalStep[];
+}
+
+/** A file written before the program starts, by the host, as the lane's user. */
+export interface TerminalSeed {
+  path: string;
+  content: string;
+  mode: number;
+}
+
+/**
+ * Where a program writes its session log, for the host to mirror: a folder, how many folders below
+ * it the log may be, and a pattern its file's name matches (a regular expression's source).
+ */
+export interface TerminalLog {
+  dir: string;
+  depth: number;
+  name: string;
+}
+
+/** A regular expression's source that matches `s` exactly. */
+export const literally = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

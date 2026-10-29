@@ -127,6 +127,7 @@ export async function handle(req: Req, opts: BrokerServerOptions): Promise<unkno
         fence: fence && opts.fence ? [opts.fence, ...fence, "--"] : undefined,
         rssLimitBytes: r.rssLimitBytes,
         spareExe: r.spareExe,
+        spareRoot: r.spareRoot,
         disk: r.disk,
         nproc: nprocFor(r),
         stdin: r.stdin,

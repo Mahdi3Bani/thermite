@@ -7,11 +7,16 @@ ARG BASE_IMAGE=${NODE_IMAGE}
 FROM ${NODE_IMAGE} AS build
 WORKDIR /src
 COPY package.json package-lock.json tsconfig.json tsconfig.build.json ./
-# npm ci runs it after the install: it patches Pi's streaming tool-call parse (goal 140).
+# It patches Pi's streaming tool-call parse after the install (goal 140).
 COPY scripts/patch-pi-ai.mjs ./scripts/
-RUN npm ci --no-fund --no-audit
+# No package's install script runs here: this stage has no compiler for node-pty's native part,
+# which the final stage builds (below), and no other package Thermite runs needs its own.
+RUN npm ci --no-fund --no-audit --ignore-scripts && node scripts/patch-pi-ai.mjs
 COPY src ./src
-RUN npm run build && npm prune --omit=dev --no-fund --no-audit
+# node-pty's prebuilt modules, for other systems, and its Windows parts stay out of what the final
+# stage copies, which builds its own module.
+RUN npm run build && npm prune --omit=dev --no-fund --no-audit \
+ && rm -rf node_modules/node-pty/prebuilds node_modules/node-pty/third_party node_modules/node-pty/deps
 
 FROM ${NODE_IMAGE} AS node
 
@@ -74,7 +79,8 @@ COPY --from=node /usr/local/bin/node /usr/local/bin/node
 # git for the mirror; a C/C++ toolchain, CMake, Ninja and ccache for kit and lane builds of real
 # projects (an inference engine, for example); Python 3 with numpy for kit run and check scripts.
 # The broker needs prlimit (process limits), setpriv (a dedicated development card's groups) and
-# taskset (timed runs on the judge card's local CPUs). No bubblewrap: the agents and the advisors
+# taskset (timed runs on the judge card's local CPUs); the terminal host needs setsid (an agent's
+# program on its own terminal, goal 169). No bubblewrap: the agents and the advisors
 # run Claude Code with its own sandbox off (src/agents/programs/claude-code/index.ts says why).
 # The base's system packages are upgraded first, so each build takes the distribution's fixes
 # (goal 125).
@@ -83,7 +89,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends git tini ca-certificates gcc g++ libc6-dev make \
       cmake ninja-build ccache python3 python3-numpy \
  && (command -v setpriv >/dev/null || apt-get install -y --no-install-recommends setpriv) \
- && command -v setpriv && command -v prlimit && command -v taskset \
+ && command -v setpriv && command -v prlimit && command -v taskset && command -v setsid \
  && rm -rf /var/lib/apt/lists/*
 # The GPU fence: the broker starts every role's command in a Landlock rule set that leaves out
 # the GPU device nodes the role may not open (containers/harness/devfence.c).
@@ -127,6 +133,21 @@ RUN mkdir -p /outbox && chown 10010:10001 /outbox && chmod 2750 /outbox
 WORKDIR /opt/thermite
 COPY --from=build /src/package.json ./
 COPY --from=build /src/node_modules ./node_modules
+# node-pty's native part, for the terminal host's pseudo-terminals (goal 169): built here, where
+# the compiler, make and Python are, with node-gyp and the Node.js headers of the Node stage
+# mounted for this step only, so nothing is downloaded and neither stays in the image. Only the
+# built module is kept: node-pty's sources and the build's own files, and node-addon-api's
+# headers, which only the build reads, are removed.
+RUN --mount=type=bind,from=node,source=/usr/local,target=/mnt/node \
+    cd node_modules/node-pty \
+ && node /mnt/node/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js rebuild \
+      --nodedir=/mnt/node --devdir=/tmp/node-gyp \
+ && install -D -m 0755 build/Release/pty.node /tmp/pty.node \
+ && rm -rf build node-addon-api scripts src binding.gyp /tmp/node-gyp \
+ && install -D -m 0755 /tmp/pty.node build/Release/pty.node \
+ && rm -f /tmp/pty.node \
+ && rm -rf ../node-addon-api \
+ && node -e "if (typeof require('/opt/thermite/node_modules/node-pty').native.open !== 'function') process.exit(1)"
 COPY --from=build /src/dist ./dist
 COPY --chmod=0755 containers/thermite /usr/local/bin/thermite
 # The OpenCode harness: its binary, and Thermite's tools for an agent's own shell.

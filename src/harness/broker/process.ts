@@ -39,6 +39,12 @@ export interface SupervisedRun {
    * breach ends the run.
    */
   spareExe?: string | undefined;
+  /**
+   * The run's own first process is spared too (the terminal host, goal 169, which holds the
+   * agent's program: it runs as `node`, as the agent's commands may, so its program's name can't
+   * tell it apart). The kernel gives it its pid, which no other process can take.
+   */
+  spareRoot?: boolean | undefined;
   /** Kill when this directory grows beyond this many bytes or entries (inodes) on disk. */
   disk?: { path: string; limitBytes: number; maxEntries?: number | undefined } | undefined;
   /** RLIMIT_NPROC for the role (only with uid; needs prlimit). */
@@ -413,7 +419,9 @@ export function runSupervised(spec: SupervisedRun): Promise<SupervisedResult> {
       spec.timeoutMs !== undefined ? setTimeout(() => kill("timeout"), spec.timeoutMs) : undefined;
     let ticks = 0;
     let memoryKills = 0;
-    // The agent's program, as it may appear on a command line: as given, and its real path.
+    // The agent's program, as it may appear on a command line: as given, and its real path; and
+    // the run's root, when it holds the program.
+    const spareRoot = spec.spareRoot ? child.pid : undefined;
     const spareNames = new Set<string>();
     if (spec.spareExe) {
       spareNames.add(spec.spareExe);
@@ -426,8 +434,10 @@ export function runSupervised(spec: SupervisedRun): Promise<SupervisedResult> {
     // Over the memory limit with an agent to spare: kill its commands, keep it. Only when the
     // spared processes alone are over (or none can be told apart) does the run end.
     const overMemory = (procs: Proc[]) => {
-      if (spareNames.size && existsSync("/proc/self/cmdline")) {
-        const spared = procs.filter((p) => spareNames.has(procArgv0(p.pid) ?? ""));
+      if ((spareNames.size || spareRoot !== undefined) && existsSync("/proc/self/cmdline")) {
+        const spared = procs.filter(
+          (p) => p.pid === spareRoot || spareNames.has(procArgv0(p.pid) ?? ""),
+        );
         const others = procs.filter((p) => !spared.includes(p));
         const sparedRss = spared.reduce((s, p) => s + p.rssBytes, 0);
         if (spared.length && others.length && sparedRss <= (spec.rssLimitBytes ?? 0)) {

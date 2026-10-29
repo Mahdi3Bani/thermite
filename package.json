@@ -40,8 +40,13 @@
     "@nats-io/jetstream": "3.4.0",
     "@nats-io/nkeys": "2.0.3",
     "@nats-io/transport-node": "3.4.0",
+    "@xterm/addon-serialize": "0.14.0",
+    "@xterm/headless": "6.0.0",
     "hono": "4.13.13",
     "zod": "4.6.7"
+  },
+  "optionalDependencies": {
+    "node-pty": "1.1.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
