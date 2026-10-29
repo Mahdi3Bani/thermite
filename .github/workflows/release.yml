@@ -15,6 +15,9 @@
 # out and makes no release: the bundle is kept as the run's artifact. (A run by hand needs this
 # file on the default branch; a push does not.)
 #
+# No run uses runners until a maintainer approves it, as in ci.yml: the first job, approval,
+# deploys to the repository's environment ci, and every other job waits for it.
+#
 # The images never carry Claude Code: no build here sets CLAUDE_CODE_VERSION. The harness images
 # carry OpenCode and the Codex CLI, both open source, at their Containerfile's pinned versions.
 name: release
@@ -61,8 +64,17 @@ env:
   RIG_DESCRIPTION: "Thermite's one-container rig for RunPod pods (CUDA 12.6): a rig's harness and supervisor in one container."
 
 jobs:
+  # Waits for a reviewer of the environment ci to approve the run; one approval starts every job.
+  approval:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: ci
+    steps:
+      - run: echo "Approved; the run's jobs start."
+
   version:
     name: version
+    needs: approval
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:

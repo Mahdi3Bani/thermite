@@ -6,7 +6,11 @@
 # campaign assigned through control, a candidate judged), the one-container rig image's
 # acceptance, rigs on RunPod against the fake RunPod API, and the quick start as a tester follows
 # it. On a version tag, and when run by hand, every job runs. The heavy jobs wait only for the
-# short job that decides which of them run (heavy); the other jobs start at once.
+# short job that decides which of them run (heavy); the other jobs start once the run is approved.
+#
+# No run uses runners until a maintainer approves it (the owner, 2026-10-29: "prs require approval
+# before running them"): the first job, approval, deploys to the repository's environment ci,
+# whose required reviewers approve it, and every other job waits for it.
 name: ci
 
 on:
@@ -26,8 +30,17 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Waits for a reviewer of the environment ci to approve the run; one approval starts every job.
+  approval:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: ci
+    steps:
+      - run: echo "Approved; the run's jobs start."
+
   checks:
     name: checks (Node ${{ matrix.node }})
+    needs: approval
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
@@ -54,6 +67,7 @@ jobs:
   # machine with nothing else on it.
   judge-tests:
     name: judge tests (Node ${{ matrix.node }})
+    needs: approval
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
@@ -71,6 +85,7 @@ jobs:
 
   docs:
     name: docs site
+    needs: approval
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -93,6 +108,7 @@ jobs:
   # for the made-up keys in .gitleaks.toml. Findings are printed with their values redacted.
   secrets:
     name: secret scan
+    needs: approval
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
@@ -175,6 +191,7 @@ jobs:
   # file's path) the change touches.
   heavy:
     name: heavy checks, needed?
+    needs: approval
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
