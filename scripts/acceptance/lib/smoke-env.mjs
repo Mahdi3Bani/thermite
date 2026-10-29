@@ -60,7 +60,8 @@ export function natsService() {
     lines.push(line.slice(8));
   }
   if (!image || !lines.length) throw new Error("compose.yaml has no nats service to read");
-  return { image, command: ["sh", "-c", lines.join("\n")] };
+  // Compose writes a literal $ as $$; run as it is, the shell would read $$ as its own pid.
+  return { image, command: ["sh", "-c", lines.join("\n").replaceAll("$$", "$")] };
 }
 
 export async function until(what, fn, timeoutMs = 180_000, everyMs = 1000) {
