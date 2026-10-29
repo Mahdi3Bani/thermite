@@ -90,6 +90,12 @@ There is no single Logs page yet ([goal 027](https://github.com/iammrduncan/ther
 - **Why:** control's store holds records of events the bus's `EVENTS` stream no longer has: the bus's volume was restored from a backup older than control's store, or removed. Going on would skip the stream's next events.
 - **Do:** restore the stream from a backup at least as new as control's store, or the store from one no newer than the stream, then start control again.
 
+### Control does not answer for a while after it starts
+
+- **You see:** right after control starts, its port refuses connections, and control's log has `control's records go on from the events stream's place` but no `listening` yet.
+- **Why:** control builds its pages' views from its message bus's `EVENTS` stream before it serves them: about a second for 100,000 events, longer as the stream grows. While the bus is away, it waits for it, and its log says `events not applied from the bus; trying again`.
+- **Do:** wait for `control's views built from the events stream`, then `listening`, in its log. If it waits for the bus, bring the bus's server back: [Run the message bus](message-bus.md).
+
 ### The port is already in use
 
 - **You see:** `docker compose up` fails because port 8800 is taken. `thermite doctor` says `Port 8800 is in use by another program.` before you start.

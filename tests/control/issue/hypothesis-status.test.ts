@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { ADMIN, controlOnly } from "../../helpers/control-stack.ts";
+import { applied } from "../../helpers/control-store.ts";
 
 /**
  * Goal 117: control signs a hypothesis_status only for a research run. A run its rig reports as
@@ -28,6 +29,7 @@ describe("hypothesis_status at control (goal 117)", () => {
       events: [created(1, "r-1", "research"), created(2, "h-1", "hill_climb")],
       summary: {},
     });
+    await applied(store);
     const post = (run: string) =>
       control.request("/v1/commands", {
         method: "POST",

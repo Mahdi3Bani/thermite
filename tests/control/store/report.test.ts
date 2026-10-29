@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ControlStore } from "../../../src/control/store/index.ts";
+import { controlStore, heldEvents } from "../../helpers/control-store.ts";
 
-test("a reported event's run is kept and read back; an event that names none has none (goal 170)", () => {
-  const store = new ControlStore(":memory:");
+test("a reported event's run is kept and read back; an event that names none has none (goal 170)", async () => {
+  const store = controlStore();
   const at = new Date().toISOString();
   const event = (id: number, kind: string, subject: string | null, run?: string | null) => ({
     id,
@@ -26,9 +26,7 @@ test("a reported event's run is kept and read back; an event that names none has
     ],
     summary: {},
   });
-  const runs = (
-    store.rigEvents.after("rig-a", 0, 10) as { kind: string; run: string | null }[]
-  ).map((e) => [e.kind, e.run]);
+  const runs = (await heldEvents(store, "rig-a")).map((e) => [e.kind, e.run]);
   assert.deepEqual(runs, [
     ["verdict", "r-1"],
     ["command", null],

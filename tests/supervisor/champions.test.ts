@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { championsIn, uploadChampions } from "../../src/supervisor/champions.ts";
 import { ADMIN, controlStack, RIG_TOKEN, signIn } from "../helpers/control-stack.ts";
+import { applied } from "../helpers/control-store.ts";
 
 const git = (cwd: string, ...args: string[]) =>
   execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], {
@@ -82,6 +83,7 @@ describe("champion patches reach control", () => {
         },
       ],
     } as never);
+    await applied(store);
     assert.deepEqual(await uploadChampions(cfg, queue), []);
     // Bytes that are not the published patch are refused.
     const wrong = await control.request("/v1/rigs/rig-a/champions/r-1/2/patch", {
@@ -152,6 +154,7 @@ describe("champion patches reach control", () => {
         },
       ],
     } as never);
+    await applied(store);
     const sent = await control.request("/v1/rigs/rig-a/champions/r-1/2/patch", {
       method: "POST",
       headers: { authorization: `Bearer ${RIG_TOKEN}` },

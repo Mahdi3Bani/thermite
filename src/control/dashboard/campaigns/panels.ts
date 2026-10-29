@@ -16,7 +16,13 @@ import { ago, esc, hardwareLine, icon } from "../../ui/components/index.ts";
 import { pastSection } from "../../ui/knowledge.ts";
 import { campaignHref } from "../../ui/urls.ts";
 import { earlierWords } from "../../ui/words/index.ts";
-import { campaignModes, campaignViews, podStopped, type RigView } from "../../views/index.ts";
+import {
+  campaignModes,
+  campaignViews,
+  podStopped,
+  type RigView,
+  type RunOnRig,
+} from "../../views/index.ts";
 import type { Ctx, Dashboard } from "../context.ts";
 import { modelPrefix } from "../settings/shared.ts";
 import { campaignHelpers, copiedBy } from "./shared.ts";
@@ -35,7 +41,7 @@ export interface CopyTry {
  * lines and actions beside them.
  */
 export function campaignPanels(dash: Dashboard) {
-  const { csrf, mcpServers, opts, parts, store } = dash;
+  const { csrf, mcpServers, opts, store } = dash;
   const { pastResults } = campaignHelpers(dash);
 
   /** Rigs for the Start a run panel: hardware, whether the campaign's kit fits, busy, the model. */
@@ -104,7 +110,14 @@ export function campaignPanels(dash: Dashboard) {
       };
     });
   };
-  const startPanel = (c: Ctx, campaign: string, vs: RigView[], open: boolean) => {
+  /** The Start a run panel; `runs`, every run of the campaign, earlier ones too (goal 170). */
+  const startPanel = (
+    c: Ctx,
+    campaign: string,
+    vs: RigView[],
+    open: boolean,
+    runs: readonly RunOnRig[],
+  ) => {
     const from = startFrom(campaign);
     // An archived campaign starts no run (goal 077): its page offers Unarchive instead.
     if (!from || store.archive.get(campaign)) return "";
@@ -134,8 +147,7 @@ export function campaignPanels(dash: Dashboard) {
         })),
       from,
       // Every run of the campaign, earlier ones too (goal 170): their queues are in control's records.
-      copyFrom: parts
-        .campaignRuns(campaign)
+      copyFrom: runs
         .map((x) => {
           const up = x.run.queue.filter((q) => q.state === "queued").length;
           const ideas = x.run.queue.filter((q) => q.state === "proposed").length;

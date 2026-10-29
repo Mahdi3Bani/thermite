@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { controlOnly, mcpClient, signIn } from "../../helpers/control-stack.ts";
+import { applied } from "../../helpers/control-store.ts";
 
 /**
  * Goal 115 on control's side, from a rig's events: a hill climb that waits for the judge's
@@ -21,7 +22,9 @@ async function control() {
     return JSON.parse(r.content[0]?.text ?? "null");
   };
   let id = 0;
-  const ingest = (events: { kind: string; subject: string; body: Record<string, unknown> }[]) =>
+  const ingest = async (
+    events: { kind: string; subject: string; body: Record<string, unknown> }[],
+  ) => {
     store.rigEvents.ingest({
       rig: "rig-a",
       ledger_id: "ledger-a",
@@ -35,6 +38,8 @@ async function control() {
       })),
       summary: {},
     });
+    await applied(store);
+  };
   return { page, rest, mcp, ingest };
 }
 
@@ -104,7 +109,7 @@ const RUN = "/ui/campaigns/speed/runs/s-1";
 describe("a hill climb's baseline on control (goal 115)", () => {
   test("waiting: the status line and Overview say the judge measures the starting point first", async () => {
     const c = await control();
-    c.ingest([created, queued]);
+    await c.ingest([created, queued]);
     const html = await c.page(RUN);
     assert.match(
       html,
@@ -122,7 +127,7 @@ describe("a hill climb's baseline on control (goal 115)", () => {
 
   test("setup: the reasons on the Overview and in History; a setup round; get_run's setup", async () => {
     const c = await control();
-    c.ingest([
+    await c.ingest([
       created,
       queued,
       failed,
@@ -166,7 +171,7 @@ describe("a hill climb's baseline on control (goal 115)", () => {
 
   test("measured: Where the run started shows each case's main metric and guards with the noise; History and get_run have it", async () => {
     const c = await control();
-    c.ingest([
+    await c.ingest([
       created,
       queued,
       failed,

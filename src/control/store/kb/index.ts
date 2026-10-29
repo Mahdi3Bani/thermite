@@ -23,9 +23,6 @@ import { KB_SCHEMA } from "./schema.ts";
  */
 
 type Row = Record<string, unknown>;
-/** Events read per transaction while reading again. */
-const PAGE = 2000;
-
 /**
  * The reading's version, and the kinds each reading read anew: a store built by an earlier
  * reading reads those events once more, so the runs before an upgrade have them too. Reading 2
@@ -65,7 +62,6 @@ export class KnowledgeBase {
   constructor(db: DatabaseSync) {
     this.db = db;
     db.exec(KB_SCHEMA);
-    this.readAgain();
   }
 
   /** Runs fn in one transaction: all of it is kept, or none of it. */
@@ -95,17 +91,19 @@ export class KnowledgeBase {
 
   /**
    * One event of a rig's ledger into the folder of its run's campaign (core/kb-index.ts reads
-   * it). The apply of the events
-   * stream hands each event here, in the stream's order, so each ledger's events come while it is
-   * the rig's: a rig's report from a ledger it has left is refused.
+   * it). The apply of the events stream hands each event here, in the stream's order, so each
+   * ledger's events come while it is the rig's: a rig's report from a ledger it has left is
+   * refused. `again`: an event read again after an upgrade (kindsToReadAgain), whose run, filed
+   * already, stays in its folder.
    */
   index(
     src: { rig: string; ledger: string },
     e: { at: string; actor: string; kind: string; subject: string | null; body: unknown },
+    o: { again?: boolean } = {},
   ): void {
     if (!e.body || typeof e.body !== "object") return;
     const { at, actor, kind } = e;
-    indexEvent(this.target(src), {
+    indexEvent(this.target(src, { keepRuns: o.again === true }), {
       at,
       actor,
       kind,
@@ -115,61 +113,36 @@ export class KnowledgeBase {
   }
 
   /**
-   * Once, after an upgrade: the events indexed from the table before READING read again for the
-   * kinds of item added since, from each rig's current ledger. A run keeps the folder it was filed
-   * in. Nothing is written when the store is already at READING. Events the apply indexed are not
-   * read again: a reading after 3 must read them from the events stream.
+   * The kinds of event the knowledge base reads again, once, after an upgrade of its reading: those
+   * whose items a reading after the store's was the first to make, under every name each had (goal
+   * 162), so the runs before the upgrade have them too. None once the store is at READING. Control
+   * reads them from the events stream as it starts (control/events), indexes each `again`, and
+   * then calls readAgainDone.
    */
-  private readAgain(): void {
-    const at = (
-      this.db.prepare("select value from kb_meta where key = 'reading'").get() as
-        | { value: string }
-        | undefined
-    )?.value;
-    if (at === READING) return;
-    const through = Number(
-      (this.db.prepare("select seq from kb_cursor where id = 1").get() as { seq: number }).seq,
-    );
-    const anew = Object.entries(READ_ANEW)
+  kindsToReadAgain(): string[] {
+    const at = this.reading();
+    if (at === READING) return [];
+    return Object.entries(READ_ANEW)
       .flatMap(([v, k]) => (v > (at ?? "1") ? k : []))
       .flatMap((k) => eventKinds(k));
-    const kinds = anew.map(() => "?").join(", ");
-    for (let after = 0; ; ) {
-      const rows = this.db
-        .prepare(
-          `select e.seq, e.rig, e.ledger_id, e.at, e.actor, e.kind, e.subject, e.body from rig_event e
-           join rig r on r.id = e.rig and r.ledger_id = e.ledger_id
-           where e.seq > ? and e.seq <= ? and e.kind in (${kinds}) order by e.seq limit ?`,
-        )
-        .all(after, through, ...anew, PAGE) as Row[];
-      this.tx(() => {
-        for (const r of rows) {
-          let body: unknown;
-          try {
-            body = JSON.parse(str(r.body));
-          } catch {
-            // a body control stored as JSON always parses; anything else is skipped
-            continue;
-          }
-          if (!body || typeof body !== "object") continue;
-          const src = { rig: str(r.rig), ledger: str(r.ledger_id) };
-          indexEvent(this.target(src, { keepRuns: true }), {
-            at: str(r.at),
-            actor: str(r.actor),
-            kind: str(r.kind),
-            subject: str(r.subject),
-            body: body as Row,
-          });
-        }
-      });
-      if (rows.length < PAGE) break;
-      after = Number(rows.at(-1)?.seq ?? through);
-    }
+  }
+
+  /** The events of kindsToReadAgain read again: the store is at READING. */
+  readAgainDone(): void {
     this.db
       .prepare(
         "insert into kb_meta (key, value) values ('reading', ?) on conflict(key) do update set value = excluded.value",
       )
       .run(READING);
+  }
+
+  /** The reading the store's items were made by; none before its first. */
+  private reading(): string | undefined {
+    return (
+      this.db.prepare("select value from kb_meta where key = 'reading'").get() as
+        | { value: string }
+        | undefined
+    )?.value;
   }
 
   /** The campaign of the newest assign_campaign control issued for this run on this rig. */

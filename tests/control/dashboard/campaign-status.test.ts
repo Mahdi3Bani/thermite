@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { controlOnly, signIn } from "../../helpers/control-stack.ts";
+import { applied } from "../../helpers/control-store.ts";
 
 /**
  * Goal 099 on control's side, from a rig's events: a goal run that met its goals reads Completed,
@@ -15,7 +16,9 @@ async function control() {
   let id = 0;
   // Each event a minute after the one before, so the runs' starts have an order.
   const t0 = Date.now() - 24 * 3600_000;
-  const ingest = (events: { kind: string; subject: string; body: Record<string, unknown> }[]) =>
+  const ingest = async (
+    events: { kind: string; subject: string; body: Record<string, unknown> }[],
+  ) => {
     store.rigEvents.ingest({
       rig: "rig-a",
       ledger_id: "ledger-a",
@@ -29,6 +32,8 @@ async function control() {
       })),
       summary: {},
     });
+    await applied(store);
+  };
   return { page, rest, ingest };
 }
 
@@ -75,7 +80,7 @@ const navWord = (html: string, campaign: string) =>
 describe("status words of runs and campaigns, and judge-only runs (goal 099)", () => {
   test("a goal run that met its goals reads Completed; its campaign too, over an older paused run", async () => {
     const c = await control();
-    c.ingest([
+    await c.ingest([
       created("q-1", "quality"),
       status("q-1", "running"),
       status("q-1", "paused", "replaced by q-2"),
@@ -129,14 +134,18 @@ describe("status words of runs and campaigns, and judge-only runs (goal 099)", (
       ["w-1", false],
     ]);
     // A newer paused run makes the campaign Paused again, and lists it under Active and paused.
-    c.ingest([created("q-3", "quality"), status("q-3", "running"), status("q-3", "paused", "x")]);
+    await c.ingest([
+      created("q-3", "quality"),
+      status("q-3", "running"),
+      status("q-3", "paused", "x"),
+    ]);
     assert.deepEqual(navWord(await c.page("/ui/campaigns"), "quality"), ["muted", "Paused"]);
     assert.match(await c.page("/ui/campaigns"), /<b>quality<\/b>/);
   });
 
   test("a judge-only run says so on its page, and its queue says how to carry the experiments", async () => {
     const c = await control();
-    c.ingest([
+    await c.ingest([
       created("j-1", "quality", { agents: false }),
       status("j-1", "running"),
       {
@@ -167,8 +176,8 @@ describe("status words of runs and campaigns, and judge-only runs (goal 099)", (
     );
 
     // A run with workers says none of it.
-    c.ingest([created("w-1", "with-workers"), status("w-1", "running")]);
-    c.ingest([
+    await c.ingest([created("w-1", "with-workers"), status("w-1", "running")]);
+    await c.ingest([
       {
         kind: "experiment_added",
         subject: "w-1",

@@ -1,15 +1,19 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { ControlStore } from "../../../src/control/store/index.ts";
+import { BUS_READ_MAX } from "../../../src/common/bus.ts";
+import type { ControlStore } from "../../../src/control/store/index.ts";
+import { RigFold } from "../../../src/control/views/fold/index.ts";
 import {
   campaignRuns,
   EARLIER_FOLDS,
-  FoldCache,
   findRun,
   keepFolds,
   rigView,
+  streamEvent,
 } from "../../../src/control/views/index.ts";
+import { EVENT_STREAM } from "../../../src/core/link/events.ts";
 import { controlOnly } from "../../helpers/control-stack.ts";
+import { applied, busOf, controlStore, freshFolds } from "../../helpers/control-store.ts";
 import { uniforms } from "../../helpers/property.ts";
 import {
   goalEvents,
@@ -21,17 +25,24 @@ import {
 } from "../../helpers/view-events.ts";
 
 /**
- * The folds control keeps (goal 168). With events ingested between reads, a view read through the
- * kept folds is the view of a fresh fold of the same events; a rig's new ledger starts a new
- * fold and a retired rig loses its fold; a failed read leaves no half-done fold; and a view is the
- * caller's own: what it changes changes neither the fold nor another caller's view, and what the
- * fold never changes is frozen.
+ * The folds control keeps (goal 168), fed by the apply of the events stream. With events ingested
+ * between reads, a view read through the kept folds is the view of folds made fresh from the
+ * stream in one pass; a read folds nothing more and asks the store for no event; a rig's new
+ * ledger starts a new fold and a retired rig loses its fold; a read of the stream that fails
+ * changes no fold; a fold that fails says so; and a view is the caller's own: what it changes
+ * changes neither the fold nor another caller's view, and what the fold never changes is frozen.
  */
 
 const OPTS = { staleAfterMs: 600_000, now: VIEW_NOW };
 
-/** A view of a fresh fold of the store's events now. */
-const fresh = (store: ControlStore, rig: string) => new FoldCache(store).view(rig, OPTS);
+/** A view of folds made fresh from the store's events stream now, in one pass. */
+const fresh = async (store: ControlStore, rig: string) => (await freshFolds(store)).view(rig, OPTS);
+
+/** A rig's report, as report() makes it, once the apply has handed it to the folds. */
+async function reported(...args: Parameters<typeof report>): Promise<void> {
+  report(...args);
+  await applied(args[0]);
+}
 
 /** A list's first entry, which the test needs. */
 function first<T>(xs: readonly T[]): T {
@@ -40,36 +51,37 @@ function first<T>(xs: readonly T[]): T {
   return x;
 }
 
-/** Each event the store holds, in the order it took them, as its rig sent it. */
-function sent(store: ControlStore) {
-  return store.db
-    .prepare(
-      "select rig, ledger_id, event_id as id, at, actor, kind, subject, body from rig_event order by seq",
-    )
-    .all()
-    .map((r) => ({
-      rig: String(r.rig),
-      ledger: String(r.ledger_id),
-      event: {
-        id: Number(r.id),
-        at: String(r.at),
-        actor: String(r.actor),
-        kind: String(r.kind),
-        subject: r.subject === null ? null : String(r.subject),
-        body: JSON.parse(String(r.body)) as unknown,
-      },
-    }));
+/** Each event the store's events stream holds, in its order, as its rig sent it. */
+async function sent(store: ControlStore) {
+  await applied(store);
+  const { bus } = busOf(store);
+  const out = [];
+  for (let from = 1; ; ) {
+    const read = await bus.read(EVENT_STREAM, { from, limit: BUS_READ_MAX });
+    for (const m of read.messages) {
+      const e = streamEvent(m);
+      assert.ok(e);
+      const { id, at, actor, kind, subject, body } = e.read.event;
+      out.push({
+        rig: e.read.rig,
+        ledger: e.read.ledger,
+        event: { id, at, actor, kind, subject, body },
+      });
+    }
+    if (read.done || read.next <= from) return out;
+    from = read.next;
+  }
 }
 
 describe("a kept fold, with events ingested between reads, gives a fresh fold's view", () => {
   for (const set of VIEW_SETS)
-    test(set.name, () => {
-      const source = new ControlStore(":memory:");
+    test(set.name, async () => {
+      const source = controlStore();
       set.fill(source);
       const summaries = new Map(source.reportedRigs.list().map((u) => [u.id, u.summary]));
-      const events = sent(source);
+      const events = await sent(source);
       for (const seed of [1, 2]) {
-        const store = new ControlStore(":memory:");
+        const store = controlStore();
         const folds = keepFolds(store);
         const size = uniforms(seed);
         // The rigs' reports in the order they came, each cut in pieces of random sizes: a read of
@@ -95,10 +107,13 @@ describe("a kept fold, with events ingested between reads, gives a fresh fold's 
             summary: summaries.get(first.rig) ?? {},
           });
           at += n;
+          await applied(store);
+          const made = await freshFolds(store);
           for (const v of folds.views(OPTS))
-            assert.deepStrictEqual(v, fresh(store, v.id), `seed ${seed}, ${v.id} at ${at}`);
+            assert.deepStrictEqual(v, made.view(v.id, OPTS), `seed ${seed}, ${v.id} at ${at}`);
         }
         // The same views as the set's own store gives, from the folds of the same events.
+        await applied(source);
         for (const u of source.reportedRigs.list()) {
           const kept = rigView(store, u.id, OPTS);
           const theirs = rigView(source, u.id, OPTS);
@@ -116,22 +131,22 @@ describe("a kept fold, with events ingested between reads, gives a fresh fold's 
     });
 });
 
-test("a rig's new ledger starts a new fold, and a retired rig loses its fold", () => {
-  const store = new ControlStore(":memory:");
+test("a rig's new ledger starts a new fold, and a retired rig loses its fold", async () => {
+  const store = controlStore();
   const folds = keepFolds(store);
   assert.equal(keepFolds(store), folds, "one set of folds for a store");
   report(store, "rig-a", "ledger-1", hillClimbEvents("r-1"));
-  report(store, "rig-b", "ledger-b", goalEvents("g-1"));
+  await reported(store, "rig-b", "ledger-b", goalEvents("g-1"));
   assert.equal(rigView(store, "rig-a", OPTS)?.runs.length, 2);
   assert.equal(folds.views(OPTS).length, 2);
   // A full reset: the rig reports a new ledger, which starts again at event 1.
-  report(store, "rig-a", "ledger-2", goalEvents("r-1").slice(0, 5));
+  await reported(store, "rig-a", "ledger-2", goalEvents("r-1").slice(0, 5));
   const v = rigView(store, "rig-a", OPTS);
   assert.deepEqual(
     v?.runs.map((r) => [r.id, r.mode, r.attempts.length]),
     [["r-1", "goal", 0]],
   );
-  assert.deepStrictEqual(v, fresh(store, "rig-a"));
+  assert.deepStrictEqual(v, await fresh(store, "rig-a"));
   assert.deepEqual(
     folds.held().map((h) => [h.rig, h.ledger]),
     [
@@ -140,21 +155,43 @@ test("a rig's new ledger starts a new fold, and a retired rig loses its fold", (
     ],
   );
   // The other rig's fold is its own: unchanged by rig-a's events.
-  assert.deepStrictEqual(rigView(store, "rig-b", OPTS), fresh(store, "rig-b"));
+  assert.deepStrictEqual(rigView(store, "rig-b", OPTS), await fresh(store, "rig-b"));
   store.retired.add("rig-b", "owner:ui");
   assert.equal(rigView(store, "rig-b", OPTS), undefined);
   assert.deepEqual(
     folds.held().map((h) => h.rig),
     ["rig-a"],
   );
-  // Brought back, its fold is built again from its events.
+  // Brought back, its fold is its own again, as of its events.
+  await folds.restore("rig-b");
   store.retired.bringBack("rig-b", "owner:ui");
-  assert.deepStrictEqual(rigView(store, "rig-b", OPTS), fresh(store, "rig-b"));
+  assert.deepStrictEqual(rigView(store, "rig-b", OPTS), await fresh(store, "rig-b"));
+});
+
+test("a rig's new ledger whose events are still on their way has an empty view, filled as they come", async () => {
+  const store = controlStore();
+  const { bus } = busOf(store);
+  await reported(store, "rig-a", "ledger-1", hillClimbEvents("r-1"));
+  // The bus holds the next page's events: the store's row has the new ledger before the folds.
+  let release = () => {};
+  bus.hold = new Promise<void>((r) => {
+    release = r;
+  });
+  report(store, "rig-a", "ledger-2", goalEvents("r-1").slice(0, 5));
+  assert.deepEqual(rigView(store, "rig-a", OPTS)?.runs, []);
+  release();
+  bus.hold = undefined;
+  await applied(store);
+  assert.deepEqual(
+    rigView(store, "rig-a", OPTS)?.runs.map((r) => r.id),
+    ["r-1"],
+  );
+  assert.deepStrictEqual(rigView(store, "rig-a", OPTS), await fresh(store, "rig-a"));
 });
 
 test("control reads every rig's view through the folds it keeps for its store", async () => {
   const { store, api } = controlOnly();
-  report(store, "rig-a", "ledger-a", hillClimbEvents("r-1").slice(0, 30));
+  await reported(store, "rig-a", "ledger-a", hillClimbEvents("r-1").slice(0, 30));
   const first = (await (await api("GET", "/v1/rigs/rig-a/view")).json()) as { runs: unknown[] };
   assert.equal(first.runs.length, 2);
   assert.deepEqual(
@@ -163,13 +200,42 @@ test("control reads every rig's view through the folds it keeps for its store", 
       .map((h) => [h.rig, h.ledger, h.seq]),
     [["rig-a", "ledger-a", 30]],
   );
-  report(store, "rig-a", "ledger-a", hillClimbEvents("r-1").slice(30), {}, 30);
+  await reported(store, "rig-a", "ledger-a", hillClimbEvents("r-1").slice(30), {}, 30);
   const again = await (await api("GET", "/v1/rigs/rig-a/view")).json();
-  assert.deepStrictEqual(again, JSON.parse(JSON.stringify(fresh(store, "rig-a"))));
+  assert.deepStrictEqual(again, JSON.parse(JSON.stringify(await fresh(store, "rig-a"))));
 });
 
-test("a tail longer than a page of events is folded whole", () => {
-  const store = new ControlStore(":memory:");
+test("a read of a view folds nothing more and asks the store for no event", async () => {
+  const store = controlStore();
+  const folds = keepFolds(store);
+  await reported(store, "rig-h", "ledger-h", hillClimbEvents());
+  const before = structuredClone(folds.held());
+  const runs = rigView(store, "rig-h", OPTS)?.runs.length;
+  assert.ok(runs);
+  // The fold's apply and the store's events would throw: a read touches neither.
+  const fold = RigFold.prototype.apply;
+  const prepare = store.db.prepare.bind(store.db);
+  RigFold.prototype.apply = () => {
+    throw new Error("a read folded an event");
+  };
+  store.db.prepare = (sql: string) => {
+    if (/rig_event/.test(sql)) throw new Error(`a read asked the store for events: ${sql}`);
+    return prepare(sql);
+  };
+  try {
+    for (let i = 0; i < 3; i++) {
+      assert.equal(rigView(store, "rig-h", OPTS)?.runs.length, runs);
+      assert.equal(folds.views(OPTS).length, 1);
+    }
+  } finally {
+    RigFold.prototype.apply = fold;
+    store.db.prepare = prepare;
+  }
+  assert.deepEqual(folds.held(), before);
+});
+
+test("a tail longer than a page of events is folded whole", async () => {
+  const store = controlStore();
   keepFolds(store);
   const notes = (from: number, n: number): SetEvent[] =>
     Array.from({ length: n }, (_, i) => ({
@@ -177,46 +243,83 @@ test("a tail longer than a page of events is folded whole", () => {
       subject: "r-1",
       body: { id: from + i, by: "lane-1", kind: "observation", text: `note ${from + i}` },
     }));
-  report(store, "rig-a", "l", [
+  await reported(store, "rig-a", "l", [
     { kind: "run_created", subject: "r-1", body: { campaign: "c", mode: "goal" } },
   ]);
   assert.equal(rigView(store, "rig-a", OPTS)?.runs[0]?.journal.length, 0);
-  report(store, "rig-a", "l", notes(1, 12_000), {}, 1);
+  await reported(store, "rig-a", "l", notes(1, 12_000), {}, 1);
   const v = rigView(store, "rig-a", OPTS);
   assert.equal(v?.runs[0]?.journal.length, 12_000);
-  assert.deepStrictEqual(v, fresh(store, "rig-a"));
+  assert.deepStrictEqual(v, await fresh(store, "rig-a"));
 });
 
-test("a read that fails leaves no half-done fold: the next read builds it again", () => {
-  const store = new ControlStore(":memory:");
-  const folds = keepFolds(store);
+test("a read of the stream that fails changes no fold: the apply reads it again, and the folds catch up", async () => {
+  const store = controlStore();
+  const { bus, apply } = busOf(store);
   const events = hillClimbEvents();
-  report(store, "rig-h", "ledger-h", events.slice(0, 40));
+  await reported(store, "rig-h", "ledger-h", events.slice(0, 40));
   rigView(store, "rig-h", OPTS);
-  report(store, "rig-h", "ledger-h", events.slice(40), {}, 40);
-  // The store fails while the fold reads the new events.
-  const read = store.rigEvents.after.bind(store.rigEvents);
-  store.rigEvents.after = () => {
-    throw new Error("disk I/O error");
+  // The server fails the apply's next read once.
+  const read = bus.read.bind(bus);
+  let failed = 0;
+  bus.read = async (...a) => {
+    if (failed++ === 0) throw new Error("TimeoutError: no answer from the server");
+    return await read(...a);
   };
-  assert.throws(() => rigView(store, "rig-h", OPTS), /disk I\/O error/);
+  await reported(store, "rig-h", "ledger-h", events.slice(40), {}, 40);
+  bus.read = read;
+  assert.ok(failed > 1, "the apply read again after the failure");
+  assert.equal(apply.waiting, null);
+  assert.deepStrictEqual(rigView(store, "rig-h", OPTS), await fresh(store, "rig-h"));
+});
+
+test("a fold that fails on an event is dropped, its rig's views say why, and its next ledger starts again", async () => {
+  const store = controlStore();
+  const folds = keepFolds(store);
+  await reported(store, "rig-a", "ledger-1", goalEvents("g-1").slice(0, 4));
+  const fold = RigFold.prototype.apply;
+  RigFold.prototype.apply = function (this: RigFold, e) {
+    if (e.kind === "run_status") throw new Error("a handler's mistake");
+    fold.call(this, e);
+  };
+  try {
+    await reported(
+      store,
+      "rig-a",
+      "ledger-1",
+      [{ kind: "run_status", subject: "g-1", body: { status: "paused", reason: "a pause" } }],
+      {},
+      4,
+    );
+  } finally {
+    RigFold.prototype.apply = fold;
+  }
+  assert.throws(
+    () => rigView(store, "rig-a", OPTS),
+    /rig rig-a's view failed on its event 5 \(run_status\): a handler's mistake/,
+  );
   assert.deepEqual(folds.held(), []);
-  store.rigEvents.after = read;
-  assert.deepStrictEqual(rigView(store, "rig-h", OPTS), fresh(store, "rig-h"));
+  // A full reset: the new ledger's fold starts again.
+  await reported(store, "rig-a", "ledger-2", goalEvents("g-2").slice(0, 3));
+  assert.deepEqual(
+    rigView(store, "rig-a", OPTS)?.runs.map((r) => r.id),
+    ["g-2"],
+  );
 });
 
 describe("a view is its caller's own", () => {
-  const filled = () => {
-    const store = new ControlStore(":memory:");
+  const filled = async () => {
+    const store = controlStore();
     keepFolds(store);
     const set = VIEW_SETS.find((s) => s.name === "a hill climb with promotions");
     assert.ok(set);
     set.fill(store);
+    await applied(store);
     return store;
   };
 
-  test("what a caller changes in its view changes neither the fold nor another caller's view", () => {
-    const store = filled();
+  test("what a caller changes in its view changes neither the fold nor another caller's view", async () => {
+    const store = await filled();
     const other = rigView(store, "rig-h", OPTS);
     const before = structuredClone(other);
     const mine = rigView(store, "rig-h", OPTS);
@@ -261,11 +364,11 @@ describe("a view is its caller's own", () => {
     // The other caller's view, the next read and a fresh fold's view are as they were.
     assert.deepStrictEqual(other, before);
     assert.deepStrictEqual(rigView(store, "rig-h", OPTS), before);
-    assert.deepStrictEqual(fresh(store, "rig-h"), before);
+    assert.deepStrictEqual(await fresh(store, "rig-h"), before);
   });
 
-  test("a view a caller holds does not change when the fold takes new events", () => {
-    const store = filled();
+  test("a view a caller holds does not change when the fold takes new events", async () => {
+    const store = await filled();
     const held = rigView(store, "rig-h", OPTS);
     const before = structuredClone(held);
     report(
@@ -283,10 +386,11 @@ describe("a view is its caller's own", () => {
       {},
       hillClimbEvents().length,
     );
+    await applied(store);
     const after = rigView(store, "rig-h", OPTS);
     assert.deepStrictEqual(held, before);
     assert.notDeepStrictEqual(after, before);
-    assert.deepStrictEqual(after, fresh(store, "rig-h"));
+    assert.deepStrictEqual(after, await fresh(store, "rig-h"));
   });
 });
 
@@ -300,26 +404,26 @@ describe("a run is read wherever it ran (goal 170)", () => {
   const ids = (xs: { run: { id: string }; earlier: string | null }[]) =>
     xs.map((x) => [x.run.id, x.earlier]);
 
-  test("from control's run registry: the rig's current ledger, an earlier one after a full reset, a retired rig's", () => {
-    const store = new ControlStore(":memory:");
+  test("from control's run registry: the rig's current ledger, an earlier one after a full reset, a retired rig's", async () => {
+    const store = controlStore();
     const folds = keepFolds(store);
     report(store, "rig-a", "ledger-1", hillClimbEvents("r-1"));
-    report(store, "rig-b", "ledger-b", goalEvents("g-1"));
-    const now = findRun(store, "r-1", OPTS);
+    await reported(store, "rig-b", "ledger-b", goalEvents("g-1"));
+    const now = await findRun(store, "r-1", OPTS);
     assert.ok(now);
     assert.deepEqual([now.rig.id, now.rig.ledger_id, now.earlier], ["rig-a", "ledger-1", null]);
     const before = rigView(store, "rig-a", OPTS)?.runs.find((r) => r.id === "r-1");
     assert.deepStrictEqual(now.run, before);
-    assert.equal(findRun(store, "nope", OPTS), undefined);
+    assert.equal(await findRun(store, "nope", OPTS), undefined);
 
     // A full reset: the rig reports a new ledger. Its view has the new ledger's runs alone; the
     // old run is read from a fold of its own ledger, as it stood.
-    report(store, "rig-a", "ledger-2", later(goalEvents("g-2"), 1));
+    await reported(store, "rig-a", "ledger-2", later(goalEvents("g-2"), 1));
     assert.deepEqual(
       rigView(store, "rig-a", OPTS)?.runs.map((r) => r.id),
       ["g-2"],
     );
-    const reset = findRun(store, "r-1", OPTS);
+    const reset = await findRun(store, "r-1", OPTS);
     assert.ok(reset);
     assert.deepEqual(
       [reset.rig.id, reset.rig.ledger_id, reset.earlier],
@@ -329,46 +433,51 @@ describe("a run is read wherever it ran (goal 170)", () => {
     // No report of the rig is the earlier ledger's: its view has none of the newer one's.
     assert.deepEqual(reset.rig.summary, {});
     assert.deepEqual(folds.heldEarlier(), [{ rig: "rig-a", ledger: "ledger-1" }]);
-    // The rig's own fold is its current ledger's, as before.
+    // Each rig's own fold is its current ledger's, as before: the apply keeps every listed rig's.
     assert.deepEqual(
       folds.held().map((h) => [h.rig, h.ledger]),
-      [["rig-a", "ledger-2"]],
+      [
+        ["rig-a", "ledger-2"],
+        ["rig-b", "ledger-b"],
+      ],
     );
 
     // A retired rig: its runs stay readable, as they stood.
-    const g1 = findRun(store, "g-1", OPTS);
+    const g1 = await findRun(store, "g-1", OPTS);
     store.retired.add("rig-b", "owner:ui");
     assert.equal(rigView(store, "rig-b", OPTS), undefined);
-    const retired = findRun(store, "g-1", OPTS);
+    const retired = await findRun(store, "g-1", OPTS);
     assert.ok(retired && g1);
     assert.deepEqual([retired.rig.id, retired.earlier], ["rig-b", "retired"]);
     assert.deepStrictEqual(retired.run, g1.run);
 
     // A campaign's runs, newest first, wherever they ran; a fresh fold reads the same.
-    assert.deepEqual(ids(campaignRuns(store, "speed", OPTS)), [
+    assert.deepEqual(ids(await campaignRuns(store, "speed", OPTS)), [
       ["r-1", "reset"],
       ["h-0", "reset"],
     ]);
-    assert.deepEqual(ids(campaignRuns(store, "decoder", OPTS)), [
+    assert.deepEqual(ids(await campaignRuns(store, "decoder", OPTS)), [
       ["g-2", null],
       ["g-1", "retired"],
     ]);
-    const fresh = new FoldCache(store);
+    const made = await freshFolds(store);
     assert.deepStrictEqual(
-      fresh.campaignRuns("decoder", OPTS),
-      campaignRuns(store, "decoder", OPTS),
+      await made.campaignRuns("decoder", OPTS),
+      await campaignRuns(store, "decoder", OPTS),
     );
-    assert.deepStrictEqual(fresh.run("r-1", OPTS), reset);
+    assert.deepStrictEqual(await made.run("r-1", OPTS), reset);
   });
 
-  test(`control keeps the folds of the ${EARLIER_FOLDS} earlier ledgers read last; one read before them is built again`, () => {
-    const store = new ControlStore(":memory:");
+  test(`control keeps the folds of the ${EARLIER_FOLDS} earlier ledgers read last; one read before them is built again`, async () => {
+    const store = controlStore();
     const folds = keepFolds(store);
     const n = EARLIER_FOLDS + 2;
     for (let i = 1; i <= n; i++)
       report(store, "rig-a", `ledger-${i}`, later(goalEvents(`g-${i}`).slice(0, 4), i));
+    await applied(store);
     // Each run before the newest ledger's is an earlier one.
-    for (let i = 1; i < n; i++) assert.equal(findRun(store, `g-${i}`, OPTS)?.earlier, "reset");
+    for (let i = 1; i < n; i++)
+      assert.equal((await findRun(store, `g-${i}`, OPTS))?.earlier, "reset");
     const kept = folds.heldEarlier();
     assert.equal(kept.length, EARLIER_FOLDS);
     assert.deepEqual(
@@ -376,8 +485,8 @@ describe("a run is read wherever it ran (goal 170)", () => {
       Array.from({ length: EARLIER_FOLDS }, (_, i) => `ledger-${n - EARLIER_FOLDS + i}`),
     );
     // The first, read longest ago, is built again when it is read, and goes to the end.
-    const first = findRun(store, "g-1", OPTS);
-    assert.deepStrictEqual(first, new FoldCache(store).run("g-1", OPTS));
+    const first = await findRun(store, "g-1", OPTS);
+    assert.deepStrictEqual(first, await (await freshFolds(store)).run("g-1", OPTS));
     assert.equal(folds.heldEarlier().at(-1)?.ledger, "ledger-1");
     assert.equal(folds.heldEarlier().length, EARLIER_FOLDS);
   });

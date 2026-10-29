@@ -81,7 +81,7 @@ export interface ToolContext {
   /** A rig's view, or an error that names it. */
   view: (rig: string) => RigView;
   /** A run wherever it ran (goal 170), with its rig's view, or an error that names it. */
-  run: (run: string) => RunOnRig;
+  run: (run: string) => Promise<RunOnRig>;
 }
 
 export function toolContext(
@@ -121,8 +121,8 @@ export function toolContext(
     if (!v) throw new Error(`no rig ${rig}`);
     return v;
   };
-  const run = (id: string) => {
-    const x = findRun(store, id, viewOpts);
+  const run = async (id: string) => {
+    const x = await findRun(store, id, viewOpts);
     if (!x) throw new Error(`no run ${id}`);
     return x;
   };

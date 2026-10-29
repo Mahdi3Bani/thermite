@@ -138,7 +138,7 @@ describe("the owner's queue commands", () => {
     // The run is created before its queue, in one step.
     const kinds = s.events().map((e) => e.kind);
     assert.ok(kinds.indexOf("run_created") < kinds.indexOf("experiment_added"));
-    const view = controlQueue(s.events()).queue;
+    const view = (await controlQueue(s.events())).queue;
     assert.equal(view.find((x) => x.title === "fuse")?.from_run, "old-1");
   });
 });

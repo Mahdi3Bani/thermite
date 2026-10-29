@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { ADMIN, controlOnly, mcpClient, signIn } from "../../helpers/control-stack.ts";
+import { applied } from "../../helpers/control-store.ts";
 
 /**
  * Goal 086 on control's side, from a rig's events: a goal report's values on the run's Goals
@@ -22,7 +23,9 @@ async function control() {
     return JSON.parse(r.content[0]?.text ?? "null");
   };
   let id = 0;
-  const ingest = (events: { kind: string; subject: string; body: Record<string, unknown> }[]) =>
+  const ingest = async (
+    events: { kind: string; subject: string; body: Record<string, unknown> }[],
+  ) => {
     store.rigEvents.ingest({
       rig: "rig-a",
       ledger_id: "ledger-a",
@@ -36,6 +39,8 @@ async function control() {
       })),
       summary: {},
     });
+    await applied(store);
+  };
   return { page, rest, mcp, ingest };
 }
 
@@ -84,7 +89,7 @@ const WAIT =
 describe("a goal report's values and its confirmation on control (goal 086)", () => {
   test("the Goals block shows a met goal's values beside its reasons; REST and get_run give them", async () => {
     const c = await control();
-    c.ingest([goalRun, report({ complete: false })]);
+    await c.ingest([goalRun, report({ complete: false })]);
     const run = await c.page(RUN);
     assert.match(
       run,
@@ -112,7 +117,7 @@ describe("a goal report's values and its confirmation on control (goal 086)", ()
 
   test("while the judge confirms a champion that met every goal: why no new trial starts, until the check is done or fails", async () => {
     const c = await control();
-    c.ingest([goalRun, report({ complete: true, confirming: true })]);
+    await c.ingest([goalRun, report({ complete: true, confirming: true })]);
     const waiting = await c.page(RUN);
     assert.match(waiting, WAIT);
     assert.match(
@@ -129,7 +134,7 @@ describe("a goal report's values and its confirmation on control (goal 086)", ()
     assert.equal(viaMcp.goals_confirming, true);
 
     // The confirming validation failed: no completion is left to confirm, and the lanes go on.
-    c.ingest([
+    await c.ingest([
       { kind: "job_queued", subject: "41", body: { attempt: null, kind: "validate" } },
       { kind: "job_leased", subject: "41", body: { fence: 1 } },
       { kind: "job_finished", subject: "41", body: { state: "failed", result: {} } },
@@ -137,15 +142,15 @@ describe("a goal report's values and its confirmation on control (goal 086)", ()
     assert.doesNotMatch(await c.page(RUN), WAIT);
 
     // The next report that leaves nothing to confirm ends the wait too.
-    c.ingest([report({ complete: true, confirming: true })]);
+    await c.ingest([report({ complete: true, confirming: true })]);
     assert.match(await c.page(RUN), WAIT);
-    c.ingest([report({ complete: false })]);
+    await c.ingest([report({ complete: false })]);
     assert.doesNotMatch(await c.page(RUN), WAIT);
 
     // A confirming validation blocked after too many lost leases will not run: the wait ends.
-    c.ingest([report({ complete: true, confirming: true })]);
+    await c.ingest([report({ complete: true, confirming: true })]);
     assert.match(await c.page(RUN), WAIT);
-    c.ingest([
+    await c.ingest([
       { kind: "job_queued", subject: "42", body: { attempt: null, kind: "validate" } },
       { kind: "job_leased", subject: "42", body: { fence: 1 } },
       { kind: "crash_infra", subject: "42", body: { fence: 1, expiries: 3, state: "blocked" } },
@@ -153,9 +158,9 @@ describe("a goal report's values and its confirmation on control (goal 086)", ()
     assert.doesNotMatch(await c.page(RUN), WAIT);
 
     // The same when the lease ran out a third time (job_lease_expired, blocked).
-    c.ingest([report({ complete: true, confirming: true })]);
+    await c.ingest([report({ complete: true, confirming: true })]);
     assert.match(await c.page(RUN), WAIT);
-    c.ingest([
+    await c.ingest([
       { kind: "job_queued", subject: "43", body: { attempt: null, kind: "validate" } },
       { kind: "job_leased", subject: "43", body: { fence: 1 } },
       {

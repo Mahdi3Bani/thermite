@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ControlStore } from "../../../src/control/store/index.ts";
 import { experimentsTab, plannerTab } from "../../../src/control/ui/campaigns/queue/index.ts";
 import { rigView } from "../../../src/control/views/index.ts";
+import { applied, controlStore } from "../../helpers/control-store.ts";
 
 /** A rig whose run "r-1" reported these events (subject: the run), in order. */
-function rigWith(events: [string, string, Record<string, unknown>][]) {
-  const store = new ControlStore(":memory:");
+async function rigWith(events: [string, string, Record<string, unknown>][]) {
+  const store = controlStore();
   const all: [string, string, Record<string, unknown>][] = [
     ["harness", "run_created", { campaign: "c", mode: "hill_climb", version: 1, agents: true }],
     ...events,
@@ -27,6 +27,7 @@ function rigWith(events: [string, string, Record<string, unknown>][]) {
     })),
     summary: {},
   });
+  await applied(store);
   const u = rigView(store, "rig-a", { staleAfterMs: 600_000 });
   assert.ok(u);
   const r = u.runs.find((x) => x.id === "r-1");
@@ -34,8 +35,8 @@ function rigWith(events: [string, string, Record<string, unknown>][]) {
   return { u, r };
 }
 
-test("the queue view keeps the order the events give it, and where each experiment went", () => {
-  const { r } = rigWith([
+test("the queue view keeps the order the events give it, and where each experiment went", async () => {
+  const { r } = await rigWith([
     [
       "planner",
       "experiment_added",
@@ -168,7 +169,7 @@ test("the queue view keeps the order the events give it, and where each experime
   // The tabs: up next in order with who added each; tried with its result; rules with who set them.
   const cmd = (f: { kind: string; label: string }) =>
     `<form data-kind="${f.kind}">${f.label}</form>`;
-  const { u } = rigWith([]);
+  const { u } = await rigWith([]);
   const exp = experimentsTab({
     u,
     r,
@@ -261,8 +262,8 @@ test("the queue view keeps the order the events give it, and where each experime
   );
 });
 
-test("a message to the planner waits for its round, then shows its answer: the rules it made and the directions it designed", () => {
-  const { u, r } = rigWith([
+test("a message to the planner waits for its round, then shows its answer: the rules it made and the directions it designed", async () => {
+  const { u, r } = await rigWith([
     [
       "planner",
       "experiment_added",
@@ -399,8 +400,8 @@ test("a message to the planner waits for its round, then shows its answer: the r
   assert.match(plan, /It reads your message when it next gives out work: round 4\./);
 });
 
-test("an old rule in words says what its conversion waits for: the planner's round, the planner, a model", () => {
-  const { u, r } = rigWith([
+test("an old rule in words says what its conversion waits for: the planner's round, the planner, a model", async () => {
+  const { u, r } = await rigWith([
     [
       "control:owner:ui",
       "directive",
@@ -441,8 +442,8 @@ test("an old rule in words says what its conversion waits for: the planner's rou
   );
 });
 
-test("an old rule in words the planner converted shows as a normal rule, with the words it replaced", () => {
-  const { u, r } = rigWith([
+test("an old rule in words the planner converted shows as a normal rule, with the words it replaced", async () => {
+  const { u, r } = await rigWith([
     [
       "planner",
       "experiment_added",
@@ -574,8 +575,8 @@ test("an old rule in words the planner converted shows as a normal rule, with th
   ]);
 });
 
-test("a change that became the champion no longer waits: only pending promotions keep their why", () => {
-  const store = new ControlStore(":memory:");
+test("a change that became the champion no longer waits: only pending promotions keep their why", async () => {
+  const store = controlStore();
   const events: [string, string, string, Record<string, unknown>][] = [
     ["harness", "run_created", "r-1", { campaign: "c", mode: "hill_climb", version: 1 }],
     [
@@ -608,6 +609,7 @@ test("a change that became the champion no longer waits: only pending promotions
     })),
     summary: {},
   });
+  await applied(store);
   const r = rigView(store, "rig-a", { staleAfterMs: 600_000 })?.runs.find((x) => x.id === "r-1");
   assert.ok(r);
   assert.deepEqual(r.pending_promotions, ["a-2"]);

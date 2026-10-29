@@ -67,7 +67,7 @@ export function actionRoutes(app: Hono, dash: Dashboard): void {
   // The trial is addressed through its run (goal 170); control keeps its lines by the run's rig.
   app.post(RUN_ROUTES.leaveTrial, async (c) => {
     const f = await c.req.parseBody();
-    const x = runOf(c.req.param("campaign"), c.req.param("run"));
+    const x = await runOf(c.req.param("campaign"), c.req.param("run"));
     if (!x) return c.text("No such run in this campaign.", 404);
     const rig = x.rig.id;
     const trial = c.req.param("trial");
@@ -96,7 +96,7 @@ export function actionRoutes(app: Hono, dash: Dashboard): void {
     const f = await c.req.parseBody();
     const toRun = String(f.to_run ?? "");
     try {
-      propagateChampion(store, opts.privateKeyPem, {
+      await propagateChampion(store, opts.privateKeyPem, {
         run: String(f.run ?? ""),
         toRun,
         issuedBy: "owner:ui",
@@ -106,7 +106,7 @@ export function actionRoutes(app: Hono, dash: Dashboard): void {
       return c.text(`refused: ${errorText(err)}`, 400);
     }
     // The target's page, where its judge's test of the champion shows.
-    const target = parts.run(toRun)?.run;
+    const target = (await parts.run(toRun))?.run;
     return c.redirect(target ? runHref(target) : "/ui/campaigns", 303);
   });
 

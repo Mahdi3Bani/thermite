@@ -6,11 +6,11 @@ import { checkRigPlace, type PlaceParts } from "../../../src/control/rigs/place.
 import { RigUpdates } from "../../../src/control/rigs/update.ts";
 import { checkQuietRigs } from "../../../src/control/rigs/watch.ts";
 import { SecretBox } from "../../../src/control/secrets.ts";
-import { ControlStore } from "../../../src/control/store/index.ts";
 import { rigView } from "../../../src/control/views/index.ts";
 import { generateSigningKeys } from "../../../src/core/commands.ts";
 import type { BuildInfo } from "../../../src/core/version.ts";
 import { controlOnly, RIG_TOKEN, signIn } from "../../helpers/control-stack.ts";
+import { applied, controlStore } from "../../helpers/control-store.ts";
 
 const CONTROL: BuildInfo = { version: "0.1.0", commit: null, protocol: 1, oldest_protocol: 1 };
 const OLD = { version: "0.0.9", commit: null, protocol: 1, oldest_protocol: 1 };
@@ -51,7 +51,7 @@ const downCluster: ClusterKubectl = {
 
 /** Control, signed in, with a machine and a cluster in Providers, and its updates' short waits. */
 async function control(o: { ssh?: MachineSsh; kube?: ClusterKubectl } = {}) {
-  const store = new ControlStore(":memory:");
+  const store = controlStore();
   const secrets = SecretBox.ephemeral();
   const keys = generateSigningKeys();
   // What control checks a rig's place with: the same store, secrets, machine and cluster.
@@ -117,7 +117,10 @@ async function control(o: { ssh?: MachineSsh; kube?: ClusterKubectl } = {}) {
   };
   // Each rig's next report, with events numbered on from its last.
   const cursors = new Map<string, number>();
-  const report = (rig: string, events: { kind: string; subject: string; body: object }[] = []) => {
+  const report = async (
+    rig: string,
+    events: { kind: string; subject: string; body: object }[] = [],
+  ) => {
     const from = cursors.get(rig) ?? 0;
     store.rigEvents.ingest({
       rig,
@@ -133,6 +136,7 @@ async function control(o: { ssh?: MachineSsh; kube?: ClusterKubectl } = {}) {
       })),
     });
     cursors.set(rig, from + events.length);
+    await applied(store);
   };
   /** The rig's last report came `ms` ago. */
   const lastSeen = (rig: string, ms: number) =>
@@ -147,7 +151,7 @@ async function control(o: { ssh?: MachineSsh; kube?: ClusterKubectl } = {}) {
 }
 
 /** A rig control set up on gpu-host-1, which reports. */
-function machineRig(s: Awaited<ReturnType<typeof control>>, rig: string) {
+async function machineRig(s: Awaited<ReturnType<typeof control>>, rig: string) {
   s.store.machines.addRig({
     rig,
     machine: "gpu-host-1",
@@ -160,7 +164,7 @@ function machineRig(s: Awaited<ReturnType<typeof control>>, rig: string) {
     created_by: "owner:ui",
   });
   s.store.machines.setRigStatus(rig, "running");
-  s.report(rig);
+  await s.report(rig);
 }
 
 /** Waits until `ok` is true, for at most 5 s. */
@@ -175,7 +179,7 @@ async function until(ok: () => boolean) {
 describe("a rig's page: its version", () => {
   test("behind: a banner, the Version fact, a history line, and Update for a rig control set up", async () => {
     const s = await control();
-    machineRig(s, "gpu-1");
+    await machineRig(s, "gpu-1");
     s.builds("gpu-1", OLD);
     const page = await s.page("/ui/rigs/gpu-1");
     assert.match(page, /data-state="behind"/);
@@ -191,7 +195,7 @@ describe("a rig's page: its version", () => {
     assert.match(page, /<span class="warn">0\.0\.9, behind control<\/span>/);
     assert.match(page, /gpu-host-1, a machine over SSH/);
     // A rig control did not set up gets the words to update it, not the button.
-    s.report("own-1");
+    await s.report("own-1");
     s.builds("own-1", OLD);
     const own = await s.page("/ui/rigs/own-1");
     assert.match(own, /data-state="behind"/);
@@ -215,9 +219,9 @@ describe("a rig's page: its version", () => {
           : m.ssh.sshScript(t, script, ...rest),
     };
     const s = await control({ ssh });
-    machineRig(s, "gpu-1");
+    await machineRig(s, "gpu-1");
     s.builds("gpu-1", OLD);
-    s.report("gpu-1", [
+    await s.report("gpu-1", [
       {
         kind: "run_created",
         subject: "run-1",
@@ -258,9 +262,9 @@ describe("a rig's page: its version", () => {
   test("Update to control's version: pause, the images over SSH, a report, the isolation check, resume", async () => {
     const m = fakeMachine();
     const s = await control({ ssh: m.ssh });
-    machineRig(s, "gpu-1");
+    await machineRig(s, "gpu-1");
     s.builds("gpu-1", OLD);
-    s.report("gpu-1", [
+    await s.report("gpu-1", [
       {
         kind: "run_created",
         subject: "run-1",
@@ -308,12 +312,12 @@ describe("a rig's page: its version", () => {
     // 3. A report from 0.1.0.
     await new Promise((r) => setTimeout(r, 20));
     s.builds("gpu-1", CONTROL);
-    s.report("gpu-1");
+    await s.report("gpu-1");
     // 4. The isolation check, then the run resumes.
     await until(() =>
       s.store.commands.pending("gpu-1").some((c) => c.envelope.kind === "rig_check"),
     );
-    s.report("gpu-1", [
+    await s.report("gpu-1", [
       { kind: "rig_check_started", subject: "isolation", body: { check: "isolation" } },
       {
         kind: "rig_check_finished",
@@ -356,7 +360,7 @@ describe("a rig's page: its version", () => {
 
   test("Stop and Start on Set up by control, from the page's script: the block follows the change", async () => {
     const s = await control();
-    machineRig(s, "gpu-1");
+    await machineRig(s, "gpu-1");
     let page = await s.page("/ui/rigs/gpu-1");
     assert.match(
       page,
@@ -388,7 +392,7 @@ describe("a rig's page: its version", () => {
 
   test("Update from the page's script: the answer names the route that follows its steps", async () => {
     const s = await control();
-    machineRig(s, "gpu-1");
+    await machineRig(s, "gpu-1");
     s.builds("gpu-1", OLD);
     // The button is sent by the page's script.
     assert.match(
@@ -405,7 +409,7 @@ describe("a rig's page: its version", () => {
     );
     assert.match(await s.page("/ui/rigs/gpu-1"), /<button disabled>Updating…<\/button>/);
     // A rig control did not set up: refused in words.
-    s.report("own-1");
+    await s.report("own-1");
     s.builds("own-1", OLD);
     const own = await s.send("/ui/rigs/own-1/update");
     assert.equal(own.status, 400);
@@ -415,13 +419,13 @@ describe("a rig's page: its version", () => {
 
   test("an isolation check the rig refuses after the update is said so, and the update ends", async () => {
     const s = await control();
-    machineRig(s, "gpu-1");
+    await machineRig(s, "gpu-1");
     s.builds("gpu-1", OLD);
     await s.post("/ui/rigs/gpu-1/update");
     await until(() => s.store.machines.rig("gpu-1")?.images.harness === IMAGES.harness);
     await new Promise((r) => setTimeout(r, 20));
     s.builds("gpu-1", CONTROL);
-    s.report("gpu-1");
+    await s.report("gpu-1");
     await until(() =>
       s.store.commands.pending("gpu-1").some((c) => c.envelope.kind === "rig_check"),
     );
@@ -444,7 +448,7 @@ describe("a rig's page: its version", () => {
       return { code: 1, stdout: "", stderr: "Error: initializing source: manifest unknown" };
     };
     const s = await control({ ssh: m.ssh });
-    machineRig(s, "gpu-1");
+    await machineRig(s, "gpu-1");
     s.builds("gpu-1", OLD);
     await s.post("/ui/rigs/gpu-1/update");
     await until(() => s.store.rigHistory.list("gpu-1").some((e) => e.step === "update_failed"));
@@ -459,7 +463,7 @@ describe("a rig's page: its version", () => {
 
   test("refused: what control knows, its calls counted, no checks, and Retire with typed words", async () => {
     const s = await control();
-    s.report("cpu-9");
+    await s.report("cpu-9");
     // A rig newer than control's protocol calls: refused, and the call is counted.
     const call = await s.api.request("/v1/rigs/cpu-9/commands/pending", {
       headers: {
@@ -503,7 +507,7 @@ describe("a rig's page: its version", () => {
 
   test("an older rig refused: Update for a rig control set up, and the words for the others", async () => {
     const s = await control();
-    machineRig(s, "gpu-1");
+    await machineRig(s, "gpu-1");
     s.store.refusals.set(
       "gpu-1",
       "Control cannot work with this rig: its harness speaks protocol 0, older than the oldest control works with (1). Update the rig's images.",
@@ -521,7 +525,7 @@ describe("a rig's page: stale and offline", () => {
       "harness=active\nsupervisor=active\nps=thermite-gpu-1-harness|Up 3 days\nps=thermite-gpu-1-supervisor|Up 3 days\nlog=control: connection refused\n",
     );
     const s = await control({ ssh: m.ssh });
-    machineRig(s, "gpu-1");
+    await machineRig(s, "gpu-1");
     s.builds("gpu-1", CONTROL);
     s.lastSeen("gpu-1", 6 * MIN);
     let page = await s.page("/ui/rigs/gpu-1");
@@ -562,7 +566,7 @@ describe("a rig's page: stale and offline", () => {
       created_by: "owner:ui",
     });
     s.store.clusters.setRigStatus("wc-1", "running");
-    s.report("wc-1");
+    await s.report("wc-1");
     s.builds("wc-1", CONTROL);
     s.lastSeen("wc-1", 3 * 60 * MIN + 12 * MIN);
     const page = await s.page("/ui/rigs/wc-1");
@@ -581,7 +585,7 @@ describe("a rig's page: stale and offline", () => {
 
   test("a rig control can't reach: the words to check it there, and no Check button", async () => {
     const s = await control();
-    s.report("own-1");
+    await s.report("own-1");
     s.builds("own-1", CONTROL);
     s.lastSeen("own-1", 20 * MIN);
     const page = await s.page("/ui/rigs/own-1");
@@ -600,9 +604,9 @@ describe("control looks where a quiet rig runs", () => {
   test("once when it turns stale, once more when it turns offline; never for a rig it can't reach", async () => {
     const m = fakeMachine("harness=active\nsupervisor=inactive\n");
     const s = await control({ ssh: m.ssh });
-    machineRig(s, "gpu-1");
+    await machineRig(s, "gpu-1");
     s.builds("gpu-1", CONTROL);
-    s.report("own-1");
+    await s.report("own-1");
     const quiet = () =>
       checkQuietRigs({
         store: s.store,
@@ -651,10 +655,10 @@ describe("control looks where a quiet rig runs", () => {
 describe("a rig's page: its checks", () => {
   test("a smoke check that passed with a note shows passed with the note, and the rig's view keeps it", async () => {
     const s = await control();
-    machineRig(s, "gpu-1");
+    await machineRig(s, "gpu-1");
     s.builds("gpu-1", CONTROL);
     const note = "The timing on this machine is noisy. Results here need more repeats.";
-    s.report("gpu-1", [
+    await s.report("gpu-1", [
       { kind: "rig_check_started", subject: "smoke", body: { id: "chk-1", check: "smoke" } },
       {
         kind: "rig_check_finished",

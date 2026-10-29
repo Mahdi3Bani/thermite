@@ -5,10 +5,10 @@ import type { RunpodRigView } from "../../../src/control/runpod/rig-view.ts";
 import { DEFAULT_IDLE_STOP_MINUTES, RunpodRigs } from "../../../src/control/runpod/rigs.ts";
 import { ControlTunnels } from "../../../src/control/runpod/tunnel.ts";
 import { SecretBox } from "../../../src/control/secrets.ts";
-import { ControlStore } from "../../../src/control/store/index.ts";
 import { generateSigningKeys } from "../../../src/core/commands.ts";
 import { keySha256 } from "../../../src/core/tunnel.ts";
 import { controlOnly, mcpClient } from "../../helpers/control-stack.ts";
+import { applied, controlStore } from "../../helpers/control-store.ts";
 import { FAKE_RUNPOD_KEY, fakeRunpod } from "../../helpers/fake-runpod.ts";
 import {
   exportName,
@@ -22,7 +22,7 @@ const IMAGE = "ghcr.io/example/thermite-rig:test-cuda";
 const HOUR = 3_600_000;
 
 function setup(o: { noCapacity?: boolean; image?: string | undefined } = {}) {
-  const store = new ControlStore(":memory:");
+  const store = controlStore();
   const secrets = SecretBox.ephemeral();
   store.gpuClouds.add({
     name: "runpod",
@@ -60,7 +60,10 @@ function setup(o: { noCapacity?: boolean; image?: string | undefined } = {}) {
   };
   /** The rig's harness reports these events at control's clock now, as its signed reports would. */
   let seq = 0;
-  const report = (rig: string, ...events: [kind: string, subject: string, body?: object][]) => {
+  const report = async (
+    rig: string,
+    ...events: [kind: string, subject: string, body?: object][]
+  ) => {
     store.rigEvents.ingest({
       rig,
       ledger_id: "l1",
@@ -77,6 +80,7 @@ function setup(o: { noCapacity?: boolean; image?: string | undefined } = {}) {
       })),
     });
     seq += events.length;
+    await applied(store);
   };
   return { store, secrets, cloud, control, tunnels, rigs, created, advance, report };
 }
@@ -393,11 +397,11 @@ describe("rigs on RunPod: price, spend and the owner's limits", () => {
     assert.equal(s.rigs.view(v.rig)?.idle_since, null);
     // Enrolled, with a lane's trial in progress: at work, however long the trial takes.
     assert.ok(s.store.tunnels.pin(v.rig, "sign", "box"));
-    s.report(v.rig, runCreated(), ["trial_started", RUN, { lane: "lane-1", trial: "t-1" }]);
+    await s.report(v.rig, runCreated(), ["trial_started", RUN, { lane: "lane-1", trial: "t-1" }]);
     for (let i = 0; i < 4; i++) await s.advance(20 * 60_000);
     assert.deepEqual(s.cloud.stops(), [], "a trial is in progress");
     // The run finishes: 30 minutes later control stops the pod, its results sent out first.
-    s.report(
+    await s.report(
       v.rig,
       ["trial_finished", RUN, { lane: "lane-1", trial: "t-1", stopped: "done" }],
       ["run_status", RUN, { status: "closed", reason: "done" }],
@@ -434,7 +438,7 @@ describe("rigs on RunPod: price, spend and the owner's limits", () => {
     );
     assert.ok(s.store.tunnels.pin(v.rig, "sign", "box"));
     // The run runs, but no trial is in progress and no judge job waits: it waits for the owner.
-    s.report(v.rig, runCreated(), ["promotion_awaiting_approval", RUN, { attempt: "a-1" }]);
+    await s.report(v.rig, runCreated(), ["promotion_awaiting_approval", RUN, { attempt: "a-1" }]);
     await s.advance(20 * 60_000);
     assert.deepEqual(s.cloud.stops(), []);
     assert.equal(s.rigs.view(v.rig)?.op, null);
@@ -453,10 +457,10 @@ describe("rigs on RunPod: price, spend and the owner's limits", () => {
       "owner:api",
     );
     assert.ok(s.store.tunnels.pin(v.rig, "sign", "box"));
-    s.report(v.rig, runCreated());
+    await s.report(v.rig, runCreated());
     await s.advance(20 * 60_000);
     // The planner planned a round, 20 minutes in: the idle time counts from here.
-    s.report(v.rig, ["epoch_planned", RUN, { n: 1, source: "planner", assignments: [] }]);
+    await s.report(v.rig, ["epoch_planned", RUN, { n: 1, source: "planner", assignments: [] }]);
     await s.advance(20 * 60_000);
     assert.equal(s.rigs.view(v.rig)?.op, null, "20 minutes since its last event");
     await s.advance(15 * 60_000);
@@ -472,21 +476,21 @@ describe("rigs on RunPod: price, spend and the owner's limits", () => {
     );
     assert.ok(s.store.tunnels.pin(v.rig, "sign", "box"));
     // A job queued for the run, then the run paused: the job waits for the resume.
-    s.report(
+    await s.report(
       v.rig,
       runCreated(),
       ["job_queued", "j-1", { kind: "measure", attempt: null }],
       ["run_status", RUN, { status: "paused", reason: "the owner paused it" }],
     );
     // Another job runs on the judge: work, whatever its run.
-    s.report(
+    await s.report(
       v.rig,
       ["job_queued", "j-2", { kind: "rig_check", attempt: null }],
       ["job_leased", "j-2", {}],
     );
     for (let i = 0; i < 4; i++) await s.advance(20 * 60_000);
     assert.equal(s.rigs.view(v.rig)?.op, null, "the judge is at work");
-    s.report(v.rig, ["job_finished", "j-2", { state: "done" }]);
+    await s.report(v.rig, ["job_finished", "j-2", { state: "done" }]);
     await s.advance(20 * 60_000);
     assert.equal(s.rigs.view(v.rig)?.op, null);
     await s.advance(15 * 60_000);

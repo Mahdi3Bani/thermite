@@ -3,6 +3,7 @@ import type { Hono } from "hono";
 import { jsonBody } from "../../common/errors.ts";
 import { ENROLL, RETIRE, RIG_TOKEN, RIGS } from "../../core/api/control/owner.ts";
 import { newToken } from "../credential.ts";
+import { bringBackRig } from "../rigs/index.ts";
 import { fingerprint } from "../store/index.ts";
 import { rigVersions } from "../versions.ts";
 import { reportingState } from "../views/index.ts";
@@ -84,9 +85,9 @@ export function rigRoutes(app: Hono, api: ApiContext): void {
         : {}),
     });
   });
-  app.post("/v1/rigs/:rig/bring-back", admin, (c) => {
+  app.post("/v1/rigs/:rig/bring-back", admin, async (c) => {
     const rig = c.req.param("rig");
-    return store.retired.bringBack(rig, "owner:api")
+    return (await bringBackRig(store, rig, "owner:api"))
       ? c.json({ rig, retired: false })
       : c.json({ error: `rig ${rig} is not retired` }, 404);
   });

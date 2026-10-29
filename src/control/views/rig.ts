@@ -9,7 +9,7 @@ import type { FoldedRig } from "./fold/index.ts";
 import { readGpuSplit, readModelInfo, readSettings, reportingState } from "./report.ts";
 import { standingOf } from "./research.ts";
 import { ownCopier } from "./sharing.ts";
-import type { RigView, RunView, StoredEvent } from "./types.ts";
+import type { RigView, RunView } from "./types.ts";
 import { doingsOf, type TrialDoing } from "./work.ts";
 
 /**
@@ -20,8 +20,6 @@ import { doingsOf, type TrialDoing } from "./work.ts";
 
 /** How many of the judge's jobs a rig's view shows. */
 const SHOWN_JOBS = 200;
-/** How many events one query reads. */
-const PAGE = 5000;
 
 /** How rigView reads a rig's view: when a rig is stale and offline, the time, control's build. */
 export interface ViewOptions {
@@ -54,37 +52,6 @@ export interface RigInputs {
   version: RigVersions;
   supervisor: Record<string, unknown> | null;
   runpod: RunpodRigView | undefined;
-}
-
-/**
- * Each of a rig's events after `after`, in one ledger (or all of them), oldest first, read a page
- * at a time; the last one's seq, or `after` when there are none. The pages need no source's or
- * document's text, nor the model calls: the knowledge base and the usage tables keep them.
- */
-export function eachEvent(
-  store: ControlStore,
-  rig: string,
-  ledgerId: string | null | undefined,
-  after: number,
-  each: (e: StoredEvent) => void,
-): number {
-  for (;;) {
-    const page = store.rigEvents.after(rig, after, PAGE, ledgerId, { lean: true }) as StoredEvent[];
-    for (const e of page) each(e);
-    if (page.length) after = (page.at(-1) as StoredEvent).seq;
-    if (page.length < PAGE) return after;
-  }
-}
-
-/** A rig's events in one ledger (or all of them), oldest first. */
-export function rigEvents(
-  store: ControlStore,
-  rig: string,
-  ledgerId?: string | null,
-): StoredEvent[] {
-  const out: StoredEvent[] = [];
-  eachEvent(store, rig, ledgerId, 0, (e) => out.push(e));
-  return out;
 }
 
 /** What a rig's view reads besides its events, from the store, the clock and control's build. */

@@ -39,10 +39,10 @@ export function agentRoutes(app: Hono, dash: Dashboard): void {
       rolePage(r),
     );
   });
-  app.get(RUN_ROUTES.prompt, (c) => {
+  app.get(RUN_ROUTES.prompt, async (c) => {
     const campaign = c.req.param("campaign") ?? "";
-    const x = runOf(campaign, c.req.param("run") ?? "");
-    const p = x ? runPrompt(store, x, Number(c.req.param("id"))) : undefined;
+    const x = await runOf(campaign, c.req.param("run") ?? "");
+    const p = x ? await runPrompt(store, x, Number(c.req.param("id"))) : undefined;
     const crumbs = [
       { href: "/ui/campaigns", text: "Campaigns" },
       { href: campaignHref(campaign), text: campaign },

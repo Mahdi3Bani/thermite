@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { RigView, RunView } from "../../../../src/control/views/index.ts";
+import { applied, controlStore } from "../../../helpers/control-store.ts";
 import { rig, statusRun } from "./fixtures.ts";
 
 /**
@@ -86,9 +87,8 @@ test("the Planner tab counts rounds, and says plainly when the planner is off", 
 });
 
 test("a research run's rounds are counted as research rounds, not as planner fallbacks (goal 079)", async () => {
-  const { ControlStore } = await import("../../../../src/control/store/index.ts");
   const { rigView } = await import("../../../../src/control/views/index.ts");
-  const store = new ControlStore(":memory:");
+  const store = controlStore();
   const ev = (kind: string, subject: string, body: Record<string, unknown>) => ({
     kind,
     subject,
@@ -119,6 +119,7 @@ test("a research run's rounds are counted as research rounds, not as planner fal
     ].map((e, i) => ({ id: i + 1, ...e })),
     summary: {},
   } as never);
+  await applied(store);
   const v = rigView(store, "rig-a", { staleAfterMs: 600_000 });
   const a = v?.runs.find((r) => r.id === "r-1")?.agents;
   assert.deepEqual([a?.epochs, a?.research_rounds, a?.fallbacks], [2, 2, 0]);

@@ -16,9 +16,9 @@ import type { RunOnRig, RunView } from "../views/index.ts";
 export interface RunRoutesDeps {
   store: ControlStore;
   /** The run's view and the rig it ran on, or undefined for a run no rig created. */
-  find(run: string): RunOnRig | undefined;
+  find(run: string): Promise<RunOnRig | undefined>;
   /** A past run's untried experiments as a new run's first queue, for `campaign` (goal 067). */
-  untried(run: RunView, campaign: string): unknown[];
+  untried(run: RunView, campaign: string): Promise<unknown[]>;
 }
 
 /** A number from the query, or undefined so that the argument's default applies. */
@@ -46,9 +46,9 @@ const DetailQuery = z.object({
 export function runRoutes(app: Hono, admin: MiddlewareHandler, deps: RunRoutesDeps): void {
   const noRun = (run: string) => ({ error: `no run ${run}` });
 
-  app.get(RUN.path, admin, (c) => {
+  app.get(RUN.path, admin, async (c) => {
     const run = c.req.param("run");
-    const found = deps.find(run);
+    const found = await deps.find(run);
     if (!found) return c.json(noRun(run), 404);
     const q = DetailQuery.safeParse({
       attempts: c.req.query("attempts"),
@@ -65,9 +65,9 @@ export function runRoutes(app: Hono, admin: MiddlewareHandler, deps: RunRoutesDe
     }
   });
 
-  app.get(RUN_ATTEMPT.path, admin, (c) => {
+  app.get(RUN_ATTEMPT.path, admin, async (c) => {
     const run = c.req.param("run");
-    const found = deps.find(run);
+    const found = await deps.find(run);
     if (!found) return c.json(noRun(run), 404);
     const read = attemptRead(found, c.req.param("attempt"));
     return "error" in read ? c.json(read, 404) : c.json(read);
@@ -76,9 +76,9 @@ export function runRoutes(app: Hono, admin: MiddlewareHandler, deps: RunRoutesDe
   // A past run's untried experiments as a new run's first queue (goal 067): what Start a run
   // copies, at most 500, with the words and authors control's records hold, as MCP takes them
   // for the new run's campaign (`campaign`; the past run's own when not given).
-  app.get(UNTRIED.path, admin, (c) => {
+  app.get(UNTRIED.path, admin, async (c) => {
     const run = c.req.param("run");
-    const found = deps.find(run);
+    const found = await deps.find(run);
     if (!found) return c.json(noRun(run), 404);
     const r = found.run;
     const campaign = c.req.query("campaign") || r.campaign || "";
@@ -86,15 +86,15 @@ export function runRoutes(app: Hono, admin: MiddlewareHandler, deps: RunRoutesDe
       run,
       rig: found.rig.id,
       campaign: r.campaign,
-      queue: deps.untried(r, campaign),
+      queue: await deps.untried(r, campaign),
     });
   });
 
   // A run's directions (goal 066), each with its counts and the rules naming it, and the rules in
   // force: what a rule may name, and what a picker of directions lists.
-  app.get(RUN_DIRECTIONS.path, admin, (c) => {
+  app.get(RUN_DIRECTIONS.path, admin, async (c) => {
     const run = c.req.param("run");
-    const found = deps.find(run);
+    const found = await deps.find(run);
     if (!found) return c.json(noRun(run), 404);
     const r = found.run;
     return c.json({ run, mode: r.mode, directions: r.directions, rules: r.rules });
@@ -102,9 +102,9 @@ export function runRoutes(app: Hono, admin: MiddlewareHandler, deps: RunRoutesDe
 
   // One of the run's champions as a patch file, once its rig has published it: the result the
   // owner takes away, which applies to the base commit the header names.
-  app.get(RUN_CHAMPION_PATCH.path, admin, (c) => {
+  app.get(RUN_CHAMPION_PATCH.path, admin, async (c) => {
     const run = c.req.param("run");
-    const found = deps.find(run);
+    const found = await deps.find(run);
     const p = found
       ? deps.store.championPatches.get(
           found.rig.id,

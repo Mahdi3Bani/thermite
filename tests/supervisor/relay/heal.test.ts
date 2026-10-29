@@ -6,6 +6,7 @@ import { fingerprint } from "../../../src/control/store/index.ts";
 import { REPORT_STREAM_CONFIG } from "../../../src/core/link/report.ts";
 import { healCursor, type RelayState, relayOnce } from "../../../src/supervisor/relay/index.ts";
 import { controlStack, RIG_TOKEN } from "../../helpers/control-stack.ts";
+import { heldEvents } from "../../helpers/control-store.ts";
 import { asMessage, FakeBus } from "../../helpers/fake-bus.ts";
 import { makeHarnessEnv } from "../../helpers/harness-env.ts";
 import { appendOther } from "../../helpers/kinds.ts";
@@ -39,7 +40,7 @@ async function rig(o: { requireKeyAcceptance?: boolean; clock?: () => Date } = {
   const events = (n: number, kind = "step") => {
     for (let i = 0; i < n; i++) appendOther(s.env.service.ledger, "t", kind, null, { i });
   };
-  const taken = () => (s.store.rigEvents.after("rig-a", 0, 10_000) as { kind: string }[]).length;
+  const taken = async () => (await heldEvents(s.store, "rig-a")).length;
   return { ...s, bus, fold, figures, events, taken, cfg: { ...s.cfg, bus, skipCommands: true } };
 }
 
@@ -66,7 +67,7 @@ describe("a report page refused on the bus heals", () => {
     assert.ok(pages >= 3);
     for (const f of r.fold())
       assert.deepEqual(f, { refused: "the rig's key waits for the owner's acceptance" });
-    assert.equal(r.taken(), 0);
+    assert.equal(await r.taken(), 0);
 
     // Control has none of the rig's events, but it may still be reading what this round sent: the
     // supervisor waits a round. A round later control still has none: it goes back to the start.
@@ -104,7 +105,7 @@ describe("a report page refused on the bus heals", () => {
     state = await relayOnce(r.cfg, state);
     assert.equal(state.cursor, end);
     for (const f of r.fold()) assert.ok("folded" in f, JSON.stringify(f));
-    assert.equal(r.taken(), end);
+    assert.equal(await r.taken(), end);
     state = healCursor(state, await r.figures(state.cursor));
     assert.deepEqual([state.cursor, state.healing], [end, false]);
     assert.equal(healCursor(state, await r.figures(state.cursor)), state, "nothing to heal");
@@ -131,7 +132,7 @@ describe("a report page refused on the bus heals", () => {
     assert.deepEqual(r.fold(), [{ folded: state.cursor }]);
     state = healCursor(state, await r.figures(state.cursor));
     assert.equal(state.healing, false);
-    assert.equal(r.taken(), state.cursor);
+    assert.equal(await r.taken(), state.cursor);
   });
 
   test("a control still reading this round's pages sends nobody back", async () => {
@@ -149,7 +150,7 @@ describe("a report page refused on the bus heals", () => {
     assert.equal(ahead.cursor, state.cursor);
     assert.equal(ahead.healing, false);
     r.fold();
-    assert.equal(r.taken(), state.cursor);
+    assert.equal(await r.taken(), state.cursor);
   });
 
   test("the supervisor goes back only when control is behind what it sent a round ago", () => {

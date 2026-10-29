@@ -122,7 +122,7 @@ describe("the owner's queue commands", () => {
       legacy: true,
     });
     // Control marks it too, from the rig's events; it names no direction.
-    const r = controlQueue(s.events());
+    const r = await controlQueue(s.events());
     assert.deepEqual(
       r.rules.map((x) => [x.id, x.legacy]),
       [[old, true]],
@@ -196,7 +196,7 @@ describe("the owner's queue commands", () => {
     });
     assert.equal(s.events("directive").at(-1)?.actor, "control:owner:ui");
     // Control's view: the new rule in place of the old one, under its direction.
-    const r = controlQueue(s.events());
+    const r = await controlQueue(s.events());
     assert.deepEqual(
       r.rules.map((x) => [x.id, x.legacy, x.author]),
       [

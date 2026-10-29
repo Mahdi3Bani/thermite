@@ -38,10 +38,11 @@ export function registerAgentReads(tools: ToolContext): void {
         prompt: z.number().int().min(1).optional(),
       },
     },
-    audited("agent_prompts", (a: { run: string; prompt?: number | undefined }) => {
-      const found = run(a.run);
-      if (a.prompt === undefined) return { run: a.run, prompts: runPrompts(tools.store, found) };
-      const p = runPrompt(tools.store, found, a.prompt);
+    audited("agent_prompts", async (a: { run: string; prompt?: number | undefined }) => {
+      const found = await run(a.run);
+      if (a.prompt === undefined)
+        return { run: a.run, prompts: await runPrompts(tools.store, found) };
+      const p = await runPrompt(tools.store, found, a.prompt);
       if (!p) throw new Error(`no prompt ${a.prompt} in ${a.run}`);
       return p;
     }),

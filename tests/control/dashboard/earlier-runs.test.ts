@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { ADMIN, controlOnly, mcpClient, signIn } from "../../helpers/control-stack.ts";
+import { applied } from "../../helpers/control-store.ts";
 
 /**
  * A run's pages, links and records stay whole wherever it ran (goal 170): when its rig is
@@ -45,7 +46,7 @@ function runEvents(run: string, attempt: string, hypothesis: string, status: str
 async function earlierRuns() {
   const { store, control, api } = controlOnly({ tokens: { rigs: TOKENS } });
   const at = Date.now() - 3_600_000;
-  const report = (rig: string, ledger: string, events: Ev[], hour: number) =>
+  const report = async (rig: string, ledger: string, events: Ev[], hour: number) => {
     store.rigEvents.ingest({
       rig,
       ledger_id: ledger,
@@ -59,16 +60,28 @@ async function earlierRuns() {
       })),
       summary: {},
     });
+    await applied(store);
+  };
   // sort-1 on rig-a, then rig-a's full reset; sort-2 on rig-b, then rig-b retired; sort-3 at work.
-  report("rig-a", "ledger-1", runEvents("sort-1", "a-1", "radix sort", "paused"), 0);
+  await report("rig-a", "ledger-1", runEvents("sort-1", "a-1", "radix sort", "paused"), 0);
   const upload = await control.request("/v1/rigs/rig-a/champions/sort-1/2/patch", {
     method: "POST",
     headers: { authorization: `Bearer ${TOKENS["rig-a"]}` },
     body: new Uint8Array(PATCH),
   });
   assert.equal(upload.status, 201);
-  report("rig-b", "ledger-b", runEvents("sort-2", "a-2", "insertion sort below 16", "running"), 1);
-  report("rig-a", "ledger-2", runEvents("sort-3", "a-3", "merge runs in place", "running"), 2);
+  await report(
+    "rig-b",
+    "ledger-b",
+    runEvents("sort-2", "a-2", "insertion sort below 16", "running"),
+    1,
+  );
+  await report(
+    "rig-a",
+    "ledger-2",
+    runEvents("sort-3", "a-3", "merge runs in place", "running"),
+    2,
+  );
   store.retired.add("rig-b", "owner:ui");
   const ui = await signIn(control);
   return { store, control, api, ui };

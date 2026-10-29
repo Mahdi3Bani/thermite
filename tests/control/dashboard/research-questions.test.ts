@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { controlOnly, signIn } from "../../helpers/control-stack.ts";
+import { applied } from "../../helpers/control-store.ts";
 
 /**
  * A research run's Overview, from its rig's research digest: each question's words beside its
@@ -12,7 +13,9 @@ async function control() {
   const { store, control: api } = controlOnly({ tokens: { rigs: { "rig-a": "t-a-abcdef" } } });
   const { page } = await signIn(api);
   let id = 0;
-  const ingest = (events: { kind: string; subject: string; body: Record<string, unknown> }[]) =>
+  const ingest = async (
+    events: { kind: string; subject: string; body: Record<string, unknown> }[],
+  ) => {
     store.rigEvents.ingest({
       rig: "rig-a",
       ledger_id: "ledger-a",
@@ -26,6 +29,8 @@ async function control() {
       })),
       summary: {},
     });
+    await applied(store);
+  };
   return { page, ingest };
 }
 
@@ -34,7 +39,7 @@ const RUN = "/ui/campaigns/survey/runs/s-1";
 describe("a research run's questions on its Overview", () => {
   test("each bar names its question and counts its verified claims", async () => {
     const c = await control();
-    c.ingest([
+    await c.ingest([
       {
         kind: "run_created",
         subject: "s-1",

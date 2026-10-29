@@ -79,6 +79,37 @@ export function eventSubject(
 }
 
 /**
+ * The subjects a rig's events are on: its own, and those of the runs they name (`runs`), each by
+ * any kind; a run whose name a subject can't hold has none. A run's subjects hold every rig's
+ * events of a run of that name, so a reader keeps those with the rig's header. Exact runs, not
+ * every run's (`thermite.run.*.ev.*`): the server reads a few runs' subjects in a fraction of the
+ * time it takes to read every run's. Throws, in words, on a rig's name a subject can't hold.
+ */
+export function rigEventSubjects(rig: string, runs: Iterable<string>): string[] {
+  if (!RIG_ID.test(rig)) throw new Error(`not a rig's name for an event subject: ${rig}`);
+  const named = [...new Set(runs)].filter((run) => NAME_PATTERN.test(run)).sort();
+  return [
+    `thermite.rig.${rig}.ev.*`,
+    ...named.flatMap((run) => [`thermite.run.${run}.ev.*`, `thermite.run.${run}.queue.*`]),
+  ];
+}
+
+/**
+ * The subjects the events of one kind are on, on every rig and run: a run's, by the kind or, for
+ * a queue change, by what it did; and a rig's own. Throws, in words, on a kind a subject can't
+ * hold.
+ */
+export function kindSubjects(kind: string): string[] {
+  if (!EVENT_KIND.test(kind))
+    throw new Error(
+      `not an event kind a subject can hold: ${JSON.stringify(kind)} (${EVENT_KIND_WORDS})`,
+    );
+  const op = queueOp(kind);
+  const run = op ? `thermite.run.*.queue.${op}` : `thermite.run.*.ev.${kind}`;
+  return [run, `thermite.rig.*.ev.${kind}`];
+}
+
+/**
  * The headers of an event's message. The rig's is the one a live message names its rig in; the
  * report's names the page the event came in (its message id, reportMessageId); the seq's is the
  * event's place in control's own table of events, for a row control copied from it.

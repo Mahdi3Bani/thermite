@@ -9,10 +9,10 @@ import { controlQueue, RUN, setup } from "./setup.ts";
  */
 
 /** Up next as the harness orders it, and as control does, by id. */
-function bothOrders(s: Awaited<ReturnType<typeof setup>>) {
+async function bothOrders(s: Awaited<ReturnType<typeof setup>>) {
   const harness = s.q.queued(RUN).map((x) => x.id);
-  const control = controlQueue(s.events())
-    .queue.filter((x) => x.state === "queued")
+  const control = (await controlQueue(s.events())).queue
+    .filter((x) => x.state === "queued")
     .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
     .map((x) => x.id);
   return { harness, control };
@@ -131,7 +131,7 @@ describe("the experiment queue", () => {
     });
     assert.match(String(a.id), /^x-[0-9a-f]{12}$/);
     // Control builds the same queue from these events alone.
-    const view = controlQueue(s.events()).queue;
+    const view = (await controlQueue(s.events())).queue;
     for (const x of q.all(RUN)) {
       const v = view.find((y) => y.id === x.id);
       assert.ok(v, `control knows ${x.id}`);
@@ -176,7 +176,7 @@ describe("the experiment queue", () => {
           { lane: "lane-1", trial: `t-${i}`, by: "planner" },
           "planner",
         );
-      const o = bothOrders(s);
+      const o = await bothOrders(s);
       assert.deepEqual(o.control, o.harness, `after step ${i}`);
       assert.deepEqual(
         s.q.queued(RUN).map((x) => x.place),

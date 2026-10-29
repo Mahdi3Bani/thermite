@@ -7,6 +7,7 @@ import { generateSigningKeys, signEnvelope } from "../../src/core/commands.ts";
 import { createHarnessApi } from "../../src/harness/api/index.ts";
 import { relayOnce } from "../../src/supervisor/relay/index.ts";
 import { controlOnly, controlStack } from "../helpers/control-stack.ts";
+import { heldEvents } from "../helpers/control-store.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";
 import { appendOther } from "../helpers/kinds.ts";
 
@@ -30,7 +31,7 @@ describe("supervisor relay between control and harness", () => {
     assert.equal(env.service.ledger.runs.get("smoke-1")?.status, "running");
 
     state = await relayOnce(cfg, state);
-    const events = store.rigEvents.after("rig-a", 0, 10_000) as { id: number; kind: string }[];
+    const events = await heldEvents(store, "rig-a");
     assert.equal(events.length, env.service.ledger.latestEventId());
     assert.ok(events.some((e) => e.kind === "run_created"));
     assert.equal(
@@ -222,7 +223,7 @@ describe("supervisor relay between control and harness", () => {
     const after = await relayOnce(cfg, state);
     assert.equal(after.cursor, 3);
     assert.equal(after.ledgerId, wiped.service.ledger.ledgerId());
-    const kinds = (store.rigEvents.after("rig-a", 0, 100) as { kind: string }[]).map((e) => e.kind);
+    const kinds = (await heldEvents(store, "rig-a")).map((e) => e.kind);
     assert.deepEqual(kinds, ["old", "old", "old", "old", "old", "new", "new", "new"]);
   });
 
@@ -258,7 +259,7 @@ describe("supervisor relay between control and harness", () => {
     assert.equal((await post(forged)).status, 403);
     const { signature: _s, ...unsigned } = snap;
     assert.equal((await post(unsigned)).status, 400);
-    const kinds = (store.rigEvents.after("rig-a", 0, 100) as { kind: string }[]).map((e) => e.kind);
+    const kinds = (await heldEvents(store, "rig-a")).map((e) => e.kind);
     assert.ok(!kinds.includes("champion_promoted"));
   });
 

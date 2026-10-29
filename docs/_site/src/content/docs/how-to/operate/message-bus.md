@@ -40,7 +40,7 @@ A rig on the bus has the step "Its key on the message bus registered" in its his
 
 ## Follow control's events to the bus and back
 
-Control copies every event it holds to the bus's `EVENTS` stream, and each new one as it arrives, whether its rig reported it over the bus or over HTTP. From that stream, in its order, control then writes what it derives from the events: a run a rig created in its run registry, a command's outcome as the harness gave it, each model call's usage, and the knowledge base's items ([Control's events on the message bus](../../explanation/how-the-parts-talk.md#controls-events-on-the-message-bus)). Control's other pages still read its own copy of the events. When control starts, it copies the events the stream lacks, the first time all of them, and applies the stream from the place its store applied through, the first time from its start. Control serves and takes reports meanwhile; a million events took about 41 seconds to copy when measured.
+Control copies every event it holds to the bus's `EVENTS` stream, and each new one as it arrives, whether its rig reported it over the bus or over HTTP. From that stream, in its order, control then writes what it derives from the events: a run a rig created in its run registry, a command's outcome as the harness gave it, each model call's usage, and the knowledge base's items; and its pages, REST and MCP read the rigs' events from there ([Control's events on the message bus](../../explanation/how-the-parts-talk.md#controls-events-on-the-message-bus)). When control starts, it copies the events the stream lacks, the first time all of them, applies the stream from the place its store applied through, the first time from its start, and builds its views from the stream's first event. Only then does it serve its pages and take reports: a million events took about 41 seconds to copy when measured, and 100,000 events about a second to build the views from.
 
 1. Read control's log as it starts:
 
@@ -48,7 +48,7 @@ Control copies every event it holds to the bus's `EVENTS` stream, and each new o
    docker compose logs control | grep "events"     # or: podman compose logs control | grep "events"
    ```
 
-   `control's records go on from the events stream's place` says where control applies from (`place`), the stream's last place (`last`) and how many messages it has to apply (`behind`). `control's events go on the bus after the stream's last` says where the copy starts and how many events it has to copy (`behind`). For more than 1,000, `moving control's events to the bus` follows every 100,000, with how many it `copied` and how many are `left`, and `control's events moved to the bus` says when it is done, and in how many seconds.
+   `control's records go on from the events stream's place` says where control applies from (`place`), the stream's last place (`last`) and how many messages it has to apply (`behind`). `control's events go on the bus after the stream's last` says where the copy starts and how many events it has to copy (`behind`). For more than 1,000, `moving control's events to the bus` follows every 100,000, with how many it `copied` and how many are `left`, and `control's events moved to the bus` says when it is done, and in how many seconds. `control's views built from the events stream` says that control's pages are ready, with the stream's place they hold (`place`), how many rigs they show (`rigs`) and how long it took (`ms`); `listening` follows.
 2. Or ask the bus's state, with the owner's token:
 
    ```sh

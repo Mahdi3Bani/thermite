@@ -14,11 +14,11 @@ import {
   inClusterApi,
   KubernetesDriver,
 } from "../../src/control/lifecycle.ts";
-import { ControlStore } from "../../src/control/store/index.ts";
 import { leaderboard } from "../../src/control/views/index.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 import { WIPE_MARKER, wipeIfRequested } from "../../src/harness/service/index.ts";
 import { controlStack } from "../helpers/control-stack.ts";
+import { applied, controlStore } from "../helpers/control-store.ts";
 import { FAST_KERNEL, makeJudgeEnv } from "../helpers/judge-env.ts";
 
 function fakeServer(
@@ -234,8 +234,8 @@ describe("full reset", () => {
 });
 
 describe("leaderboard and propagation", () => {
-  test("a champion is cross-verified once another rig's judge accepted it", () => {
-    const store = new ControlStore(":memory:");
+  test("a champion is cross-verified once another rig's judge accepted it", async () => {
+    const store = controlStore();
     const ev = (id: number, kind: string, subject: string, body: unknown) => ({
       id,
       at: new Date(Date.now() + id).toISOString(),
@@ -298,13 +298,14 @@ describe("leaderboard and propagation", () => {
         }),
       ],
     });
+    await applied(store);
     const board = leaderboard(store, { staleAfterMs: 180_000 });
     const a = board.camp?.find((r) => r.rig === "rig-a");
     assert.deepEqual(a?.verified_by, ["rig-b"]);
     assert.ok(Math.abs((a?.gain ?? 0) - 0.2) < 1e-9);
     // propagateChampion builds the content-addressed command from the published champion.
     const keys = generateSigningKeys();
-    const { id, seq } = propagateChampion(store, keys.privateKeyPem, {
+    const { id, seq } = await propagateChampion(store, keys.privateKeyPem, {
       run: "c-1",
       toRun: "c-1b",
       issuedBy: "owner",
@@ -321,14 +322,13 @@ describe("leaderboard and propagation", () => {
       tree: "b".repeat(40),
       sha256: "f".repeat(64),
     });
-    assert.throws(
-      () =>
-        propagateChampion(store, keys.privateKeyPem, {
-          run: "c-1b",
-          toRun: "c-1",
-          issuedBy: "owner",
-          staleAfterMs: 180_000,
-        }),
+    await assert.rejects(
+      propagateChampion(store, keys.privateKeyPem, {
+        run: "c-1b",
+        toRun: "c-1",
+        issuedBy: "owner",
+        staleAfterMs: 180_000,
+      }),
       /no champion beyond its seed/,
     );
   });

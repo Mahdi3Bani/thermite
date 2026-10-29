@@ -1,13 +1,14 @@
 import { ROLES, roleOf } from "../agents/roles/index.ts";
 import { type AgentPromptBody, sha256 } from "../core/prompts.ts";
 import type { ControlStore } from "./store/index.ts";
-import type { RunOnRig } from "./views/index.ts";
+import { type RunOnRig, runEvents } from "./views/index.ts";
 
 /**
  * The agents' roles and the prompts a run's agents were sent, as control shows them (goal 166):
  * REST, MCP, the command line and the dashboard read them here. A role's definition is the one in
- * control's own build (src/agents/roles/); a run's prompts are its rig's `agent_prompt` events,
- * whose fixed texts of a definition control fills in from its own when their sha256 matches.
+ * control's own build (src/agents/roles/); a run's prompts are its rig's `agent_prompt` events, read
+ * from the message bus's events stream, whose fixed texts of a definition control fills in from its
+ * own when their sha256 matches.
  * The whole text of each prompt stays on the rig, and in the run's export.
  */
 
@@ -88,14 +89,28 @@ export interface PromptDetail extends PromptItem {
   }[];
 }
 
+/** The kind of a prompt's event. */
+const PROMPT = "agent_prompt";
+
 /** The fixed texts of the definitions in control's build, by sha256. */
 const FIXED = new Map(ROLES.flatMap((r) => r.texts.map((t) => [sha256(t.text), t.text] as const)));
 
 const bodyOf = (b: unknown) => b as AgentPromptBody;
 
+/** The `agent_prompt` events of a run on its rig, oldest first, in every ledger. */
+async function promptEvents(store: ControlStore, found: RunOnRig) {
+  const events = await runEvents(store, { rig: found.rig.id, run: found.run.id, kind: PROMPT });
+  return events.map((e) => e.read.event);
+}
+
 /** A run's prompts, oldest first, without their text. */
-export function runPrompts(store: ControlStore, found: RunOnRig): PromptItem[] {
-  return store.rigEvents.prompts(found.rig.id, found.run.id).map((e) => {
+export async function runPrompts(store: ControlStore, found: RunOnRig): Promise<PromptItem[]> {
+  return promptItems(await promptEvents(store, found));
+}
+
+/** Prompt events as a list shows them. */
+function promptItems(events: { at: string; body: unknown }[]): PromptItem[] {
+  return events.map((e) => {
     const b = bodyOf(e.body);
     return {
       id: b.id,
@@ -118,17 +133,16 @@ export function runPrompts(store: ControlStore, found: RunOnRig): PromptItem[] {
 }
 
 /** One of a run's prompts, by its number on the rig; undefined when the run has none. */
-export function runPrompt(
+export async function runPrompt(
   store: ControlStore,
   found: RunOnRig,
   id: number,
-): PromptDetail | undefined {
-  const e = store.rigEvents
-    .prompts(found.rig.id, found.run.id)
-    .findLast((x) => bodyOf(x.body).id === id);
+): Promise<PromptDetail | undefined> {
+  const events = await promptEvents(store, found);
+  const e = events.findLast((x) => bodyOf(x.body).id === id);
   if (!e) return undefined;
   const b = bodyOf(e.body);
-  const item = runPrompts(store, found).findLast((p) => p.id === id) as PromptItem;
+  const item = promptItems(events).findLast((p) => p.id === id) as PromptItem;
   return {
     ...item,
     rig: found.rig.id,

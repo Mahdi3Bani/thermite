@@ -1,7 +1,7 @@
 import type { Hono } from "hono";
 import { copiedFromRecords, untriedOf } from "../campaigns/index.ts";
 import { cursorOf } from "../store/index.ts";
-import { findRun, rigView } from "../views/index.ts";
+import { findRun, rigEventsPage, rigView } from "../views/index.ts";
 import { agentRoutes } from "./agents.ts";
 import { type ApiContext, clampLimit } from "./context.ts";
 import { runRoutes } from "./runs.ts";
@@ -35,10 +35,13 @@ export function rigRecordRoutes(app: Hono, api: ApiContext): void {
       : c.json({ error: "no pending key" }, 404),
   );
 
-  app.get("/v1/rigs/:rig/events", admin, (c) => {
+  // Read from the message bus's events stream: each event's seq is its place there.
+  app.get("/v1/rigs/:rig/events", admin, async (c) => {
     const after = Math.max(0, Math.trunc(Number(c.req.query("after") ?? "0")) || 0);
     const limit = clampLimit(c.req.query("limit"), 500);
-    return c.json({ events: store.rigEvents.after(c.req.param("rig"), after, limit) });
+    return c.json({
+      events: await rigEventsPage(store, { rig: c.req.param("rig"), after, limit }),
+    });
   });
 }
 

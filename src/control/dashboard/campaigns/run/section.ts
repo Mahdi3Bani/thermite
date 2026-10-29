@@ -1,6 +1,6 @@
 import { RESEARCH_REVIEW } from "../../../../core/research-check.ts";
 import { sumUsage } from "../../../../core/usage.ts";
-import { runPrompts } from "../../../prompts.ts";
+import type { PromptItem } from "../../../prompts.ts";
 import { howCheckedDetails } from "../../../ui/campaigns/goal-checks.ts";
 import { experimentsTab, plannerTab } from "../../../ui/campaigns/queue/index.ts";
 import {
@@ -131,9 +131,17 @@ export function runHelpers(dash: Dashboard) {
    * One run's page, one view at a time: its overview (what waits for the owner, what it is doing
    * now, goals, what happened, latest attempts), all its attempts, its history in words, or its
    * steering. Command forms return to the same view. An earlier run (goal 170) takes no commands:
-   * nothing of it waits for the owner, and its champion goes to no other rig.
+   * nothing of it waits for the owner, and its champion goes to no other rig. Its prompts, for
+   * the Prompts view, are read from the message bus before (runPrompts).
    */
-  const runSection = (c: Ctx, x: RunOnRig, vs: RigView[], now: number, view: RunViewName) => {
+  const runSection = (
+    c: Ctx,
+    x: RunOnRig,
+    vs: RigView[],
+    now: number,
+    view: RunViewName,
+    prompts: PromptItem[],
+  ) => {
     const { rig: u, run: i, earlier } = x;
     const t = csrf(c);
     const back = runHref(i, view);
@@ -390,7 +398,7 @@ export function runHelpers(dash: Dashboard) {
       view === "attempts"
         ? `${i.attempts.length ? `<div class="card" style="margin-bottom:12px"><div class="card-head"><span class="title">How the judge decided</span><span class="right muted small">${i.attempts.length} attempts</span></div><div style="margin-top:10px">${stackBar(i.verdicts)}</div></div>` : ""}${laneCard}${attemptRows(u, i, newest.slice(0, 300), now)}${i.attempts.length > 300 ? `<div class="muted small" style="margin-top:8px">The newest 300 of ${i.attempts.length}.</div>` : ""}${records}`
         : view === "prompts"
-          ? promptsTab(i, runPrompts(store, x), now)
+          ? promptsTab(i, prompts, now)
           : view === "history"
             ? timeline(
                 i.timeline.map((e) => ({ u, e })),

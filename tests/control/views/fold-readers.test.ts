@@ -165,35 +165,39 @@ describe("control's readers of the rigs' events read what it keeps already", () 
     });
   });
 
-  test("a run page's rounds are the times its rounds started, in the ledger it ran in", () => {
-    assert.deepEqual(findRun(store, "r-1")?.run.round_starts, [at(7), at(12)]);
-    assert.deepEqual(findRun(store, "r-0")?.run.round_starts, [at(2)]);
-    assert.deepEqual(findRun(store, "r-3")?.run.round_starts, []);
+  test("a run page's rounds are the times its rounds started, in the ledger it ran in", async () => {
+    assert.deepEqual((await findRun(store, "r-1"))?.run.round_starts, [at(7), at(12)]);
+    assert.deepEqual((await findRun(store, "r-0"))?.run.round_starts, [at(2)]);
+    assert.deepEqual((await findRun(store, "r-3"))?.run.round_starts, []);
   });
 
   test("a champion's patch is kept when it is the newest one its run published as that champion", async () => {
     const s = await seeded();
-    assert.equal(keepChampionPatch(s, "rig-a", "r-1", 2, FIRST), "mismatch");
-    assert.equal(keepChampionPatch(s, "rig-a", "r-1", 2, SECOND), "stored");
-    assert.equal(keepChampionPatch(s, "rig-a", "r-1", 3, THIRD), "stored");
-    assert.equal(keepChampionPatch(s, "rig-a", "r-1", 4, THIRD), "not_published");
-    assert.equal(keepChampionPatch(s, "rig-b", "r-1", 2, SECOND), "not_published");
+    assert.equal(await keepChampionPatch(s, "rig-a", "r-1", 2, FIRST), "mismatch");
+    assert.equal(await keepChampionPatch(s, "rig-a", "r-1", 2, SECOND), "stored");
+    assert.equal(await keepChampionPatch(s, "rig-a", "r-1", 3, THIRD), "stored");
+    assert.equal(await keepChampionPatch(s, "rig-a", "r-1", 4, THIRD), "not_published");
+    assert.equal(await keepChampionPatch(s, "rig-b", "r-1", 2, SECOND), "not_published");
     // A run from before the rig's full reset keeps its own, in its own ledger.
-    assert.equal(keepChampionPatch(s, "rig-a", "r-0", 2, OLD), "stored");
-    const patch = (run: string, seq: number) => {
-      const x = findRun(s, run);
+    assert.equal(await keepChampionPatch(s, "rig-a", "r-0", 2, OLD), "stored");
+    const patch = async (run: string, seq: number) => {
+      const x = await findRun(s, run);
       return x && s.championPatches.get(x.rig.id, x.rig.ledger_id, run, seq);
     };
-    assert.deepEqual(patch("r-1", 2), { patch: SECOND, sha256: sha(SECOND), base_commit: BASE });
-    assert.deepEqual(patch("r-1", 3)?.patch, THIRD);
-    assert.deepEqual(patch("r-0", 2)?.patch, OLD);
+    assert.deepEqual(await patch("r-1", 2), {
+      patch: SECOND,
+      sha256: sha(SECOND),
+      base_commit: BASE,
+    });
+    assert.deepEqual((await patch("r-1", 3))?.patch, THIRD);
+    assert.deepEqual((await patch("r-0", 2))?.patch, OLD);
     assert.equal(s.championPatches.get("rig-a", "ledger-1", "r-1", 2), undefined);
   });
 
-  test("a copied experiment takes its author and its words after every edit from its run", () => {
+  test("a copied experiment takes its author and its words after every edit from its run", async () => {
     const from = (run: string, id: string) => ({ run, id });
     assert.deepEqual(
-      copiedFromRecords(store, "sort", [
+      await copiedFromRecords(store, "sort", [
         { title: "the caller's words", by: "someone", from: from("r-1", "x-1") },
         { title: "vector", details: "the caller's details", from: from("r-1", "x-2") },
         { title: "no such experiment", from: from("r-1", "x-9") },

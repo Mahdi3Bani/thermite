@@ -9,6 +9,7 @@ import { goalChecks } from "../../../src/core/goal/index.ts";
 import { KitSchema } from "../../../src/core/kit.ts";
 import { seedDemo } from "../../helpers/control-demo.ts";
 import { ADMIN, controlOnly, mcpClient, signIn } from "../../helpers/control-stack.ts";
+import { applied } from "../../helpers/control-store.ts";
 
 /**
  * Goal 082 on control's side: what the judge found about an attempt, from the rig's events, on
@@ -32,7 +33,9 @@ async function control(kits?: KitRepos) {
     return JSON.parse(r.content[0]?.text ?? "null");
   };
   let id = 0;
-  const ingest = (events: { kind: string; subject: string; body: Record<string, unknown> }[]) =>
+  const ingest = async (
+    events: { kind: string; subject: string; body: Record<string, unknown> }[],
+  ) => {
     store.rigEvents.ingest({
       rig: "rig-a",
       ledger_id: "ledger-a",
@@ -46,6 +49,8 @@ async function control(kits?: KitRepos) {
       })),
       summary: {},
     });
+    await applied(store);
+  };
   return { store, page, rest, mcp, ingest };
 }
 
@@ -67,7 +72,7 @@ describe("a refused change's violations on control (goal 082)", () => {
       "binary change: assets/table.bin",
       ...Array.from({ length: 19 }, (_, i) => `path not editable: bench/file-${i}.c`),
     ];
-    c.ingest([
+    await c.ingest([
       runCreated,
       {
         kind: "attempt_recorded",
@@ -106,7 +111,7 @@ describe("a refused change's violations on control (goal 082)", () => {
 
   test("an attempt from an older harness, with no violations in its event, shows none", async () => {
     const c = await control();
-    c.ingest([
+    await c.ingest([
       runCreated,
       {
         kind: "attempt_recorded",
@@ -189,7 +194,7 @@ describe("each goal's real check on control (goal 082)", () => {
       repo: "sum-kit",
       commit: "b".repeat(40),
     });
-    c.ingest([
+    await c.ingest([
       goalRun,
       { kind: "goal_checks", subject: "sum-1", body: checks as unknown as Record<string, unknown> },
     ]);
@@ -197,7 +202,7 @@ describe("each goal's real check on control (goal 082)", () => {
     const before = await c.page("/ui/campaigns/sum-goals/runs/sum-1");
     assert.match(before, /The judge has not checked the goals yet\./);
     assert.match(before, /<summary>How it is checked<\/summary>/);
-    c.ingest([
+    await c.ingest([
       {
         kind: "goal_report",
         subject: "sum-1",
@@ -273,7 +278,7 @@ describe("each goal's real check on control (goal 082)", () => {
       );
       assert.ok(!saved.includes("HIDDEN-INPUT"));
       // With a run, on the campaign's own page.
-      c.ingest([goalRun]);
+      await c.ingest([goalRun]);
       const withRun = await c.page("/ui/campaigns/sum-goals");
       assert.match(withRun, /<summary>How each goal is checked<\/summary>/);
       assert.match(withRun, /From the kit control keeps/);
@@ -307,6 +312,7 @@ describe("the dashboard demo's goal checks (goal 082)", () => {
   test("a goal run reported by its rig: its Goals block and its campaign's page show how each goal is checked", async () => {
     const c = await control();
     seedDemo(c.store);
+    await applied(c.store);
     const run = await c.page("/ui/campaigns/opus-simd/runs/dec-2");
     assert.match(run, /<summary>How it is checked<\/summary>/);
     assert.match(

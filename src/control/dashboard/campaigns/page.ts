@@ -390,14 +390,14 @@ export function campaignPageRoutes(app: Hono, dash: Dashboard): void {
    * A campaign's page: what it is for, its runs, its Knowledge section, and the Start a run and
    * Copy panels. `tried`: a Copy that control refused, to show in the panel.
    */
-  const campaignPage = (c: Ctx, tried?: CopyTry) => {
+  const campaignPage = async (c: Ctx, tried?: CopyTry) => {
     const now = Date.now();
     const vs = views();
     // Its own route's, or the Copy panel's form's (/ui/campaigns/:campaign/copy).
     const name = String(c.req.param("campaign") ?? "");
     // Its runs from control's run registry (goal 170), wherever they ran: a retired rig's and
     // those from before a full reset too, under Earlier runs.
-    const runs = parts.campaignRuns(name);
+    const runs = await parts.campaignRuns(name);
     const k: CampaignView | undefined = runs.length
       ? { name, mode: runs[0]?.run.mode ?? null, runs }
       : undefined;
@@ -422,7 +422,7 @@ export function campaignPageRoutes(app: Hono, dash: Dashboard): void {
     }${archivedLine(c, name)}`;
     const canStart = Boolean(startFrom(name)) && !store.archive.get(name);
     const buttons = campaignActions(c, name);
-    const drawer = `${startPanel(c, name, vs, c.req.query("start") === "1")}${copyPanel(c, name, vs, tried)}`;
+    const drawer = `${startPanel(c, name, vs, c.req.query("start") === "1", runs)}${copyPanel(c, name, vs, tried)}`;
     if (!k) {
       // Saved on control, with no run reported yet: what was asked for, and a way to start one.
       const saved = store.campaigns.versions(name);

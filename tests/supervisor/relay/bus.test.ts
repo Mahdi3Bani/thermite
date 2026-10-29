@@ -15,6 +15,7 @@ import {
   relayOnce,
 } from "../../../src/supervisor/relay/index.ts";
 import { controlStack } from "../../helpers/control-stack.ts";
+import { heldEvents } from "../../helpers/control-store.ts";
 import { makeHarnessEnv } from "../../helpers/harness-env.ts";
 import { appendOther } from "../../helpers/kinds.ts";
 
@@ -124,9 +125,7 @@ describe("the supervisor's reports on the message bus", () => {
     const state = await relayOnce(s.cfg, { cursor: 0 });
     assert.equal(state.cursor, 5);
     assert.ok(s.calls.includes("/v1/rigs/rig-a/ingest"));
-    const kinds = (s.store.rigEvents.after("rig-a", 0, 100) as { kind: string }[]).map(
-      (e) => e.kind,
-    );
+    const kinds = (await heldEvents(s.store, "rig-a")).map((e) => e.kind);
     assert.deepEqual(kinds, ["step", "step", "step", "step", "step"]);
   });
 });

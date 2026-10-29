@@ -9,10 +9,10 @@ import type { RunpodRigView } from "../../../src/control/runpod/rig-view.ts";
 import { DEFAULT_IDLE_STOP_MINUTES, RunpodRigs } from "../../../src/control/runpod/rigs.ts";
 import { ControlTunnels } from "../../../src/control/runpod/tunnel.ts";
 import { SecretBox } from "../../../src/control/secrets.ts";
-import { ControlStore } from "../../../src/control/store/index.ts";
 import { generateSigningKeys } from "../../../src/core/commands.ts";
 import { assigned } from "../../helpers/assignments.ts";
 import { ADMIN, controlOnly, signIn } from "../../helpers/control-stack.ts";
+import { applied, controlStore } from "../../helpers/control-store.ts";
 import { FAKE_GPUS, FAKE_RUNPOD_KEY, fakeRunpod } from "../../helpers/fake-runpod.ts";
 import {
   exportName,
@@ -27,7 +27,7 @@ const IMAGE = "ghcr.io/example/thermite-rig:test-cuda";
 
 /** Control with a RunPod account (the fake RunPod), signed in, with a clock the test moves. */
 async function setup(o: Parameters<typeof fakeRunpod>[0] = {}) {
-  const store = new ControlStore(":memory:");
+  const store = controlStore();
   const secrets = SecretBox.ephemeral();
   store.gpuClouds.add({
     name: "runpod",
@@ -129,6 +129,7 @@ async function working(s: Awaited<ReturnType<typeof setup>>, form: Partial<typeo
       },
     ],
   });
+  await applied(s.store);
   supervisorReports(s.store, "rp-test-1");
 }
 
@@ -477,7 +478,7 @@ describe("a RunPod rig's page", () => {
     await working(s, { idle_stop_minutes: "30" });
     /** The harness's next signed events, after working()'s first. */
     let cursor = 1;
-    const report = (...events: [kind: string, body: object][]) => {
+    const report = async (...events: [kind: string, body: object][]) => {
       s.store.rigEvents.ingest({
         rig: "rp-test-1",
         ledger_id: "l1",
@@ -494,6 +495,7 @@ describe("a RunPod rig's page", () => {
         })),
       });
       cursor += events.length;
+      await applied(s.store);
     };
     /** The line under Idle stop, without its "Change it" link. */
     const idleLine = async () =>
@@ -507,7 +509,7 @@ describe("a RunPod rig's page", () => {
         })
       ).json()) as RunpodRigView;
     // A lane's trial in progress: at work, however long it takes. No idle time counts.
-    report(["trial_started", { lane: "lane-1", trial: "t-1" }]);
+    await report(["trial_started", { lane: "lane-1", trial: "t-1" }]);
     await s.advance();
     assert.equal(await idleLine(), "a run is at work");
     assert.equal((await rest()).idle_since, null);
@@ -516,7 +518,7 @@ describe("a RunPod rig's page", () => {
     assert.deepEqual(s.cloud.stops(), [], "never stopped with a run at work");
     assert.equal(s.rigs.view("rp-test-1")?.op, null);
     // The run finishes: the idle time counts from then, as the idle stop counts it.
-    report(
+    await report(
       ["trial_finished", { lane: "lane-1", trial: "t-1", stopped: "done" }],
       ["run_status", { status: "closed", reason: "done" }],
     );

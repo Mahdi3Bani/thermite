@@ -3,15 +3,15 @@ import { describe, test } from "node:test";
 import { buildInfo } from "../../src/common/build-info.ts";
 import type { Bus, BusMessage } from "../../src/common/bus.ts";
 import { foldReport, followReports, type Intake } from "../../src/control/ingest.ts";
-import { ControlStore } from "../../src/control/store/index.ts";
 import { REPORT_CONSUMER, REPORT_STREAM, reportSubject } from "../../src/core/link/report.ts";
 import { buildHeaders } from "../../src/core/version.ts";
+import { controlStore, heldEvents } from "../helpers/control-store.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";
 import { appendOther } from "../helpers/kinds.ts";
 
 /** Control's store and what taking reports needs, with rig-a and rig-b given tokens. */
 function intake(): Intake {
-  const store = new ControlStore(":memory:");
+  const store = controlStore();
   store.enrollments.setConfiguredRigs(["rig-a", "rig-b"]);
   return { store, control: buildInfo(), requireKeyAcceptance: false };
 }
@@ -43,8 +43,8 @@ function harness(n: number) {
   return { env, page };
 }
 
-const kinds = (t: Intake, rig = "rig-a") =>
-  (t.store.rigEvents.after(rig, 0, 1000) as { kind: string }[]).map((e) => e.kind);
+const kinds = async (t: Intake, rig = "rig-a") =>
+  (await heldEvents(t.store, rig)).map((e) => e.kind);
 const refusals = (t: Intake) =>
   t.store.auditLog
     .list(50)
@@ -73,7 +73,7 @@ describe("control folds rigs' reports from the message bus", () => {
     await followReports(bus, t);
     assert.deepEqual(followed, { stream: REPORT_STREAM, consumer: REPORT_CONSUMER });
     assert.equal(acked.length, 3);
-    assert.equal(kinds(t).length, 25);
+    assert.equal((await kinds(t)).length, 25);
     // The first report pinned the rig's key, and the supervisor's build came with the message.
     assert.ok(t.store.reportedRigs.key("rig-a").pubkey);
     assert.equal(t.store.builds.ofRig("rig-a", "supervisor")?.version, buildInfo().version);
@@ -96,39 +96,39 @@ describe("control folds rigs' reports from the message bus", () => {
     // A page that brings new events after a skip is folded.
     appendOther(env.service.ledger, "t", "late", null, {});
     assert.deepEqual(foldReport(t, message(page(10, 10))), { folded: 1 });
-    assert.equal(kinds(t).length, 11);
+    assert.equal((await kinds(t)).length, 11);
     assert.deepEqual(refusals(t), []);
   });
 
-  test("a gap is refused and recorded as over HTTP, and the pages after it still fold", () => {
+  test("a gap is refused and recorded as over HTTP, and the pages after it still fold", async () => {
     const t = intake();
     const { page } = harness(25);
     assert.deepEqual(foldReport(t, message(page(0, 10))), { folded: 10 });
     const ahead = page(20, 10);
     assert.deepEqual(foldReport(t, message(ahead)), { refused: "a gap in the event stream" });
     assert.deepEqual(refusals(t), ["a gap in the event stream"]);
-    assert.equal(kinds(t).length, 10);
+    assert.equal((await kinds(t)).length, 10);
     // The page that closes the gap, from where control is, folds; then the one after it.
     assert.deepEqual(foldReport(t, message(page(10, 10))), { folded: 10 });
     assert.deepEqual(foldReport(t, message(page(20, 10))), { folded: 5 });
-    assert.equal(kinds(t).length, 25);
+    assert.equal((await kinds(t)).length, 25);
   });
 
-  test("a report whose signed rig is not the subject's rig is refused", () => {
+  test("a report whose signed rig is not the subject's rig is refused", async () => {
     const t = intake();
     const { page } = harness(3);
     const forRigA = page(0, 10);
     // Published on rig-b's subject: the signature says rig-a, so nothing is taken for either.
     const refused = foldReport(t, message(forRigA, reportSubject("rig-b")));
     assert.deepEqual(refused, { refused: "rig mismatch" });
-    assert.deepEqual(kinds(t, "rig-a"), []);
-    assert.deepEqual(kinds(t, "rig-b"), []);
+    assert.deepEqual(await kinds(t, "rig-a"), []);
+    assert.deepEqual(await kinds(t, "rig-b"), []);
     assert.equal(t.store.reportedRigs.key("rig-b").pubkey, null, "no key is pinned for rig-b");
     // Its own subject takes it.
     assert.deepEqual(foldReport(t, message(forRigA)), { folded: 3 });
   });
 
-  test("a subject or rig control does not know, a retired rig and a forged report are refused", () => {
+  test("a subject or rig control does not know, a retired rig and a forged report are refused", async () => {
     const t = intake();
     const { page } = harness(2);
     const report = page(0, 10);
@@ -150,10 +150,10 @@ describe("control folds rigs' reports from the message bus", () => {
     assert.equal(refusedFor(message(unsigned)), "unsigned report");
     t.store.retired.add("rig-a", "owner:test");
     assert.equal(refusedFor(message(report)), "this rig is retired in control");
-    assert.deepEqual(kinds(t), []);
+    assert.deepEqual(await kinds(t), []);
   });
 
-  test("a rig whose supervisor control cannot work with is refused, and its calls counted", () => {
+  test("a rig whose supervisor control cannot work with is refused, and its calls counted", async () => {
     const t = intake();
     const { page } = harness(2);
     // Its supervisor said so on a call over HTTP: it works with protocol 99 or later only.
@@ -162,6 +162,6 @@ describe("control folds rigs' reports from the message bus", () => {
     const refused = (foldReport(t, message(page(0, 10))) as { refused?: string }).refused;
     assert.match(refused ?? "", /^Control cannot work with this rig: its supervisor works with/);
     assert.equal(t.store.refusals.get("rig-a")?.calls, 1);
-    assert.deepEqual(kinds(t), []);
+    assert.deepEqual(await kinds(t), []);
   });
 });

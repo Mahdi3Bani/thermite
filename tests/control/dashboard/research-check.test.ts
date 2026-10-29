@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { controlOnly, signIn } from "../../helpers/control-stack.ts";
+import { applied } from "../../helpers/control-store.ts";
 
 /**
  * Goal 112 on control's side, from a rig's events: a research run's Overview says in one line
@@ -16,7 +17,9 @@ async function control() {
   const { page } = await signIn(api);
   let id = 0;
   const t0 = Date.now() - 3600_000;
-  const ingest = (...events: { kind: string; subject: string; body: Record<string, unknown> }[]) =>
+  const ingest = async (
+    ...events: { kind: string; subject: string; body: Record<string, unknown> }[]
+  ) => {
     store.rigEvents.ingest({
       rig: "rig-a",
       ledger_id: "ledger-a",
@@ -30,6 +33,8 @@ async function control() {
       })),
       summary: {},
     });
+    await applied(store);
+  };
   /** The Overview's one line on the answer check, without markup. */
   const line = async () =>
     (/<div class="small rcheck"[^>]*><b>Answer check:<\/b> ([^<]*)<\/div>/.exec(await page(PAGE)) ??
@@ -68,16 +73,16 @@ const start = [
 describe("a research run's answer check on control (goal 112)", () => {
   test("the Overview says where the check stands, in one line, from the digests and the reviews", async () => {
     const c = await control();
-    c.ingest(...start, digest({ elapsed_h: 0.5, verified: [3, 0] }));
+    await c.ingest(...start, digest({ elapsed_h: 0.5, verified: [3, 0] }));
     assert.equal(
       await c.line(),
       "The check starts once the run has run for its minimum, 2.0 h. At the newest digest it had run 0.5 h.",
     );
-    c.ingest(digest({ elapsed_h: 3, verified: [3, 0] }));
+    await c.ingest(digest({ elapsed_h: 3, verified: [3, 0] }));
     assert.equal(await c.line(), "Waiting for a verified claim on question 2.");
-    c.ingest(digest({ elapsed_h: 3.5, verified: [3, 1], floor: 5 }));
+    await c.ingest(digest({ elapsed_h: 3.5, verified: [3, 1], floor: 5 }));
     assert.equal(await c.line(), "Waiting for verified claims: 4 of the 5 the campaign asks for.");
-    c.ingest(digest({ elapsed_h: 4, verified: [3, 2], floor: 5 }), {
+    await c.ingest(digest({ elapsed_h: 4, verified: [3, 2], floor: 5 }), {
       kind: "review_requested",
       subject: "s-1",
       body: { review: 1, goal: "research", commit: "corpus:5:0:c-1" },
@@ -93,7 +98,7 @@ describe("a research run's answer check on control (goal 112)", () => {
       "The check waits for a review panel: this rig's supervisor has no review panel set up. The run keeps researching.",
     );
     c.store.reportedRigs.setSupervisor("rig-a", { advisors: { roles: { review_panel: 3 } } });
-    c.ingest({
+    await c.ingest({
       kind: "review_panel",
       subject: "s-1",
       body: {
@@ -108,13 +113,13 @@ describe("a research run's answer check on control (goal 112)", () => {
       await c.line(),
       "Not yet: review 1 found gaps: Question 2: missing: a second, independent site; Hypothesis h-1: no verdict. The run goes on, and the review panel is asked again on new evidence.",
     );
-    c.ingest(digest({ elapsed_h: 5, verified: [3, 3], floor: 5 }));
+    await c.ingest(digest({ elapsed_h: 5, verified: [3, 3], floor: 5 }));
     assert.match(String(await c.line()), /^Not yet: review 1 found gaps/);
   });
 
   test("a pass that waits for the owner is a decision with the answers; accepted and closed, the run reads Completed", async () => {
     const c = await control();
-    c.ingest(
+    await c.ingest(
       ...start,
       digest({ elapsed_h: 3, verified: [2, 2] }),
       {
@@ -152,7 +157,7 @@ describe("a research run's answer check on control (goal 112)", () => {
     // Not a goal's review: the attempts tab lists none as one.
     assert.doesNotMatch(await c.page(`${PAGE}/attempts`), /Reviews of subjective goals/);
     assert.match(run, /<span class="label violet"><svg[^>]*>[\s\S]*?<\/svg>Review<\/span>/);
-    c.ingest({
+    await c.ingest({
       kind: "review_decided",
       subject: "s-1",
       body: { review: 4, goal: "research", decision: "accepted" },
@@ -161,7 +166,7 @@ describe("a research run's answer check on control (goal 112)", () => {
       await c.line(),
       "Answered: the review panel found every question answered (review 4). The run writes its final report and ends once its running trials end.",
     );
-    c.ingest(
+    await c.ingest(
       {
         kind: "research_final",
         subject: "s-1",
@@ -185,7 +190,7 @@ describe("a research run's answer check on control (goal 112)", () => {
 
   test("a research run that ended at its maximum reads Finished, and says its questions were not found answered", async () => {
     const c = await control();
-    c.ingest(
+    await c.ingest(
       ...start,
       digest({ elapsed_h: 3, verified: [2, 2] }),
       {

@@ -1,6 +1,7 @@
 import type { Hono } from "hono";
 import { isRigCheck } from "../../../../core/ids.ts";
 import { commandFollowUrl, commandProgress } from "../../../command-progress.ts";
+import { runPrompts } from "../../../prompts.ts";
 import {
   esc,
   icon,
@@ -71,12 +72,12 @@ export function runPageRoutes(app: Hono, dash: Dashboard): void {
     return `<a class="btn" href="${runLiveHref(r)}">${icon.terminal}Live</a>${agents ? `<a class="btn" href="${runLiveHref(r, { compose: true })}">Message</a>` : ""}${quick}${exportMenu({ csrf: csrf(c), rig: u.id, run: r.id, back })}${moreMenu(c, u.id, r, back, "", true)}`;
   };
 
-  const runPage = (c: Ctx, tab: RunTab) => {
+  const runPage = async (c: Ctx, tab: RunTab) => {
     const now = Date.now();
     const vs = views();
     const campaign = c.req.param("campaign") ?? "";
     const id = c.req.param("run") ?? "";
-    const x = runOf(campaign, id);
+    const x = await runOf(campaign, id);
     const crumbs = [
       { href: "/ui/campaigns", text: "Campaigns" },
       { href: campaignHref(campaign), text: campaign },
@@ -123,6 +124,8 @@ export function runPageRoutes(app: Hono, dash: Dashboard): void {
         : // Any other run started with its agents off (goal 099): say so plainly. A rig check's
           // smoke run is the rig page's to explain.
           `<div class="card hl" style="margin-bottom:12px"><b>Judge only:</b> ${esc(JUDGE_ONLY_WORDS)}</div>`;
+    // The Prompts tab's list, read from the message bus.
+    const prompts = tab === "prompts" ? await runPrompts(store, x) : [];
     return page(
       c,
       {
@@ -132,7 +135,7 @@ export function runPageRoutes(app: Hono, dash: Dashboard): void {
         active: "campaigns",
         actions: actions(c, x, back),
       },
-      `${said}${earlierCard}${kind}${runSection(c, x, vs, now, tab)}`,
+      `${said}${earlierCard}${kind}${runSection(c, x, vs, now, tab, prompts)}`,
       vs,
     );
   };

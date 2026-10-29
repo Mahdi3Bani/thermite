@@ -3,12 +3,13 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { readKnowledgeAgain } from "../../src/control/events/index.ts";
 import type { ControlStore } from "../../src/control/store/index.ts";
-import { KnowledgeBase } from "../../src/control/store/kb/index.ts";
+import { rigView } from "../../src/control/views/index.ts";
 import { KbSync } from "../../src/core/kb.ts";
 import { assigned } from "../helpers/assignments.ts";
 import { controlOnly } from "../helpers/control-stack.ts";
-import { applied, busOf, closeBus, controlStore } from "../helpers/control-store.ts";
+import { applied, busOf, closeBus, controlStore, heldEvents } from "../helpers/control-store.ts";
 
 type Ev = [string, string, string, Record<string, unknown>];
 
@@ -423,7 +424,6 @@ test("a research note is a note of its own in the folder and in the run's journa
   assert.equal(notes[0]?.url, "https://example.com/guide");
   assert.match(String(notes[0]?.body), /Sources: s-1/);
   assert.equal(kb.search("memory bound", ["gemv-speed"])[0]?.sub, "observation");
-  const { rigView } = await import("../../src/control/views/index.ts");
   const run = rigView(store, "rig-c", { staleAfterMs: 600_000 })?.runs.find((r) => r.id === "g-1");
   assert.deepEqual(
     run?.journal.map((n) => [n.id, n.kind, n.about?.type ?? null]),
@@ -583,20 +583,14 @@ test("a folder holds everything a run produces: the run, its trials, its documen
     assert.match(x.at, /^2026-10-20T01:0\d:00\.000Z$/);
   }
   // The pages are built without the text a source's or a document's event carries.
-  const events = store.rigEvents.after("rig-r", 0, 100, null, { lean: true }) as {
-    kind: string;
-    body: Record<string, unknown>;
-  }[];
+  const events = rigView(store, "rig-r", { staleAfterMs: 600_000 })?.recent ?? [];
   assert.equal(events.find((e) => e.kind === "source_fetched")?.body.text, undefined);
   assert.equal(events.find((e) => e.kind === "research_doc")?.body.text, undefined);
   assert.equal(
     events.find((e) => e.kind === "source_fetched")?.body.url,
     "https://docs.example.com/guide",
   );
-  const full = store.rigEvents.after("rig-r", 0, 100) as {
-    kind: string;
-    body: Record<string, unknown>;
-  }[];
+  const full = (await heldEvents(store, "rig-r")) as { kind: string; body: { text?: string } }[];
   assert.equal(full.find((e) => e.kind === "source_fetched")?.body.text, text);
 });
 
@@ -621,8 +615,8 @@ test("after an upgrade, the runs indexed before get their run and trial items, o
     "update kb_cursor set seq = (select max(seq) from rig_event); delete from kb_item where kind in ('run', 'trial'); delete from kb_meta;",
   );
   const note = kb.search("kept", ["gemv-speed"])[0];
-  // Control starts again: the knowledge base reads those events again as it opens.
-  new KnowledgeBase(store.db);
+  // Control starts again: the knowledge base reads those events again from the events stream.
+  await readKnowledgeAgain(store, busOf(store).bus);
   assert.deepEqual(kb.folder("gemv-speed").counts, { note: 1, run: 1, trial: 1 });
   const [run] = kb.search("", ["gemv-speed"], { kinds: ["run"] });
   assert.match(String(run?.body), /Status: paused \(a pause\)$/);
@@ -634,7 +628,7 @@ test("after an upgrade, the runs indexed before get their run and trial items, o
   );
   // Once only: a later call reads nothing again.
   store.db.exec("delete from kb_item where kind = 'trial'");
-  new KnowledgeBase(store.db);
+  assert.equal(await readKnowledgeAgain(store, busOf(store).bus), 0);
   assert.equal(kb.folder("gemv-speed").counts.trial, undefined);
 });
 
@@ -674,7 +668,7 @@ test("a store built by an earlier reading rebuilds its experiments and attempts 
   store.db.prepare("update kb_item set body = 'cut', meta = '{}' where kind = 'experiment'").run();
   store.db.prepare("update kb_meta set value = '2' where key = 'reading'").run();
   store.db.exec("update kb_cursor set seq = (select max(seq) from rig_event)");
-  new KnowledgeBase(store.db);
+  await readKnowledgeAgain(store, busOf(store).bus);
   const [again] = kb.search("vector", ["gemv-speed"], { kinds: ["experiment"] });
   assert.equal(again?.body, whole);
   assert.equal(again?.meta.result, "Result: attempt a-1 (submitted)");

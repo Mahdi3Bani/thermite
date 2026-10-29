@@ -6,7 +6,7 @@ import { modelUsage } from "../../src/control/usage.ts";
 import { rigView } from "../../src/control/views/index.ts";
 import { callUsage } from "../../src/core/usage.ts";
 import { ADMIN, controlOnly, mcpClient } from "../helpers/control-stack.ts";
-import { applied, controlStore } from "../helpers/control-store.ts";
+import { applied, controlStore, heldEvents } from "../helpers/control-store.ts";
 
 /**
  * Model usage on control (goal 075): the rigs' model_call events become rows the sums read, for a
@@ -217,18 +217,9 @@ describe("model usage on control (goal 075)", () => {
     const v = rigView(s.store, "rig-a", { staleAfterMs: 600_000 });
     assert.ok(v);
     assert.ok(v.recent.every((e) => e.kind !== "model_call"));
-    assert.equal(
-      s.store.rigEvents
-        .after("rig-a", 0, 100)
-        .filter((e) => (e as { kind: string }).kind === "model_call").length,
-      4,
-    );
-    assert.equal(
-      s.store.rigEvents
-        .after("rig-a", 0, 100, null, { lean: true })
-        .filter((e) => (e as { kind: string }).kind === "model_call").length,
-      0,
-    );
+    assert.ok(v.runs.every((r) => r.timeline.every((e) => e.kind !== "model_call")));
+    const held = await heldEvents(s.store, "rig-a");
+    assert.equal(held.filter((e) => e.kind === "model_call").length, 4);
   });
 
   test("REST: the owner's or the reader's token; a query that does not read is refused in words", async () => {

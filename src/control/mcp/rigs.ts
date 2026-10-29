@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  bringBackRig,
   type RigSettingsBody,
   rigSettingsAnswer,
   rigSettingsFields,
@@ -85,8 +86,8 @@ export function registerRetire(tools: ToolContext): void {
           "A retired rig shows again and its reports are taken again. A token control made for it stays ended. The owner's token only.",
         inputSchema: { rig: z.string().min(1) },
       },
-      audited("bring_back_rig", (a: { rig: string }) => {
-        if (!store.retired.bringBack(a.rig, actor)) throw new Error(`${a.rig} is not retired`);
+      audited("bring_back_rig", async (a: { rig: string }) => {
+        if (!(await bringBackRig(store, a.rig, actor))) throw new Error(`${a.rig} is not retired`);
         return { rig: a.rig, retired: false };
       }),
     );

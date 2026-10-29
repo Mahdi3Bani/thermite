@@ -184,6 +184,27 @@ async function main(): Promise<void> {
   const { runpodTests, tunnels, runpodRigs } = parts;
   // Each rig's config, written to the config bucket when it changes (bus/config.ts).
   const busConfig = new ConfigWriter({ parts, bus, figures: configWritten });
+  // Before control serves a page: the users file, so that the server can start, kept up to date
+  // after; the store's place checked against the events stream's end; the events table, mirrored
+  // to the stream from the stream's last row to the table's end; and the stream applied to its
+  // end, which builds the views' folds in one pass from its first message (control/events).
+  void busUsers.sync();
+  const usersSync = setInterval(() => void busUsers.sync(), BUS_USERS_SYNC_MS);
+  const started = performance.now();
+  await eventsApply.start();
+  // A store that applied the stream past its end holds records the stream lacks: control does
+  // not go on with it.
+  if (eventsApply.stopped) {
+    log("control", "fatal", { error: eventsApply.stopped }, "error");
+    process.exit(1);
+  }
+  await eventsMirror.start();
+  await eventsApply.nudge();
+  log("control", "control's views built from the events stream", {
+    place: eventsApply.folds.through,
+    rigs: eventsApply.folds.held().length,
+    ms: Math.round(performance.now() - started),
+  });
   const server = serve({
     fetch: createControlApi(store, tokens, privateKeyPem, {
       staleAfterMs,
@@ -218,24 +239,10 @@ async function main(): Promise<void> {
     bus_for_rigs: rigBusUrl ? new URL(rigBusUrl).host : null,
   });
   // Reports from the bus, folded through the ingest route's checks as they arrive; the events
-  // stream, applied from the store's place to its end, once the store's place is checked against
-  // the stream's end; the events table, mirrored to the events stream after that check, from the
-  // stream's last row to the table's end at start and then as reports arrive, by HTTP or by the
-  // bus; live lines, folded into the live view as they arrive; each command control issues,
-  // published to its rig's subject as well as kept in the store; and each rig's config, written
-  // when it changes. The users file is written first, so that the server can start, and kept up
-  // to date after.
-  void busUsers.sync();
-  const usersSync = setInterval(() => void busUsers.sync(), BUS_USERS_SYNC_MS);
-  void eventsApply.start().then(() => {
-    // A store that applied the stream past its end holds records the stream lacks: control does
-    // not go on with it.
-    if (eventsApply.stopped) {
-      log("control", "fatal", { error: eventsApply.stopped }, "error");
-      process.exit(1);
-    }
-    return eventsMirror.start();
-  });
+  // table, mirrored to the events stream as reports arrive, by HTTP or by the bus, and the stream
+  // applied after each batch; live lines, folded into the live view as they arrive; each command
+  // control issues, published to its rig's subject as well as kept in the store; and each rig's
+  // config, written when it changes.
   void busConfig.start().then(() => busConfig.write());
   const configWrite = setInterval(() => void busConfig.write(), CONFIG_WRITE_MS);
   followReports(bus, { store, control: buildInfo(), requireKeyAcceptance }).catch((err) =>

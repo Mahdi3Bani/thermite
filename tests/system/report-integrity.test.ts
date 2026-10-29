@@ -9,6 +9,7 @@ import { generateSigningKeys } from "../../src/core/commands.ts";
 import { verifyExport } from "../../src/supervisor/git-export.ts";
 import { relayOnce } from "../../src/supervisor/relay/index.ts";
 import { ADMIN, controlOnly, controlStack } from "../helpers/control-stack.ts";
+import { heldEvents } from "../helpers/control-store.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";
 import { appendOther } from "../helpers/kinds.ts";
 
@@ -60,7 +61,7 @@ describe("signed reports at control", () => {
     const gap = await post(ahead);
     assert.equal(gap.status, 409);
     assert.equal(((await gap.json()) as { expected_cursor: number }).expected_cursor, fresh.next);
-    const kinds = (store.rigEvents.after("rig-a", 0, 100) as { kind: string }[]).map((e) => e.kind);
+    const kinds = (await heldEvents(store, "rig-a")).map((e) => e.kind);
     assert.deepEqual(kinds, ["one", "two"]);
     // A rig that moved to a new ledger never goes back to the one it left.
     const base = { rig: "rig-a", cursor: 0, next: 0, events: [], summary: {} };

@@ -59,10 +59,13 @@ export interface ControlParts {
   bus?: BusView | undefined;
   /** Every rig as control sees it now (views.ts), through the folds control keeps. */
   views(): RigView[];
-  /** A run wherever it ran (goal 170), read now; undefined for a run no rig created. */
-  run(id: string): RunOnRig | undefined;
+  /**
+   * A run wherever it ran (goal 170), read now; undefined for a run no rig created. A run of an
+   * earlier ledger may be read from the message bus first.
+   */
+  run(id: string): Promise<RunOnRig | undefined>;
   /** Every run of a campaign a rig created, newest first, earlier ones too (goal 170). */
-  campaignRuns(campaign: string): RunOnRig[];
+  campaignRuns(campaign: string): Promise<RunOnRig[]>;
 }
 
 /** What controlParts takes from control's options; tests give their own of each. */

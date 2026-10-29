@@ -56,7 +56,7 @@ export function resultRoutes(
       const seq = Number(c.req.param("seq"));
       if (!Number.isInteger(seq) || seq < 1) return c.json({ error: "bad seq" }, 400);
       const patch = Buffer.from(await c.req.arrayBuffer());
-      const r = keepChampionPatch(store, c.req.param("rig"), c.req.param("run"), seq, patch);
+      const r = await keepChampionPatch(store, c.req.param("rig"), c.req.param("run"), seq, patch);
       if (r === "not_published")
         return c.json({ error: "control has no champion_published event for it yet" }, 409);
       if (r === "mismatch")
@@ -98,7 +98,7 @@ export function resultRoutes(
   // One run's published champion to another run of its campaign, each named alone (goal 170).
   app.post(PROPAGATE.path, admin, async (c) => {
     const body = PROPAGATE.body.parse(await jsonBody(c.req));
-    const r = propagateChampion(store, privateKeyPem, {
+    const r = await propagateChampion(store, privateKeyPem, {
       run: body.run,
       toRun: body.to_run,
       issuedBy: "owner:api",

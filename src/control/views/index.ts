@@ -5,8 +5,9 @@
  *
  * Its parts are in views/: the view's types, the fold of a rig's events (fold/, one module for
  * each area of events), the read of a rig's view (rig.ts) with what the rig's report says
- * (report.ts), the folds control keeps up to date as events arrive and a run's view wherever it
- * ran (cache.ts), and the views made from rigs' views: the leaderboard, the campaigns and a run's
+ * (report.ts), the folds control keeps up to date as the events stream's apply hands them its
+ * events, and a run's view wherever it ran (cache.ts), control's reads of the events stream
+ * (stream.ts), and the views made from rigs' views: the leaderboard, the campaigns and a run's
  * directions.
  */
 
@@ -19,7 +20,9 @@ export {
   findRunOn,
   keepFolds,
   rigChecks,
+  rigEventsPage,
   rigView,
+  runEvents,
   runMessages,
 } from "./cache.ts";
 export { type CampaignView, campaignModes, campaignViews, newestRun } from "./campaigns.ts";
@@ -54,7 +57,9 @@ export {
   type StandingView,
   type TaskYieldView,
 } from "./research.ts";
-export { podStopped, rigEvents } from "./rig.ts";
+export { podStopped } from "./rig.ts";
+export type { EventBus, RawEvent, StreamEvent } from "./stream.ts";
+export { streamEvent } from "./stream.ts";
 export type {
   AttemptView,
   BaselineView,

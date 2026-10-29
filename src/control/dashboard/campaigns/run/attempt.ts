@@ -23,9 +23,9 @@ export function attemptRoutes(app: Hono, dash: Dashboard): void {
     runOf(c.req.param("campaign"), c.req.param("run"));
 
   // A champion as a patch file: the result an operator takes away (it applies to the base commit).
-  app.get(RUN_ROUTES.champion, (c) => {
+  app.get(RUN_ROUTES.champion, async (c) => {
     const m = /^(\d+)\.patch$/.exec(c.req.param("file"));
-    const x = named(c);
+    const x = await named(c);
     const p =
       m && x
         ? store.championPatches.get(x.rig.id, x.rig.ledger_id, x.run.id, Number(m[1]))
@@ -43,8 +43,8 @@ export function attemptRoutes(app: Hono, dash: Dashboard): void {
   // A research run's paper (goal 112), as its rig's report carries it: the Markdown file, with
   // the references the harness appended (the same text is paper.md in the run's research folder).
   // Shown as plain text: it is the agents' writing.
-  app.get(RUN_ROUTES.paper, (c) => {
-    const x = named(c);
+  app.get(RUN_ROUTES.paper, async (c) => {
+    const x = await named(c);
     const p = x?.run.paper;
     if (!x || p?.state !== "in" || !p.text)
       return c.text("No research paper for that run yet.", 404);
@@ -63,9 +63,9 @@ export function attemptRoutes(app: Hono, dash: Dashboard): void {
       ? ` data-follow="${esc(commandFollowUrl(cmd.id))}" data-follow-state="${esc(p.state)}"`
       : "";
   };
-  app.get(RUN_ROUTES.attempt, (c) => {
+  app.get(RUN_ROUTES.attempt, async (c) => {
     const now = Date.now();
-    const x = named(c);
+    const x = await named(c);
     const id = c.req.param("attempt");
     const a = x?.run.attempts.find((y) => y.id === id);
     if (!x || !a) {

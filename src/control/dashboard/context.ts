@@ -115,8 +115,8 @@ export function dashboardContext(store: ControlStore, opts: DashboardOptions) {
    * A run of a campaign wherever it ran (goal 170), earlier runs too: undefined for a run no rig
    * created, or one of another campaign.
    */
-  const runOf = (campaign: string, run: string): RunOnRig | undefined => {
-    const x = parts.run(run);
+  const runOf = async (campaign: string, run: string): Promise<RunOnRig | undefined> => {
+    const x = await parts.run(run);
     return x && runCampaign(x.run) === campaign ? x : undefined;
   };
   /** A form that issues a command; `back` is where the owner lands afterwards. */

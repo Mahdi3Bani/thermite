@@ -40,7 +40,8 @@ export function registerCommands(tools: ToolContext): void {
           const { id, woke } = await issueWaking(store, opts.privateKeyPem, opts.runpodRigs, {
             rig,
             kind: a.kind,
-            payload: a.kind === "assign_campaign" ? queueFromRecords(store, a.payload) : a.payload,
+            payload:
+              a.kind === "assign_campaign" ? await queueFromRecords(store, a.payload) : a.payload,
             ttlMinutes: a.ttl_minutes,
             issuedBy: actor,
             owner: role === "owner",

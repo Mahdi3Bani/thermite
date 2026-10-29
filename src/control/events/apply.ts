@@ -6,6 +6,8 @@ import { EVENT_STREAM, type EventRead, readEventMessage } from "../../core/link/
 import { currentEvent } from "../../core/names.ts";
 import { MODEL_CALL_EVENT, ModelCallBody } from "../../core/usage.ts";
 import type { ControlStore } from "../store/index.ts";
+import { type FoldCache, keepFolds, streamEvent } from "../views/index.ts";
+import { readKnowledgeAgain } from "./knowledge.ts";
 
 /**
  * What control derives from its rigs' events, written from the `EVENTS` stream (goal 168, step 4).
@@ -15,8 +17,10 @@ import type { ControlStore } from "../store/index.ts";
  * then each rig ledger's held cursor, the last event of it applied (`rig_ledger.through_event`),
  * and the stream's place, in the same transaction, so that the store and the stream never disagree
  * about what was applied. An event at or below its ledger's held cursor is applied already, and
- * changes nothing. Control's own copy of its events table on the stream (mirror.ts) nudges it
- * after each batch it publishes.
+ * changes nothing. Then it hands each event to control's kept folds (views/cache.ts), which its
+ * views read: at control's start it reads the stream from its first message, the events before
+ * the store's place for the folds alone, so the folds are built in one pass. Control's own copy of
+ * its events table on the stream (mirror.ts) nudges it after each batch it publishes.
  */
 
 /** How many messages one read takes at most: one transaction applies them all. */
@@ -33,12 +37,15 @@ const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * The apply of the events stream. start() checks the store's place against the stream's end, then
- * applies what the stream holds after it, and again at each nudge(). A read or a transaction that
- * fails changes nothing, and is tried again after a pause. A store whose place is past the
- * stream's end stops it for good: control then does not start (main.ts).
+ * applies what the stream holds after it and hands the folds every message they lack (the first
+ * time, from the stream's first), and again at each nudge(). A read or a transaction that fails
+ * changes nothing, and is tried again after a pause. A store whose place is past the stream's end
+ * stops it for good: control then does not start (main.ts).
  */
 export class EventsApply {
   private readonly o: EventsApplyOptions;
+  /** Control's kept folds, which its views read: handed every event of the stream, in order. */
+  readonly folds: FoldCache;
   readonly since = new Date().toISOString();
   /** Messages it applied since control started. */
   applied = 0;
@@ -49,6 +56,8 @@ export class EventsApply {
   /** Why it stopped for good: the store applied the stream past its end. Null while it goes on. */
   stopped: string | null = null;
   private checked = false;
+  /** Whether the knowledge base has read again what an upgrade of its reading needs. */
+  private readAgain = false;
   private readonly checkedOnce: Promise<void>;
   private markChecked: () => void = () => undefined;
   private due = false;
@@ -57,6 +66,7 @@ export class EventsApply {
 
   constructor(o: EventsApplyOptions) {
     this.o = o;
+    this.folds = keepFolds(o.store, o.bus);
     this.checkedOnce = new Promise((r) => {
       this.markChecked = r;
     });
@@ -127,13 +137,21 @@ export class EventsApply {
     this.markChecked();
   }
 
-  /** Applies every message the stream holds after the store's place, a page at a time. */
+  /**
+   * Applies every message the stream holds after the store's place, a page at a time, and hands
+   * the folds every message after theirs: at control's start, from the stream's first. The
+   * knowledge base reads again what an upgrade of its reading needs first, once.
+   */
   private async turn(): Promise<void> {
     const { store, bus } = this.o;
     if (!this.checked) await this.check();
     if (this.stopped) return;
+    if (!this.readAgain) {
+      await readKnowledgeAgain(store, bus);
+      this.readAgain = true;
+    }
     while (!this.closed) {
-      const from = store.busPositions.of(EVENT_STREAM) + 1;
+      const from = Math.min(store.busPositions.of(EVENT_STREAM), this.folds.through) + 1;
       const read = await bus.read(EVENT_STREAM, { from, limit: APPLY_PAGE });
       if (read.next <= from) return;
       this.applyPage(read.messages, read.next - 1);
@@ -142,10 +160,21 @@ export class EventsApply {
   }
 
   /**
-   * The page's messages, in the stream's order, and the place it ends at, in one transaction. Each
-   * rig ledger's held cursor is read once a page, and written once at its end where it moved.
+   * The page's messages after the store's place, in the stream's order, and the place it ends at,
+   * in one transaction; then every message after the folds' place to the folds. Each rig
+   * ledger's held cursor is read once a page, and written once at its end where it moved.
    */
   private applyPage(messages: readonly BusMessage[], through: number): void {
+    const { store } = this.o;
+    const place = store.busPositions.of(EVENT_STREAM);
+    if (through > place) this.record(messages, place, through);
+    const folds = this.folds.through;
+    const events = messages.flatMap((m) => (m.seq > folds ? (streamEvent(m) ?? []) : []));
+    this.folds.take(events, through);
+  }
+
+  /** The messages after the store's place, applied, and the place it ends at, in one transaction. */
+  private record(messages: readonly BusMessage[], place: number, through: number): void {
     const { store } = this.o;
     const now = new Date().toISOString();
     const kb = store.kb();
@@ -155,6 +184,7 @@ export class EventsApply {
     let refused = 0;
     store.tx(() => {
       for (const m of messages) {
+        if (m.seq <= place) continue;
         const read = readOrSay(m);
         if (!read) {
           refused++;

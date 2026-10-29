@@ -27,6 +27,7 @@ import { relayCommandsOnce, relayOnce } from "../../../src/supervisor/relay/inde
 import { PodTunnel, pullModeOptions, startPullMode } from "../../../src/supervisor/tunnel-pod.ts";
 import { assigned } from "../../helpers/assignments.ts";
 import { controlOnly, signIn } from "../../helpers/control-stack.ts";
+import { controlStore, heldEvents } from "../../helpers/control-store.ts";
 import { makeHarnessEnv } from "../../helpers/harness-env.ts";
 import { appendOther } from "../../helpers/kinds.ts";
 
@@ -83,7 +84,7 @@ async function setup(
     controlKeys?: KeyPairPem;
   } = {},
 ) {
-  const store = new ControlStore(":memory:");
+  const store = controlStore();
   const secrets = SecretBox.ephemeral();
   const control = o.controlKeys ?? generateSigningKeys();
   const sent: Buffer[] = [];
@@ -563,9 +564,7 @@ describe("pull mode: control connects to a rig through a proxy", () => {
       appendOther(henv.service.ledger, "t", "first", null, { note: MARKER });
       const state = await s.pump(relayOnce({ ...cfg, skipCommands: true }, { cursor: 0 }));
       assert.ok(state.cursor > 0);
-      const kinds = (
-        s.store.rigEvents.after(s.rig, 0, 100) as { kind: string; body: unknown }[]
-      ).map((e) => e.kind);
+      const kinds = (await heldEvents(s.store, s.rig)).map((e) => e.kind);
       assert.ok(kinds.includes("first"));
       assert.ok(s.store.reportedRigs.key(s.rig).pubkey, "the harness's report key is pinned");
       // A command: issued at control, delivered to the harness, its outcome back at control.

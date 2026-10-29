@@ -286,7 +286,7 @@ export async function startARun(
   let copied: QueueSeed[] = [];
   if (req.queueFrom) {
     const run = req.queueFrom;
-    const from = parts.run(run)?.run;
+    const from = (await parts.run(run))?.run;
     if (from?.campaign !== campaign)
       return refuse(`${campaign} has no run ${run}: copy from a run of this campaign.`, 404);
     copied = untriedOf(from);

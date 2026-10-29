@@ -1,4 +1,5 @@
 import type { Hono } from "hono";
+import { bringBackRig } from "../../rigs/index.ts";
 import type { RunpodRigView } from "../../runpod/index.ts";
 import { ago, esc } from "../../ui/components/index.ts";
 import {
@@ -30,9 +31,9 @@ export function rigListRoutes(app: Hono, dash: Dashboard): void {
       `${rig} is retired. ${store.enrollments.rig(rig) ? "" : "If its token is in control's settings, take it out there too."}`.trim(),
     );
   });
-  app.post("/ui/rigs/:rig/bring-back", (c) => {
+  app.post("/ui/rigs/:rig/bring-back", async (c) => {
     const rig = c.req.param("rig");
-    const ok = store.retired.bringBack(rig, "owner:ui");
+    const ok = await bringBackRig(store, rig, "owner:ui");
     return c.redirect(
       `/ui/rigs/${encodeURIComponent(rig)}?${ok ? "ok" : "error"}=${encodeURIComponent(ok ? `${rig} is back.` : `${rig} is not retired.`)}`,
       303,

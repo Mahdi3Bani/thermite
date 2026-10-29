@@ -317,6 +317,7 @@ describe("control dashboard for an operator", () => {
       ],
       summary: {},
     });
+    await applied(store);
     for (const path of [
       "/ui",
       "/ui/campaigns/opus-simd/runs/dec-1/attempts/a-evil0001",

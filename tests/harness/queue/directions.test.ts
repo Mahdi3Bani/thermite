@@ -83,7 +83,7 @@ describe("the owner's queue commands", () => {
         { kind: "avoid", family: "brand new", rationale: "y", citations: [] },
       ],
     });
-    const r = controlQueue(s.events());
+    const r = await controlQueue(s.events());
     assert.deepEqual(
       r.directions.map((d) => [d.name, d.queued, d.to_design, d.rules.map((x) => x.kind)]),
       [

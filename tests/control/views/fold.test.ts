@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { ControlStore } from "../../../src/control/store/index.ts";
 import { RigFold } from "../../../src/control/views/fold/index.ts";
-import { rigEvents, rigView, type StoredEvent } from "../../../src/control/views/index.ts";
+import { rigView, type StoredEvent } from "../../../src/control/views/index.ts";
 import { readRig, rigInputs } from "../../../src/control/views/rig.ts";
+import { applied, controlStore, foldedEvents } from "../../helpers/control-store.ts";
 import { uniforms } from "../../helpers/property.ts";
 import { VIEW_NOW, VIEW_SETS } from "../../helpers/view-events.ts";
 
@@ -19,11 +19,12 @@ import { VIEW_NOW, VIEW_SETS } from "../../helpers/view-events.ts";
 const OPTS = { staleAfterMs: 600_000, now: VIEW_NOW };
 
 for (const set of VIEW_SETS) {
-  describe(set.name, () => {
-    const store = new ControlStore(":memory:");
+  describe(set.name, async () => {
+    const store = controlStore();
     set.fill(store);
+    await applied(store);
     for (const u of store.reportedRigs.list()) {
-      const events = rigEvents(store, u.id, u.ledger_id);
+      const events = await foldedEvents(store, u.id, u.ledger_id ?? "");
       const inputs = rigInputs(store, u, OPTS);
       const whole = rigView(store, u.id, OPTS);
 
@@ -82,11 +83,12 @@ test("a kind such as constructor or toString is only an event of its run's timel
   assert.equal(f.state().runs.length, 1);
 });
 
-test("after a reset, a rig's view folds only its new ledger's events", () => {
+test("after a reset, a rig's view folds only its new ledger's events", async () => {
   const set = VIEW_SETS.find((s) => s.name === "a reset to a new ledger");
   assert.ok(set);
-  const store = new ControlStore(":memory:");
+  const store = controlStore();
   set.fill(store);
+  await applied(store);
   const v = rigView(store, "rig-a", OPTS);
   assert.equal(v?.ledger_id, "ledger-2");
   assert.deepEqual(
@@ -94,6 +96,6 @@ test("after a reset, a rig's view folds only its new ledger's events", () => {
     [["r-1", "goal", 0]],
   );
   assert.ok(v?.recent.every((e) => e.ledger_id === "ledger-2"));
-  // The old ledger's events are still in the store: only the view leaves them out.
-  assert.ok(rigEvents(store, "rig-a", "ledger-1").length > 100);
+  // The old ledger's events are still in the stream: only the view leaves them out.
+  assert.ok((await foldedEvents(store, "rig-a", "ledger-1")).length > 100);
 });

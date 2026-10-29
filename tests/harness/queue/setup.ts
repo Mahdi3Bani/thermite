@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { ControlStore } from "../../../src/control/store/index.ts";
 import { rigView } from "../../../src/control/views/index.ts";
 import type { CommandKind } from "../../../src/core/commands.ts";
 import type { LedgerEvent } from "../../../src/harness/ledger/rows.ts";
+import { applied, controlStore } from "../../helpers/control-store.ts";
 import { makeHarnessEnv } from "../../helpers/harness-env.ts";
 
 /**
@@ -29,8 +29,8 @@ export async function setup(over: Record<string, unknown> = {}) {
 }
 
 /** The run's queue as control builds it from the rig's events (src/control/views/). */
-export function controlQueue(events: LedgerEvent[]) {
-  const store = new ControlStore(":memory:");
+export async function controlQueue(events: LedgerEvent[]) {
+  const store = controlStore();
   store.rigEvents.ingest({
     rig: "rig-a",
     ledger_id: "ledger-a",
@@ -40,6 +40,7 @@ export function controlQueue(events: LedgerEvent[]) {
     events,
     summary: {},
   });
+  await applied(store);
   const u = rigView(store, "rig-a", { staleAfterMs: 600_000 });
   const r = u?.runs.find((x) => x.id === RUN);
   assert.ok(r, "control sees the run");

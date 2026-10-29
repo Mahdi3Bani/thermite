@@ -3,9 +3,9 @@ import { describe, test } from "node:test";
 import { RunpodRigs } from "../../../src/control/runpod/rigs.ts";
 import { ControlTunnels } from "../../../src/control/runpod/tunnel.ts";
 import { SecretBox } from "../../../src/control/secrets.ts";
-import { ControlStore } from "../../../src/control/store/index.ts";
 import { generateSigningKeys } from "../../../src/core/commands.ts";
 import { controlOnly, signIn } from "../../helpers/control-stack.ts";
+import { applied, controlStore } from "../../helpers/control-store.ts";
 import { FAKE_RUNPOD_KEY, fakeRunpod } from "../../helpers/fake-runpod.ts";
 import {
   exportName,
@@ -26,7 +26,7 @@ async function rigsStack() {
   const MIN = 60_000;
   const CONTROL = { version: "0.1.0", commit: null, protocol: 1, oldest_protocol: 1 };
   const OLD = { version: "0.0.9", commit: null, protocol: 1, oldest_protocol: 1 };
-  const store = new ControlStore(":memory:");
+  const store = controlStore();
   const secrets = SecretBox.ephemeral();
   const keys = generateSigningKeys();
   store.gpuClouds.add({
@@ -62,7 +62,10 @@ async function rigsStack() {
   });
   const { page: get } = await signIn(control);
   const cursors = new Map<string, number>();
-  const report = (rig: string, events: { kind: string; subject: string; body: object }[] = []) => {
+  const report = async (
+    rig: string,
+    events: { kind: string; subject: string; body: object }[] = [],
+  ) => {
     const from = cursors.get(rig) ?? 0;
     store.rigEvents.ingest({
       rig,
@@ -78,6 +81,7 @@ async function rigsStack() {
       })),
     });
     cursors.set(rig, from + events.length);
+    await applied(store);
   };
   /** A running run with one attempt, 4 minutes ago. */
   const running = (rig: string, run: string, mode = "hill_climb") =>
@@ -124,20 +128,20 @@ async function rigsStack() {
     store.machines.setRigStatus(rig, "running");
   }
   // Live, as control.
-  running("gpu-1", "q4-gemv-3");
+  await running("gpu-1", "q4-gemv-3");
   builds("gpu-1", CONTROL);
   // Live, behind control.
-  running("gpu-2", "dec-2", "goal");
+  await running("gpu-2", "dec-2", "goal");
   builds("gpu-2", OLD);
   // Refused for an older version, two days after the last report control took.
-  running("cpu-1", "rl-2", "research");
+  await running("cpu-1", "rl-2", "research");
   store.refusals.set(
     "cpu-1",
     "Control cannot work with this rig: its harness speaks protocol 0, older than the oldest control works with (1). Update the rig's images.",
   );
   lastSeen("cpu-1", 2 * 24 * 60 * MIN);
   // Stale: no report for 6 minutes.
-  running("cpu-2", "rl-3", "research");
+  await running("cpu-2", "rl-3", "research");
   builds("cpu-2", CONTROL);
   lastSeen("cpu-2", 6 * MIN);
   // Offline, on a cluster: no report for 3 h 12 min.
@@ -167,11 +171,11 @@ async function rigsStack() {
     created_by: "owner:ui",
   });
   store.clusters.setRigStatus("wc-1", "running");
-  running("wc-1", "q4-gemv-2");
+  await running("wc-1", "q4-gemv-2");
   builds("wc-1", CONTROL);
   lastSeen("wc-1", (3 * 60 + 12) * MIN);
   // Refused because it is newer than control: control needs the update.
-  report("new-1");
+  await report("new-1");
   store.refusals.set(
     "new-1",
     "Control cannot work with this rig: it speaks protocol 9, newer than control's (1). Update control.",
@@ -182,12 +186,12 @@ async function rigsStack() {
   clock += 30_000;
   await pods.advance();
   for (const v of [live, idle]) assert.ok(store.tunnels.pin(v.rig, "sign", "box"));
-  running(live.rig, "q4-gemv-4");
-  report(live.rig, [
+  await running(live.rig, "q4-gemv-4");
+  await report(live.rig, [
     { kind: "trial_started", subject: "q4-gemv-4", body: { lane: "lane-1", trial: "t-1" } },
   ]);
   builds(live.rig, CONTROL);
-  report(idle.rig);
+  await report(idle.rig);
   builds(idle.rig, CONTROL);
   clock += 40 * MIN;
   await pods.advance();

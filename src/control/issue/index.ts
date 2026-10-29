@@ -460,16 +460,16 @@ export function prepareCommand(
  * can check what the supervisors transport. The receiving rig's judge decides; a win there marks
  * the source champion cross-verified.
  */
-export function propagateChampion(
+export async function propagateChampion(
   store: ControlStore,
   privateKeyPem: string,
   input: { run: string; toRun: string; issuedBy: string; staleAfterMs: number },
-): { id: string; seq: number } {
+): Promise<{ id: string; seq: number }> {
   const opts = { staleAfterMs: input.staleAfterMs };
-  const from = findRun(store, input.run, opts);
+  const from = await findRun(store, input.run, opts);
   const src = from?.run;
   if (!from || !src) throw new Refusal(`no run ${input.run}`);
-  const to = findRun(store, input.toRun, opts);
+  const to = await findRun(store, input.toRun, opts);
   const dst = to?.run;
   if (!to || !dst) throw new Refusal(`no run ${input.toRun}`);
   if (to.rig.id === from.rig.id)

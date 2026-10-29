@@ -15,14 +15,14 @@ import { findRunOn } from "./views/index.ts";
  * run published as champion `seq`. "not_published": control has no champion_published event for
  * it yet; "mismatch": its SHA-256 is not the published one.
  */
-export function keepChampionPatch(
+export async function keepChampionPatch(
   store: ControlStore,
   rig: string,
   run: string,
   seq: number,
   patch: Buffer,
-): "stored" | "not_published" | "mismatch" {
-  const x = findRunOn(store, rig, run);
+): Promise<"stored" | "not_published" | "mismatch"> {
+  const x = await findRunOn(store, rig, run);
   const pub = x?.run.published_patches.findLast((p) => p.seq === seq);
   if (!x || !pub) return "not_published";
   if (sha256Hex(patch) !== pub.sha256) return "mismatch";

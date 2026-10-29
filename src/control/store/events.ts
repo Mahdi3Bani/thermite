@@ -3,19 +3,20 @@ import { log } from "../../common/env.ts";
 import { errorText } from "../../common/errors.ts";
 import { canonicalJson } from "../../core/canonical.ts";
 import { currentEvent } from "../../core/names.ts";
-import { MODEL_CALL_EVENT } from "../../core/usage.ts";
 import { type Row, StorePart } from "./part.ts";
 import type { IngestReport } from "./report.ts";
 
 /**
- * The events rigs reported (goal 125, T6): a report taken, with its events, and the events read
- * back, by rig and by run.
+ * The events rigs reported (goal 125, T6): a report taken, with its events. Control's views, its
+ * raw reads of events and the knowledge base read the message bus's events stream (goal 168,
+ * step 4); the table is read only by its copy there (control/events/mirror.ts), until the copy
+ * goes, and by the store's migrations.
  */
 
 /**
- * A rig's events by ledger, in control's order (store migration 8): a view's pages of events start
- * at a seq and stop after a page, where they read the whole ledger again for each page and sorted
- * it.
+ * A rig's events by ledger, in control's order (store migration 8): a view's pages of events
+ * started at a seq and stopped after a page, where they read the whole ledger again for each page
+ * and sorted it. The views read the events stream now; the migration stays, as every one does.
  */
 export function eventsInOrderIndex(db: DatabaseSync): void {
   db.exec("create index if not exists rig_event_ledger_seq on rig_event (rig, ledger_id, seq)");
@@ -94,73 +95,6 @@ export class RigEvents extends StorePart {
       }
       return added;
     });
-  }
-
-  /**
-   * The prompts a run's agents were sent on a rig (goal 166), oldest first: each `agent_prompt`
-   * event's body, with when the rig recorded it and its ledger.
-   */
-  prompts(rig: string, run: string): { at: string; ledger_id: string; body: unknown }[] {
-    const rows = this.db
-      .prepare(
-        `select at, ledger_id, body from rig_event
-           where rig = ? and kind = 'agent_prompt' and run = ? order by seq`,
-      )
-      .all(rig, run) as { at: string; ledger_id: string; body: string }[];
-    return rows.map((r) => ({ at: r.at, ledger_id: r.ledger_id, body: JSON.parse(r.body) }));
-  }
-
-  /**
-   * A rig's events after a seq. `lean`: without the text a source's and a document's events
-   * carry (the knowledge base keeps it), and without the model calls (one for each call: the
-   * usage sums read them, from model_call), for readers that build pages from every event.
-   */
-  after(
-    rig: string,
-    after: number,
-    limit: number,
-    ledgerId?: string | null,
-    o: { lean?: boolean } = {},
-  ): unknown[] {
-    const byLedger = ledgerId ? " and ledger_id = ?" : "";
-    const body = o.lean
-      ? "case when kind in ('source_fetched', 'research_doc', 'context_compacted') then json_remove(body, '$.text') else body end"
-      : "body";
-    const calls = o.lean ? ` and kind != '${MODEL_CALL_EVENT}'` : "";
-    return (
-      this.db
-        .prepare(
-          `select seq, ledger_id, event_id, at, actor, kind, subject, ${body} as body, run from rig_event
-             where rig = ?${byLedger}${calls} and seq > ? order by seq limit ?`,
-        )
-        .all(...(ledgerId ? [rig, ledgerId, after, limit] : [rig, after, limit])) as Row[]
-    ).map((r) =>
-      // Events a harness reported before the 2026-10-15 rename are read under the new names.
-      currentEvent({
-        seq: Number(r.seq),
-        ledger_id: String(r.ledger_id),
-        id: Number(r.event_id),
-        at: String(r.at),
-        actor: String(r.actor),
-        kind: String(r.kind),
-        subject: r.subject === null ? null : String(r.subject),
-        body: JSON.parse(String(r.body)),
-        run: r.run === null ? null : String(r.run),
-      }),
-    );
-  }
-
-  /**
-   * For a kept view (goal 168): the newest seq of a rig's events after `after`, in any ledger and
-   * of any kind; null when the rig reported none since the view last read its events. It reads
-   * only the events that came after `after`, of every rig: `+rig` keeps SQLite off the index of a
-   * rig's events, which would read all of them.
-   */
-  newestSeq(rig: string, after: number): number | null {
-    const r = this.db
-      .prepare("select max(seq) as seq from rig_event where seq > ? and +rig = ?")
-      .get(after, rig) as { seq: number | null } | undefined;
-    return r?.seq ?? null;
   }
 
   /** The table's last seq: 0 while it holds no event. */

@@ -241,8 +241,8 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
     );
   };
   app.get("/ui/live", (c) => livePage(c));
-  app.get(RUN_ROUTES.live, (c) => {
-    const x = named(c);
+  app.get(RUN_ROUTES.live, async (c) => {
+    const x = await named(c);
     if (x) return livePage(c, x);
     c.status(404);
     return page(
@@ -282,8 +282,8 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
   };
 
   // The run's new lines, pushed to its Live page.
-  app.get(RUN_ROUTES.liveStream, (c) => {
-    const x = named(c);
+  app.get(RUN_ROUTES.liveStream, async (c) => {
+    const x = await named(c);
     if (!x) return c.json({ error: "no such run in this campaign" }, 404);
     const feed = runFeed(x.rig.id, x.run.id);
     const after = pushStart(c.req.header("last-event-id"), c.req.query("after"));
@@ -295,7 +295,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
   // to the rig the run is on.
   app.post(RUN_ROUTES.message, async (c) => {
     const f = await c.req.parseBody();
-    const x = named(c);
+    const x = await named(c);
     if (!x) return c.text("No such run in this campaign.", 404);
     const w = String(f.w ?? "");
     // From the Planner tab, back there; from Live, to the same filter.

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { ControlStore } from "../../../src/control/store/index.ts";
 import { sentence } from "../../../src/control/ui/words/index.ts";
-import { rigEvents, rigView } from "../../../src/control/views/index.ts";
+import { rigView } from "../../../src/control/views/index.ts";
+import { applied, controlStore, foldedEvents } from "../../helpers/control-store.ts";
 
 /**
  * Goal 117 on control's side: a research run's answer cards reach control as `card_written`
@@ -12,7 +12,7 @@ import { rigEvents, rigView } from "../../../src/control/views/index.ts";
  */
 
 function store() {
-  const s = new ControlStore(":memory:");
+  const s = controlStore();
   let id = 0;
   const t0 = Date.now() - 3_600_000;
   const ingest = (...events: { kind: string; subject: string; body: Record<string, unknown> }[]) =>
@@ -29,7 +29,8 @@ function store() {
       })),
       summary: {},
     });
-  const run = () => {
+  const run = async () => {
+    await applied(s);
     const v = rigView(s, "rig-a", { staleAfterMs: 180_000 });
     return v?.runs.find((r) => r.id === "s-1");
   };
@@ -54,7 +55,7 @@ const written = (question: number, version: number, certainty: string) => ({
 });
 
 describe("a research run's answer cards on control (goal 117)", () => {
-  test("the run's view keeps each question's newest card and the newest refusal since it; History says both", () => {
+  test("the run's view keeps each question's newest card and the newest refusal since it; History says both", async () => {
     const c = store();
     c.ingest(
       {
@@ -82,7 +83,7 @@ describe("a research run's answer cards on control (goal 117)", () => {
       },
       written(2, 2, "moderate"),
     );
-    const r = c.run();
+    const r = await c.run();
     assert.deepEqual(
       r?.cards.map((x) => [x.question, x.version, x.certainty, x.answer]),
       [
@@ -104,7 +105,7 @@ describe("a research run's answer cards on control (goal 117)", () => {
     ]);
     const v = rigView(c.s, "rig-a", { staleAfterMs: 180_000 });
     assert.ok(v);
-    const words = rigEvents(c.s, "rig-a")
+    const words = (await foldedEvents(c.s, "rig-a", "ledger-a"))
       .map((e) => (v ? sentence(v, e)?.text : undefined))
       .filter((x): x is string => typeof x === "string");
     assert.ok(

@@ -3,9 +3,10 @@ import type { RunpodRigView } from "../../../../src/control/runpod/rig-view.ts";
 import { RunpodRigs } from "../../../../src/control/runpod/rigs.ts";
 import { ControlTunnels } from "../../../../src/control/runpod/tunnel.ts";
 import { SecretBox } from "../../../../src/control/secrets.ts";
-import { ControlStore } from "../../../../src/control/store/index.ts";
+import type { ControlStore } from "../../../../src/control/store/index.ts";
 import { generateSigningKeys } from "../../../../src/core/commands.ts";
 import { controlOnly } from "../../../helpers/control-stack.ts";
+import { applied, controlStore } from "../../../helpers/control-store.ts";
 import { FAKE_RUNPOD_KEY, fakeRunpod } from "../../../helpers/fake-runpod.ts";
 import { supervisorReports } from "../../../helpers/rig-results.ts";
 
@@ -26,7 +27,7 @@ export const TOKENS = {
 
 /** Control with one RunPod account (the fake RunPod), its API, and a clock the test moves. */
 export function setup(o: Parameters<typeof fakeRunpod>[0] = {}) {
-  const store = new ControlStore(":memory:");
+  const store = controlStore();
   const secrets = SecretBox.ephemeral();
   store.gpuClouds.add({
     name: "runpod",
@@ -67,8 +68,11 @@ export function setup(o: Parameters<typeof fakeRunpod>[0] = {}) {
   return { store, cloud, control, rigs, api, call, advance, view, steps };
 }
 
-/** The rig's harness reports a run that runs (or one that ended), as its signed reports would. */
-function reportRun(store: ControlStore, rig: string, run: string, n: number, ended = false) {
+/**
+ * The rig's harness reports a run that runs (or one that ended), as its signed reports would, and
+ * control's views have it.
+ */
+async function reportRun(store: ControlStore, rig: string, run: string, n: number, ended = false) {
   store.rigEvents.ingest({
     rig,
     ledger_id: "l1",
@@ -88,6 +92,7 @@ function reportRun(store: ControlStore, rig: string, run: string, n: number, end
       },
     ],
   });
+  await applied(store);
 }
 
 /** A launched rig that enrolled and whose harness reports one running run. */
@@ -95,7 +100,7 @@ export async function working(s: ReturnType<typeof setup>, o: { spend_limit_usd?
   const v = await s.rigs.launch("runpod", { gpu: "RTX A4000", ...o }, "owner:api");
   await s.advance();
   assert.ok(s.store.tunnels.pin(v.rig, "sign", "box"));
-  reportRun(s.store, v.rig, "run-1", 1);
+  await reportRun(s.store, v.rig, "run-1", 1);
   supervisorReports(s.store, v.rig);
   return v.rig;
 }

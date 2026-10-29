@@ -7,6 +7,7 @@ import { PRICE_CORE_JS } from "../../../src/control/ui/providers/client.ts";
 import { bars, dayEdges, PRICE_WORDS } from "../../../src/control/ui/usage.ts";
 import { callUsage, startOfDay } from "../../../src/core/usage.ts";
 import { ADMIN, controlOnly, signIn } from "../../helpers/control-stack.ts";
+import { applied } from "../../helpers/control-store.ts";
 
 /**
  * Model use and cost on the screens (goal 075, as the owner approved the mockup v010-usage): the
@@ -52,7 +53,7 @@ const call = (o: {
   }),
 });
 
-function ingest(
+async function ingest(
   store: ControlStore,
   rig: string,
   events: [string, string, Record<string, unknown>][],
@@ -74,6 +75,7 @@ function ingest(
     })),
     summary: {},
   });
+  await applied(store);
 }
 
 /**
@@ -113,7 +115,7 @@ async function stack() {
   store.modelProviders.setModels("sub", [{ id: "opus-5.5" }]);
   store.agentModels.assignRole("rig-a", "teachers", { provider: "lab", model: "wide-model" });
   store.agentModels.assignRole("rig-a", "second_teacher", { provider: "sub", model: "opus-5.5" });
-  ingest(store, "rig-a", [
+  await ingest(store, "rig-a", [
     [
       "run_created",
       "r-1",
@@ -216,7 +218,7 @@ async function stack() {
       }),
     ],
   ]);
-  ingest(store, "rig-b", [
+  await ingest(store, "rig-b", [
     ["run_created", "r-2", { campaign: "gemv", mode: "goal", version: 1, agents: true }],
     ["run_status", "r-2", { status: "closed" }],
     [
@@ -375,7 +377,7 @@ describe("model use on the screens (goal 075)", () => {
 
   test("a run with no records yet says so; a try of a kit, with no agents, shows nothing and has no Stats tab", async () => {
     const s = await stack();
-    ingest(
+    await ingest(
       s.store,
       "rig-a",
       [
@@ -397,7 +399,7 @@ describe("model use on the screens (goal 075)", () => {
       await s.page("/ui/campaigns/matmul/runs/r-3/stats"),
       /No model call recorded yet\. Code counts each call of the agents when it ends\./,
     );
-    ingest(
+    await ingest(
       s.store,
       "rig-a",
       [
@@ -483,7 +485,7 @@ describe("model use on the screens (goal 075)", () => {
     // a second ago is in.
     const tz = "America/Chicago";
     const midnight = startOfDay(NOW, tz);
-    ingest(
+    await ingest(
       s.store,
       "rig-b",
       [
