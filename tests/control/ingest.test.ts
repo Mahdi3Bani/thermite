@@ -3,9 +3,17 @@ import { describe, test } from "node:test";
 import { buildInfo } from "../../src/common/build-info.ts";
 import type { Bus, BusMessage } from "../../src/common/bus.ts";
 import { foldReport, followReports, type Intake } from "../../src/control/ingest.ts";
-import { REPORT_CONSUMER, REPORT_STREAM, reportSubject } from "../../src/core/link/report.ts";
+import {
+  REPORT_CONSUMER,
+  REPORT_CONSUMER_CONFIG,
+  REPORT_STREAM,
+  REPORT_STREAM_CONFIG,
+  reportMessageId,
+  reportSubject,
+} from "../../src/core/link/report.ts";
 import { buildHeaders } from "../../src/core/version.ts";
-import { controlStore, heldEvents } from "../helpers/control-store.ts";
+import { busOf, controlStore, heldEvents } from "../helpers/control-store.ts";
+import { FakeBus } from "../helpers/fake-bus.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";
 import { appendOther } from "../helpers/kinds.ts";
 
@@ -164,5 +172,115 @@ describe("control folds rigs' reports from the message bus", () => {
     assert.match(refused ?? "", /^Control cannot work with this rig: its supervisor works with/);
     assert.equal(t.store.refusals.get("rig-a")?.calls, 1);
     assert.deepEqual(await kinds(t), []);
+  });
+});
+
+describe("the reports stream is an inbox", () => {
+  /** The reports stream as step 0 of goal 168 made it: every report kept for good. */
+  const KEPT_FOR_GOOD = {
+    ...REPORT_STREAM_CONFIG,
+    description: "Every rig's signed reports, kept for good",
+    retention: "limits",
+    deny_delete: true,
+    deny_purge: true,
+  } as const;
+
+  /** A report published as the supervisor publishes it: by its message id, with its build. */
+  const publish = (bus: FakeBus, report: Parameters<typeof reportMessageId>[0]) =>
+    bus.publish(reportSubject("rig-a"), JSON.stringify(report), {
+      id: reportMessageId(report),
+      headers: buildHeaders(buildInfo()),
+    });
+  const held = async (bus: FakeBus) => (await bus.streams([REPORT_STREAM]))[0]?.messages;
+
+  test("a page taken or refused for good is gone; one refused for now is handed again, first", async () => {
+    const t = intake();
+    const { page } = harness(30);
+    const bus = new FakeBus();
+    await bus.makeStream(REPORT_STREAM_CONFIG);
+    await publish(bus, page(0, 10));
+    await followReports(bus, t);
+    assert.equal(await held(bus), 0, "taken, and gone");
+    assert.equal((await kinds(t)).length, 10);
+
+    // A gap: refused for good, recorded as over HTTP, and gone from the stream.
+    await publish(bus, page(25, 5));
+    await followReports(bus, t);
+    assert.equal(await held(bus), 0, "refused for good, and gone");
+    assert.deepEqual(refusals(t), ["a gap in the event stream"]);
+
+    // The events stream's store is full: the next page is refused for now and stays, before the
+    // page after it; both are taken once the store has room.
+    busOf(t.store).bus.full = true;
+    await publish(bus, page(10, 10));
+    await publish(bus, page(20, 10));
+    await followReports(bus, t);
+    await followReports(bus, t);
+    assert.equal(await held(bus), 2, "handed again, and kept until taken");
+    assert.equal((await kinds(t)).length, 10);
+    busOf(t.store).bus.full = false;
+    await followReports(bus, t);
+    assert.equal(await held(bus), 0);
+    assert.equal((await kinds(t)).length, 30);
+    assert.deepEqual(refusals(t), ["a gap in the event stream"], "nothing else refused");
+  });
+
+  test("a stream kept for good is emptied by control's consumer first, then made again as an inbox", async () => {
+    const t = intake();
+    const { env, page } = harness(30);
+    const bus = new FakeBus();
+    // The control before this one followed the stream as step 0 made it, and took the first page.
+    await bus.makeStream(KEPT_FOR_GOOD);
+    await publish(bus, page(0, 10));
+    await followReports({ follow: (_s, c, h) => bus.follow(KEPT_FOR_GOOD, c, h) }, t);
+    await publish(bus, page(10, 10));
+    await publish(bus, page(20, 10));
+    assert.equal(await held(bus), 3, "kept for good");
+    // Settings the server can't change in place.
+    await assert.rejects(bus.makeStream(REPORT_STREAM_CONFIG), /can not change retention policy/);
+
+    // This control: its consumer takes the two pages left, and a page the supervisor publishes
+    // meanwhile finds no stream; then the stream is made again as an inbox.
+    let meanwhile: unknown;
+    const during: Pick<Bus, "follow"> = {
+      follow: (s, c, h) =>
+        bus.follow(s, c, async (m) => {
+          meanwhile ??= await publish(bus, page(20, 10)).catch((err: unknown) => err);
+          return await h(m);
+        }),
+    };
+    await followReports(during, t);
+    assert.match(
+      String(meanwhile),
+      /no stream on the bus takes thermite\.rig\.rig-a\.report yet: control makes it/,
+    );
+    assert.equal(bus.made.get(REPORT_STREAM)?.retention, "workqueue");
+    assert.deepEqual(bus.made.get(REPORT_STREAM)?.subjects, REPORT_STREAM_CONFIG.subjects);
+    assert.equal(await held(bus), 0, "every page taken; none kept");
+    assert.equal((await kinds(t)).length, 30, "the old stream's pages, taken in order");
+    assert.deepEqual(refusals(t), []);
+
+    // The supervisor's next page goes into the inbox, and is taken.
+    appendOther(env.service.ledger, "t", "late", null, {});
+    await publish(bus, page(30, 10));
+    await followReports(bus, t);
+    assert.equal(await held(bus), 0);
+    assert.equal((await kinds(t)).length, 31);
+  });
+
+  test("a stream kept for good that holds nothing control has yet to take is made again at once", async () => {
+    const t = intake();
+    const { page } = harness(5);
+    const bus = new FakeBus();
+    await bus.makeStream(KEPT_FOR_GOOD);
+    await publish(bus, page(0, 10));
+    await bus.follow(KEPT_FOR_GOOD, REPORT_CONSUMER_CONFIG, (m) =>
+      foldReport(t, m).then(() => undefined),
+    );
+    assert.equal(await held(bus), 1);
+    await followReports(bus, t);
+    assert.equal(bus.made.get(REPORT_STREAM)?.retention, "workqueue");
+    assert.equal(await held(bus), 0);
+    assert.equal((await kinds(t)).length, 5);
   });
 });

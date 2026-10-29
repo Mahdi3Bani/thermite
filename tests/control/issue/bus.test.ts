@@ -134,6 +134,51 @@ describe("control's commands on the message bus", () => {
     assert.deepEqual(await cancel(early), { error: "no such pending command" });
   });
 
+  test("as control starts, its pending commands go on the bus again: once each, and none other", async () => {
+    const c = await control();
+    const waits = c.pause("waits");
+    const taken = c.pause("taken by the rig, its outcome not at control yet");
+    const cancelled = c.pause("cancelled");
+    const delivered = c.pause("delivered");
+    const expired = c.pause("expired");
+    await settle();
+    assert.ok(c.store.commands.cancel(cancelled, "owner:test"));
+    assert.ok(c.store.commands.ack("rig-a", delivered, "delivered", {}));
+    const past = new Date(Date.now() - 60_000).toISOString();
+    c.store.db
+      .prepare(
+        "update command set signed = json_set(signed, '$.envelope.expires_at', ?) where id = ?",
+      )
+      .run(past, expired);
+    // The rig's supervisor took one; the bus holds the others it was given.
+    await c.bus.take(SUBJECT, (m) =>
+      m.header("Nats-Msg-Id") === taken ? undefined : { againInMs: 5_000 },
+    );
+    const before = c.bus.on(SUBJECT).map((m) => m.id);
+    assert.deepEqual(before, [waits, cancelled, delivered, expired]);
+
+    // Control starts again on the same bus: what the stream knows by its id is not kept twice.
+    await sendCommandsOn(c.store, c.bus);
+    await settle();
+    assert.deepEqual(
+      c.bus.on(SUBJECT).map((m) => m.id),
+      before,
+    );
+    assert.equal(c.store.commands.get(expired)?.status, "expired", "marked, as the poll marks it");
+
+    // On a bus whose stream was lost: the commands still pending, in the order issued.
+    const lost = new FakeBus();
+    await sendCommandsOn(c.store, lost);
+    await settle();
+    assert.deepEqual(
+      lost.on(SUBJECT).map((m) => m.id),
+      [waits, taken],
+    );
+    const [m] = lost.on(SUBJECT);
+    assert.equal(m?.data, c.recorded(waits), "as control records it");
+    assert.deepEqual(await c.pending(), [waits, taken]);
+  });
+
   test("without the bus, control's commands stay on HTTP", async () => {
     const c = await control({ bus: false });
     const id = c.pause();

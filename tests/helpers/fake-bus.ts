@@ -8,6 +8,7 @@ import {
   type Bus,
   type BusMessage,
   type BusRead,
+  type ConsumerSettings,
   type Handled,
   type Outgoing,
   type Published,
@@ -60,6 +61,12 @@ const TOO_LARGE = {
   err_code: 10054,
   description: "message size exceeds maximum allowed",
 };
+/** The server's words for an update that would make a stream a work queue, or one no longer. */
+const NO_RETENTION_CHANGE = {
+  code: 500,
+  err_code: 10052,
+  description: "stream configuration update can not change retention policy to/from workqueue",
+};
 
 /**
  * A stand-in for the NATS server, in memory, for tests of what control and the supervisor do on
@@ -68,7 +75,7 @@ const TOO_LARGE = {
  * places counted on their own; removes one by its id; gives a subject's newest, a message by its
  * place, a stream's last place, and reads a stream in order. A batch is stored whole or not at
  * all, as the server stores it. `take` hands a subject's messages to a handler as a work queue's
- * consumer does.
+ * consumer does; `follow` hands a stream's to a durable consumer, once.
  */
 export class FakeBus
   implements
@@ -80,6 +87,7 @@ export class FakeBus
       | "message"
       | "lastSeq"
       | "makeStream"
+      | "follow"
       | "remove"
       | "streams"
       | "last"
@@ -111,8 +119,68 @@ export class FakeBus
   /** Set: the next batch is stored and its ack lost: its publish fails all the same. */
   loseAck = false;
 
+  /** Each durable consumer's place in a stream that keeps what it hands (not a work queue). */
+  private readonly places = new Map<string, number>();
+
+  /** As the server: a stream's retention never changes to or from a work queue in place. */
   async makeStream(stream: StreamSettings): Promise<void> {
+    const had = this.made.get(stream.name);
+    if (had && (had.retention === "workqueue") !== (stream.retention === "workqueue"))
+      throw new JetStreamApiError(NO_RETENTION_CHANGE);
     this.made.set(stream.name, stream);
+  }
+
+  /**
+   * As common/bus.ts's follow, in one pass: the stream made or brought to its settings, then each
+   * message the consumer has yet to take handed to `handle`, in order, until one is asked for
+   * again, which stays for the next call; a test calls it again for what comes later. A stream on
+   * the fake with another retention than the work queue it is now is emptied first, as
+   * common/work-queue.ts does: its subjects taken off, each message handed, then removed and made
+   * anew, its places and ids starting again; one asked for again leaves it emptying.
+   */
+  async follow(
+    stream: StreamSettings | string,
+    consumer: ConsumerSettings,
+    handle: (m: BusMessage) => Handled | Promise<Handled>,
+  ): Promise<void> {
+    const name = typeof stream === "string" ? stream : stream.name;
+    const had = this.made.get(name);
+    if (typeof stream !== "string") {
+      if (had && stream.retention === "workqueue" && had.retention !== "workqueue") {
+        this.made.set(name, { ...had, subjects: [name] });
+        if (!(await this.hand(name, consumer.durable_name, handle))) return;
+        this.removeStream(name);
+      }
+      await this.makeStream(stream);
+    } else if (!had) return;
+    await this.hand(name, consumer.durable_name, handle);
+  }
+
+  /** Hands a consumer its messages in order; false at the first the handler asks for again. */
+  private async hand(
+    stream: string,
+    consumer: string,
+    handle: (m: BusMessage) => Handled | Promise<Handled>,
+  ): Promise<boolean> {
+    const queue = this.made.get(stream)?.retention === "workqueue";
+    const at = `${stream}.${consumer}`;
+    const left = this.kept.filter((m) => m.stream === stream && m.seq > (this.places.get(at) ?? 0));
+    for (const m of left) {
+      if (await handle(asMessage(m))) return false;
+      if (queue) this.kept.splice(this.kept.indexOf(m), 1);
+      else this.places.set(at, m.seq);
+    }
+    return true;
+  }
+
+  /** A stream removed, with its messages, the ids it remembers and its consumers' places. */
+  private removeStream(name: string): void {
+    this.made.delete(name);
+    this.ids.delete(name);
+    this.seqs.delete(name);
+    for (const at of [...this.places.keys()]) if (at.startsWith(`${name}.`)) this.places.delete(at);
+    for (let i = this.kept.length - 1; i >= 0; i--)
+      if (this.kept[i]?.stream === name) this.kept.splice(i, 1);
   }
 
   /**

@@ -1,3 +1,4 @@
+import type { DatabaseSync } from "node:sqlite";
 import { canonicalJson } from "../../core/canonical.ts";
 import type { SignedCommand } from "../../core/commands.ts";
 import { type McpUse, McpUses } from "../../core/mcp.ts";
@@ -5,8 +6,44 @@ import { type Row, StorePart } from "./part.ts";
 
 /**
  * The commands control signed for rigs (goal 125, T6): queued, delivered, answered or expired,
- * and what they say.
+ * and what they say. The table is control's own signed record of each (goal 168): the commands
+ * stream on the bus only delivers them, and keeps none once its rig takes it.
  */
+
+/**
+ * The run and the campaign a command's payload names, as text: its `run`, and an assignment's
+ * contract's `campaign`; null where it names none. Kept in their own columns, so that a reader by
+ * run or campaign reads no command's JSON.
+ */
+function namedIn(payload: unknown): { run: string | null; campaign: string | null } {
+  const p = payload as { run?: unknown; contract?: { campaign?: unknown } } | null;
+  const run = typeof p?.run === "string" ? p.run : null;
+  const campaign = typeof p?.contract?.campaign === "string" ? p.contract.campaign : null;
+  return { run, campaign };
+}
+
+/** A path of a command's signed JSON where it holds text, else null, as namedIn reads it. */
+const textAt = (path: string) =>
+  `case when json_valid(signed) then case when json_type(signed, '${path}') = 'text'
+    then json_extract(signed, '${path}') end end`;
+
+/**
+ * The run and the campaign each command names, in columns of their own (goal 168, step 4), filled
+ * for the commands the store holds as namedIn reads them; a command whose JSON is not one this
+ * store wrote names none. With indexes, for the readers by run and by campaign. A column there
+ * already, as in a store set back to an earlier version, is filled again the same way.
+ */
+export function commandRunAndCampaign(db: DatabaseSync): void {
+  const cols = (db.prepare("pragma table_info(command)").all() as { name: string }[]).map(
+    (c) => c.name,
+  );
+  if (!cols.includes("run")) db.exec("alter table command add column run text");
+  if (!cols.includes("campaign")) db.exec("alter table command add column campaign text");
+  db.exec(`update command set run = ${textAt("$.envelope.payload.run")},
+    campaign = ${textAt("$.envelope.payload.contract.campaign")}`);
+  db.exec("create index if not exists command_run on command (run)");
+  db.exec("create index if not exists command_campaign on command (campaign)");
+}
 
 /** A decision the owner sent to a rig, and the rig's answer once it came. */
 export interface Decision {
@@ -65,13 +102,22 @@ function commandRowOf(r: Row): CommandRow {
 export class IssuedCommands extends StorePart {
   enqueue(signed: SignedCommand): void {
     const e = signed.envelope;
+    const { run, campaign } = namedIn(e.payload);
     this.db
       .prepare(
-        "insert into command (id, rig, kind, signed, issued_by, issued_at, status) values (?, ?, ?, ?, ?, ?, 'pending')",
+        "insert into command (id, rig, kind, signed, issued_by, issued_at, status, run, campaign) values (?, ?, ?, ?, ?, ?, 'pending', ?, ?)",
       )
-      .run(e.id, e.rig, e.kind, canonicalJson(signed), e.issued_by, e.issued_at);
+      .run(e.id, e.rig, e.kind, canonicalJson(signed), e.issued_by, e.issued_at, run, campaign);
     this.store.runRegistry.registerAssignment(e);
     this.store.auditLog.add(e.issued_by, "command_issued", { id: e.id, rig: e.rig, kind: e.kind });
+  }
+
+  /** The rigs with a pending command. */
+  rigsWithPending(): string[] {
+    const rows = this.db
+      .prepare("select distinct rig from command where status = 'pending' order by rig")
+      .all() as { rig: string }[];
+    return rows.map((r) => r.rig);
   }
 
   /** A rig's pending commands, oldest first. Expired ones are marked expired, not relayed. */
@@ -183,36 +229,25 @@ export class IssuedCommands extends StorePart {
     const out: { rig: string; run: string; kind: string }[] = [];
     const assigned = new Map<string, Map<string, string>>();
     const since = new Date(now - 10 * 60_000).toISOString();
+    // An assignment names its campaign; a resume's is its run's, from the run registry.
     for (const r of this.db
       .prepare(
-        `select rig, kind, status, signed from command where kind in ('assign_campaign', 'resume_run')
+        `select rig, kind, status, run, campaign, json_extract(signed, '$.envelope.expires_at') as expires_at
+         from command where kind in ('assign_campaign', 'resume_run') and run <> ''
            and (status = 'pending' or (status = 'delivered' and kind = 'assign_campaign' and acked_at > ?))
+           and (kind = 'resume_run' or campaign = ?)
          order by issued_at`,
       )
-      .all(since) as Row[]) {
-      let env: {
-        expires_at?: string;
-        payload?: { run?: unknown; contract?: { campaign?: unknown } };
-      };
-      try {
-        env = (JSON.parse(String(r.signed)) as { envelope?: typeof env }).envelope ?? {};
-      } catch {
-        continue;
-      }
+      .all(since, campaign) as Row[]) {
       const rig = String(r.rig);
-      const run = typeof env.payload?.run === "string" ? env.payload.run : "";
-      if (!run) continue;
-      if (r.status === "pending" && Date.parse(env.expires_at ?? "") < now) continue;
+      const run = String(r.run);
+      if (r.status === "pending" && Date.parse(String(r.expires_at ?? "")) < now) continue;
       // Taken: it waits only until the rig reports the run.
       if (r.status === "delivered" && this.store.runRegistry.campaignOf(run, rig) !== undefined)
         continue;
       let of: string | undefined;
-      if (r.kind === "assign_campaign") {
-        of =
-          typeof env.payload?.contract?.campaign === "string"
-            ? env.payload.contract.campaign
-            : undefined;
-      } else {
+      if (r.kind === "assign_campaign") of = String(r.campaign);
+      else {
         if (!assigned.has(rig)) assigned.set(rig, this.store.runRegistry.assignedCampaigns(rig));
         of = assigned.get(rig)?.get(run) ?? this.store.runRegistry.campaignOf(run, rig);
       }
@@ -232,30 +267,27 @@ export class IssuedCommands extends StorePart {
   > {
     const rows = this.db
       .prepare(
-        "select id, rig, signed, issued_at from command where kind = 'assign_campaign' and status in ('pending', 'delivered') order by issued_at desc",
+        "select id, rig, campaign, issued_at from command where kind = 'assign_campaign' and campaign is not null and status in ('pending', 'delivered') order by issued_at desc",
       )
-      .all() as { id: string; rig: string; signed: string; issued_at: string }[];
+      .all() as { id: string; rig: string; campaign: string; issued_at: string }[];
     const out = new Map<
       string,
       { id: string; rig: string; run: string; payload: Record<string, unknown>; issued_at: string }
     >();
+    // The newest of each campaign's alone is read: a campaign in its column is in its JSON.
+    const signed = this.db.prepare("select signed from command where id = ?");
     for (const r of rows) {
-      try {
-        const payload = (
-          JSON.parse(r.signed) as { envelope?: { payload?: Record<string, unknown> } }
-        ).envelope?.payload;
-        const campaign = (payload?.contract as { campaign?: unknown } | undefined)?.campaign;
-        if (payload && typeof campaign === "string" && !out.has(campaign))
-          out.set(campaign, {
-            id: r.id,
-            rig: r.rig,
-            run: String(payload.run ?? ""),
-            payload,
-            issued_at: r.issued_at,
-          });
-      } catch {
-        // not a command this store wrote
-      }
+      if (out.has(r.campaign)) continue;
+      const { signed: json } = signed.get(r.id) as { signed: string };
+      const payload = (JSON.parse(json) as { envelope: { payload: Record<string, unknown> } })
+        .envelope.payload;
+      out.set(r.campaign, {
+        id: r.id,
+        rig: r.rig,
+        run: String(payload.run ?? ""),
+        payload,
+        issued_at: r.issued_at,
+      });
     }
     return out;
   }
@@ -403,22 +435,17 @@ export class IssuedCommands extends StorePart {
    */
   assignedMcpServers(rig: string): Map<string, McpUse[]> {
     const out = new Map<string, McpUse[]>();
+    // Each assignment's MCP servers alone, as JSON, of those that name a run.
     for (const r of this.db
       .prepare(
-        "select signed from command where rig = ? and kind = 'assign_campaign' and status not in ('failed', 'rejected', 'expired') order by issued_at",
+        `select run, signed -> '$.envelope.payload.mcp_servers' as uses from command
+         where rig = ? and kind = 'assign_campaign' and run is not null
+           and status not in ('failed', 'rejected', 'expired')
+         order by issued_at`,
       )
-      .all(rig) as { signed: string }[]) {
-      try {
-        const p = (
-          JSON.parse(r.signed) as {
-            envelope?: { payload?: { run?: unknown; mcp_servers?: unknown } };
-          }
-        ).envelope?.payload;
-        const uses = McpUses.safeParse(p?.mcp_servers ?? []).data ?? [];
-        if (typeof p?.run === "string" && uses.length) out.set(p.run, uses);
-      } catch {
-        // not a command this store wrote
-      }
+      .all(rig) as { run: string; uses: string | null }[]) {
+      const uses = McpUses.safeParse(r.uses === null ? [] : JSON.parse(r.uses)).data ?? [];
+      if (uses.length) out.set(r.run, uses);
     }
     return out;
   }

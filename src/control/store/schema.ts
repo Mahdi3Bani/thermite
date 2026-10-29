@@ -2,6 +2,7 @@ import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import { copyBeforeMigration, keepCopyBefore, newerSchemaWords } from "../../common/db-copy.ts";
 import { transaction } from "../../common/sqlite.ts";
 import { busKeyTables, busSealKeyColumn } from "./bus.ts";
+import { commandRunAndCampaign } from "./commands.ts";
 import {
   dropEventsTable,
   type EventsMoved,
@@ -723,6 +724,8 @@ const STORE_MIGRATIONS: readonly ((db: DatabaseSync) => void)[] = [
   appliedPlacesTables,
   // Control's events table goes, once the events stream holds it whole (EVENTS_TABLE_GOES).
   dropEventsTable,
+  // The run and the campaign each command names, in columns of their own (goal 168).
+  commandRunAndCampaign,
 ];
 
 /**

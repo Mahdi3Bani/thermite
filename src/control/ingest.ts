@@ -265,9 +265,10 @@ export async function foldReport(t: Intake, m: BusMessage): Promise<Folded> {
 
 /**
  * Folds the reports stream as it grows (goal 168): makes sure the stream and control's consumer
- * exist, then takes each message in order and acks it once folded, skipped or refused; a page
- * refused for now is handed again after BUS_RETRY_MS, before any later one. Runs until the bus is
- * closed.
+ * exist, then takes each message in order and acks it once folded, skipped or refused, and the
+ * stream, an inbox, keeps it no more; a page refused for now is handed again after BUS_RETRY_MS,
+ * before any later one. A stream made before as one kept for good is made again as an inbox once
+ * this consumer has taken every page it held (Bus.follow). Runs until the bus is closed.
  */
 export async function followReports(bus: Pick<Bus, "follow">, t: Intake): Promise<void> {
   await bus.follow(REPORT_STREAM_CONFIG, REPORT_CONSUMER_CONFIG, async (m) => {

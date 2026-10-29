@@ -15,8 +15,8 @@ import type { ControlStore } from "../store/index.ts";
  * Control's commands on the message bus (goal 168, step 1). With the bus on, each command control
  * records for a rig is published to the rig's subject too, where its supervisor takes it at once.
  * The store stays the record, and a command's status there the truth: a command the bus did not
- * take stays pending in the store, where the supervisor's poll over HTTP finds it, and a command
- * the owner cancels is taken off the bus.
+ * take stays pending in the store, where the supervisor's poll over HTTP finds it and control
+ * publishes it again as it starts, and a command the owner cancels is taken off the bus.
  */
 
 /** What control needs of the bus for its commands. */
@@ -40,12 +40,23 @@ const buses = new WeakMap<ControlStore, OnBus>();
 
 /**
  * From now on, the commands this store records also go on this bus. Makes the commands stream,
- * trying again until the bus has it: until then, publishes fail and commands go over HTTP.
+ * trying again until the bus has it: until then, publishes fail and commands go over HTTP. Then
+ * publishes each pending command again, each rig's oldest first: the stream keeps one message for
+ * each command id it knows, so a command it holds is not kept twice, and one it lost, as after a
+ * restore of the bus or a stream made anew, reaches its rig without waiting for the poll over HTTP.
+ * An expired one is marked expired, as the poll marks it, and not published.
  */
 export async function sendCommandsOn(store: ControlStore, bus: CommandBus): Promise<void> {
   buses.set(store, { bus, last: Promise.resolve(), waiting: 0 });
   await bus.makeStream(COMMAND_STREAM_CONFIG);
   log("control", "commands go over the message bus too", { stream: COMMAND_STREAM });
+  let again = 0;
+  for (const rig of store.commands.rigsWithPending())
+    for (const signed of store.commands.pending(rig)) {
+      publishCommand(store, signed);
+      again++;
+    }
+  if (again) log("control", "pending commands published on the bus again", { commands: again });
 }
 
 /**

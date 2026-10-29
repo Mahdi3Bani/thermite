@@ -88,7 +88,7 @@ describe("the commands' contract on the message bus", () => {
     assert.equal(s.discard, "new");
     assert.equal(s.discard_new_per_subject, true, "a full queue refuses, never drops a command");
     assert.equal(s.max_age, 7 * 24 * 3600 * 1e9, "a week, the longest a command lives");
-    assert.ok(s.duplicate_window > 0 && s.duplicate_window < s.max_age);
+    assert.equal(s.duplicate_window, s.max_age, "a command published again is kept once");
     assert.ok(!("deny_delete" in s), "control takes a cancelled command off it");
   });
 

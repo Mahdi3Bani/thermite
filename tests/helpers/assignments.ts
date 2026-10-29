@@ -15,11 +15,12 @@ export function assigned(
   const id = `cmd-${rig}-${run}`;
   const at = new Date().toISOString();
   const payload = { run, contract: { campaign }, ...extra };
+  // The run and the campaign in their columns too, as the store's enqueue writes them.
   store.db
     .prepare(
-      "insert into command (id, rig, kind, signed, issued_by, issued_at, status) values (?, ?, 'assign_campaign', ?, 'owner:ui', ?, 'delivered')",
+      "insert into command (id, rig, kind, signed, issued_by, issued_at, status, run, campaign) values (?, ?, 'assign_campaign', ?, 'owner:ui', ?, 'delivered', ?, ?)",
     )
-    .run(id, rig, JSON.stringify({ envelope: { payload } }), at);
+    .run(id, rig, JSON.stringify({ envelope: { payload } }), at, run, campaign);
   store.runRegistry.registerAssignment({
     id,
     rig,

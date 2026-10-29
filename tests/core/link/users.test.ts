@@ -154,14 +154,12 @@ describe("who may do what on the message bus", () => {
     // A stream's deny_delete and deny_purge guard its messages; the stream itself is guarded here.
     assert.deepEqual(controlPermissions(), {
       publish: {
-        deny: [
-          `$JS.API.STREAM.DELETE.${REPORT_STREAM}`,
-          `$JS.API.STREAM.PURGE.${REPORT_STREAM}`,
-          `$JS.API.STREAM.DELETE.${EVENT_STREAM}`,
-          `$JS.API.STREAM.PURGE.${EVENT_STREAM}`,
-        ],
+        deny: [`$JS.API.STREAM.DELETE.${EVENT_STREAM}`, `$JS.API.STREAM.PURGE.${EVENT_STREAM}`],
       },
     });
+    // The reports stream is an inbox: control may make it again, as it does once from one kept
+    // for good.
+    assert.ok(!JSON.stringify(controlPermissions()).includes(REPORT_STREAM));
     assert.equal(JSON.stringify(controlPermissions()).includes("allow"), false);
   });
 

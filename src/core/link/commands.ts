@@ -43,8 +43,12 @@ export const COMMAND_QUEUE_MAX = 100;
  * gives a command. One still pending on control after that reaches the rig over HTTP.
  */
 const MAX_AGE_NS = 7 * 24 * 3600 * 1e9;
-/** How long the bus remembers a message id, in nanoseconds: two minutes. */
-const DUPLICATE_WINDOW_NS = 2 * 60 * 1e9;
+/**
+ * How long the bus remembers a message id, in nanoseconds: as long as it holds a command. Control
+ * publishes its pending commands again as it starts, and the stream keeps one message for each
+ * command id it knows: one it holds, or one its rig took, is not kept twice.
+ */
+const DUPLICATE_WINDOW_NS = MAX_AGE_NS;
 
 /**
  * The stream's settings: a work queue, so a command acked by its rig's supervisor is gone. Each

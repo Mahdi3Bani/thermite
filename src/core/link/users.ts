@@ -5,7 +5,7 @@ import { COMMAND_STREAM, commandConsumerName, commandSubject } from "./commands.
 import { CONFIG_STREAM, configConsumerConfig, configConsumerName } from "./config.ts";
 import { EVENT_STREAM } from "./events.ts";
 import { LIVE_RUNS_PER_RIG, liveSubject, rigLiveSubject } from "./live.ts";
-import { REPORT_STREAM, reportSubject } from "./report.ts";
+import { reportSubject } from "./report.ts";
 
 /**
  * Who may do what on the message bus (goal 168): only control and the rigs' supervisors hold a
@@ -104,8 +104,11 @@ export function rigPermissions(rig: string, runs: readonly string[] = []): Permi
   };
 }
 
-/** The streams kept for good: the record of every rig's reports and events. */
-const STREAMS_KEPT_FOR_GOOD = [REPORT_STREAM, EVENT_STREAM] as const;
+/**
+ * The streams kept for good: the record of every rig's events. The reports stream is an inbox
+ * (report.ts), which control makes again when it was made as one kept for good.
+ */
+const STREAMS_KEPT_FOR_GOOD = [EVENT_STREAM] as const;
 
 /**
  * What control's user may not do: delete or purge a stream kept for good. Such a stream refuses to

@@ -10,7 +10,7 @@ import { RIG_ID } from "../ids.ts";
  * same checks as a report posted to `POST /v1/rigs/<rig>/ingest`.
  */
 
-/** The stream that keeps every rig's reports. */
+/** The stream that holds each rig's reports until control has taken or refused them. */
 export const REPORT_STREAM = "REPORTS";
 /** Every rig's report subject: the stream takes these. */
 export const REPORT_SUBJECTS = "thermite.rig.*.report";
@@ -64,15 +64,19 @@ export function reportMessageId(r: {
 const DUPLICATE_WINDOW_NS = 2 * 60 * 1e9;
 
 /**
- * The stream's settings. Reports are kept for good, as the ledgers they come from are: no limit on
- * their count, bytes or age, and no message may be deleted or purged. A full disk refuses new
- * messages and never drops old ones.
+ * The stream's settings: an inbox, a work queue, so a report is gone once control acks it, taken
+ * or refused for good. Control keeps the events in the `EVENTS` stream (events.ts), and the rig's
+ * summary in its store; a supervisor reports every round, events or not, and those pages kept for
+ * good would outgrow the events. No limit on the count, bytes or age of reports waiting: a full
+ * disk refuses new ones and never drops one control has yet to take. A stream made before as one
+ * kept for good (`limits`) can't become a work queue in place: control's follow empties it first,
+ * through its consumer, then makes it again (common/work-queue.ts).
  */
 export const REPORT_STREAM_CONFIG = {
   name: REPORT_STREAM,
   subjects: [REPORT_SUBJECTS],
-  description: "Every rig's signed reports, kept for good",
-  retention: "limits",
+  description: "Each rig's signed reports, until control has taken or refused them",
+  retention: "workqueue",
   storage: "file",
   max_msgs: -1,
   max_bytes: -1,
@@ -80,8 +84,6 @@ export const REPORT_STREAM_CONFIG = {
   max_msgs_per_subject: -1,
   max_msg_size: REPORT_MAX_BYTES,
   discard: "new",
-  deny_delete: true,
-  deny_purge: true,
   duplicate_window: DUPLICATE_WINDOW_NS,
   num_replicas: 1,
 } satisfies Partial<StreamConfig> & { name: string };
@@ -90,8 +92,9 @@ export const REPORT_STREAM_CONFIG = {
 const ACK_WAIT_NS = 30 * 1e9;
 
 /**
- * Control's consumer: every message from the stream's start, each acked once folded, one at a time,
- * so that each rig's pages fold in the order they were published.
+ * Control's consumer: every message from the stream's start, each acked once taken or refused for
+ * good, one at a time, so that each rig's pages fold in the order they were published. A page
+ * refused for now is not acked, and is handed again before any later one.
  */
 export const REPORT_CONSUMER_CONFIG = {
   durable_name: REPORT_CONSUMER,

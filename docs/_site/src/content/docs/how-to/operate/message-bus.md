@@ -6,7 +6,7 @@ sidebar:
   order: 11
 ---
 
-The message bus carries the rigs' reports and live lines to control, and control's commands and each rig's config to the rigs, as soon as each is there, and it keeps every rig's events for control, which writes its records from them. It is a NATS server with JetStream, and it runs beside control: the compose stack's `nats` service. Control needs it, and does not start without it. This page says how to tell that it works, what you see while control keeps its events there and applies them, and while it moves an older store's events there, what to open so that rigs on other machines and clusters reach it, what control keeps for its certificate, how to give it more memory or disk, and how to keep the rigs off it. [How the parts talk](../../explanation/how-the-parts-talk.md#reports-over-the-message-bus) explains what travels on it and why.
+The message bus carries the rigs' reports and live lines to control, and control's commands and each rig's config to the rigs, as soon as each is there, and it keeps every rig's events for control, which writes its records from them. It is a NATS server with JetStream, and it runs beside control: the compose stack's `nats` service. Control needs it, and does not start without it. This page says how to tell that it works, what you see while control keeps its events there and applies them, while it moves an older store's events there, and while it makes an older reports stream again, what to open so that rigs on other machines and clusters reach it, what control keeps for its certificate, how to give it more memory or disk, and how to keep the rigs off it. [How the parts talk](../../explanation/how-the-parts-talk.md#reports-over-the-message-bus) explains what travels on it and why.
 
 ```sh
 docker compose ps nats                      # or: podman compose ps nats
@@ -85,6 +85,27 @@ A store from v0.1.0, or from a control that kept its events in a table and copie
 To tell that it worked: control serves its pages, each rig shows the events it showed before, and under `streams` in `GET /v1/bus` the `EVENTS` stream holds at least as many messages as the table had rows. A second start moves nothing: its log has none of the lines above.
 
 If the move can't end with the stream holding the table whole, control stops at start, says why in a `fatal` line, and the table stays: [Troubleshooting](troubleshoot.md#control-stops-at-start-its-events-table-cant-go-to-the-events-stream) says what to do. While the bus is away or its store is full, the move waits and tries again every 5 seconds: its log says `control's events table not moved yet; trying again`.
+
+### The first start on an older reports stream: made again as an inbox
+
+The `REPORTS` stream keeps a rig's report only until control has taken it or refused it for good ([Reports over the message bus](../../explanation/how-the-parts-talk.md#reports-over-the-message-bus)). A bus that a control from before used holds a `REPORTS` stream that keeps every report for good, which the server can't change in place. The first time control starts with this version, it makes that stream again, once: it takes the stream's subjects off it, its consumer takes every report the stream still holds, as before, and then control removes the stream and makes it again as an inbox. No report is lost. When measured, with three reports left in the stream, it took about 30 milliseconds; a report a control stopped part way had in hand is handed again only after 30 seconds.
+
+1. Read control's log as it starts:
+
+   ```sh
+   docker compose logs control | grep "work queue"     # or: podman compose logs control | grep "work queue"
+   ```
+
+   `the stream becomes a work queue: its consumer takes what it holds first` names the stream (`REPORTS`) and how many reports it held (`held`), the ones control took already among them; `the stream emptied and removed, to be made again as a work queue` says that control has taken the last of them. `stream made` follows.
+2. A supervisor that publishes a report meanwhile finds no stream for it. Its log says so, and it keeps its cursor:
+
+   ```sh
+   docker compose logs supervisor | grep "relay error"     # or: podman compose logs supervisor | grep "relay error"
+   ```
+
+   The line's `error` is `no stream on the bus takes thermite.rig.<rig>.report yet: control makes it`. At its next round after the stream is made, the supervisor publishes the same reports again, and control takes them.
+
+To tell that it worked: under `streams` in `GET /v1/bus`, `REPORTS` holds few messages or none, and its count falls back after each round; each rig's page shows its newest events. A second start makes nothing again: its log has none of the lines above.
 
 ## Let rigs on other machines reach it
 

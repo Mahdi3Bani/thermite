@@ -1,37 +1,60 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { buildInfo } from "../../../src/common/build-info.ts";
-import { foldReport } from "../../../src/control/ingest.ts";
+import type { StreamSettings } from "../../../src/common/bus.ts";
+import { type Folded, foldReport } from "../../../src/control/ingest.ts";
 import { fingerprint } from "../../../src/control/store/index.ts";
-import { REPORT_STREAM_CONFIG } from "../../../src/core/link/report.ts";
-import { healCursor, type RelayState, relayOnce } from "../../../src/supervisor/relay/index.ts";
+import {
+  REPORT_CONSUMER_CONFIG,
+  REPORT_STREAM,
+  REPORT_STREAM_CONFIG,
+} from "../../../src/core/link/report.ts";
+import {
+  healCursor,
+  RelayError,
+  type RelayState,
+  relayOnce,
+} from "../../../src/supervisor/relay/index.ts";
 import { controlStack, RIG_TOKEN } from "../../helpers/control-stack.ts";
 import { heldEvents } from "../../helpers/control-store.ts";
-import { asMessage, FakeBus } from "../../helpers/fake-bus.ts";
+import { FakeBus } from "../../helpers/fake-bus.ts";
 import { makeHarnessEnv } from "../../helpers/harness-env.ts";
 import { appendOther } from "../../helpers/kinds.ts";
 
+/** The reports stream as step 0 of goal 168 made it: every report kept for good. */
+const KEPT_FOR_GOOD = {
+  ...REPORT_STREAM_CONFIG,
+  retention: "limits",
+  deny_delete: true,
+  deny_purge: true,
+} as const;
+
 /**
  * Control and rig-a's harness, with the supervisor's reports on a bus: `fold()` hands control the
- * messages published since the last call, as its consumer does, and says what each came to.
+ * messages it has yet to take, as its consumer does (the stream an inbox: one taken or refused for
+ * good is gone), and says what each came to; `meanwhile` runs as the first is handed.
  * `figures()` is the supervisor's regular call, and its answer.
  */
-async function rig(o: { requireKeyAcceptance?: boolean; clock?: () => Date } = {}) {
+async function rig(
+  o: { requireKeyAcceptance?: boolean; clock?: () => Date; stream?: StreamSettings } = {},
+) {
   const requireKeyAcceptance = o.requireKeyAcceptance ?? false;
   const s = controlStack({
     env: makeHarnessEnv("rig-a", o.clock),
     options: { requireKeyAcceptance },
   });
   const bus = new FakeBus();
-  await bus.makeStream(REPORT_STREAM_CONFIG);
+  await bus.makeStream(o.stream ?? REPORT_STREAM_CONFIG);
   const intake = { store: s.store, control: buildInfo(), requireKeyAcceptance };
-  let read = 0;
-  const fold = async () => {
-    const out = [];
-    for (const m of bus.kept.slice(read)) {
-      read++;
-      out.push(await foldReport(intake, asMessage(m)));
-    }
+  const fold = async (f: { stream?: StreamSettings; meanwhile?: () => Promise<void> } = {}) => {
+    const out: Folded[] = [];
+    const stream = f.stream ?? REPORT_STREAM_CONFIG;
+    await bus.follow(stream, REPORT_CONSUMER_CONFIG, async (m) => {
+      if (!out.length) await f.meanwhile?.();
+      const folded = await foldReport(intake, m);
+      out.push(folded);
+      return "later" in folded ? { againInMs: 5_000 } : undefined;
+    });
     return out;
   };
   const figures = async (cursor: number): Promise<unknown> => {
@@ -71,6 +94,7 @@ describe("a report page refused on the bus heals", () => {
     for (const f of await r.fold())
       assert.deepEqual(f, { refused: "the rig's key waits for the owner's acceptance" });
     assert.equal(await r.taken(), 0);
+    assert.equal(r.bus.kept.length, 0, "refused for good: gone from the inbox");
 
     // Control has none of the rig's events, but it may still be reading what this round sent: the
     // supervisor waits a round. A round later control still has none: it goes back to the start.
@@ -156,6 +180,43 @@ describe("a report page refused on the bus heals", () => {
     assert.equal(ahead.healing, false);
     await r.fold();
     assert.equal(await r.taken(), state.cursor);
+  });
+
+  test("a page published while control makes an old stream again is sent again, and none is lost", async () => {
+    const r = await rig({ stream: KEPT_FOR_GOOD });
+    r.events(25);
+    // The control before this one took every page from the stream as step 0 made it.
+    let state: RelayState = await relayOnce(r.cfg, { cursor: 0, pageLimit: 10 });
+    const before = await r.fold({ stream: KEPT_FOR_GOOD });
+    assert.deepEqual(before, [{ folded: 10 }, { folded: 10 }, { folded: 5 }]);
+    r.events(5);
+    state = await relayOnce(r.cfg, state);
+    assert.equal(state.cursor, 30);
+
+    // This control empties the stream before it makes it again: while it takes the page left, the
+    // supervisor's next round finds no stream and keeps its cursor.
+    r.events(3);
+    let during: unknown;
+    const taken = await r.fold({
+      meanwhile: async () => {
+        during = await relayOnce(r.cfg, state).catch((err: unknown) => err);
+      },
+    });
+    assert.deepEqual(taken, [{ folded: 5 }]);
+    assert.ok(during instanceof RelayError);
+    assert.match(during.message, /no stream on the bus takes thermite\.rig\.rig-a\.report yet/);
+    state = during.state;
+    assert.equal(state.cursor, 30, "nothing published: the cursor stays");
+    assert.equal(r.bus.made.get(REPORT_STREAM)?.retention, "workqueue");
+    assert.equal(r.bus.kept.length, 0);
+    assert.equal(healCursor(state, await r.figures(state.cursor)).healing, false);
+
+    // Its next round publishes the page into the inbox, and control takes it.
+    state = await relayOnce(r.cfg, state);
+    assert.deepEqual(await r.fold(), [{ folded: 3 }]);
+    assert.equal(state.cursor, 33);
+    assert.equal(await r.taken(), 33);
+    assert.equal(r.bus.kept.length, 0);
   });
 
   test("the supervisor goes back only when control is behind what it sent a round ago", () => {

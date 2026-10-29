@@ -24,6 +24,7 @@ import {
 } from "@nats-io/transport-node";
 import { reloadSubject } from "../core/link/users.ts";
 import { log } from "./env.ts";
+import { removeOnceEmpty, startEmptying } from "./work-queue.ts";
 
 /**
  * The message bus (goal 168): a NATS server with JetStream, which control runs. Control and the
@@ -214,7 +215,9 @@ export interface Bus {
    * order, one at a time, and acks it when `handle` returns, unless it asks for it again. A
    * message `handle` throws on is handed again after BUS_RETRY_MS. Runs until the bus is closed.
    * `stream` is its settings, and the stream is made or brought to them first; or its name alone,
-   * for a stream another part makes, which is waited for.
+   * for a stream another part makes, which is waited for. A stream made before that is a work
+   * queue now, which the server can't change in place, is first emptied by the consumer, its
+   * subjects taken off it meanwhile, then made anew (work-queue.ts).
    */
   follow(
     stream: StreamSettings | string,
@@ -515,12 +518,15 @@ export function natsBus(url: string, name: string, signIn?: BusSignIn): Bus {
     const name = typeof stream === "string" ? stream : stream.name;
     // A failure is logged as an error once, and again only after following worked.
     let failing = false;
-    while (!closed) {
+    following: while (!closed) {
       let reading: ConsumerMessages | undefined;
       try {
         const nc = await connection();
-        if (typeof stream !== "string") await ensureStream(nc, stream);
+        const emptying = typeof stream !== "string" && (await startEmptying(nc, stream));
+        if (typeof stream !== "string" && !emptying) await ensureStream(nc, stream);
         await ensureConsumer(nc, name, consumer, again);
+        const empty = () => removeOnceEmpty(nc, name, consumer.durable_name);
+        if (emptying && (await empty())) continue;
         const c = await jetstream(nc).consumers.get(name, consumer.durable_name);
         reading = await c.consume();
         readings.add(reading);
@@ -537,7 +543,10 @@ export function natsBus(url: string, name: string, signIn?: BusSignIn): Bus {
             throw err;
           }
           if (handled) m.nak(handled.againInMs);
+          else if (emptying) await m.ackAck();
           else m.ack();
+          // The last message of a stream being emptied: it is made anew at once.
+          if (emptying && !handled && m.info.pending === 0 && (await empty())) continue following;
         }
       } catch (err) {
         if (closed) break;

@@ -76,17 +76,17 @@ describe("the reports' contract on the message bus", () => {
     }
   });
 
-  test("the stream keeps every report for good, and control reads it one message at a time", () => {
+  test("the stream keeps a report until control has it, and control reads it one message at a time", () => {
     const s = REPORT_STREAM_CONFIG;
     assert.deepEqual(s.subjects, [REPORT_SUBJECTS]);
+    assert.equal(s.retention, "workqueue", "an inbox: a report control acked is gone");
     assert.deepEqual(
       [s.max_msgs, s.max_bytes, s.max_age, s.max_msgs_per_subject],
       [-1, -1, 0, -1],
-      "no limit on count, bytes or age",
+      "no limit on count, bytes or age of the reports waiting",
     );
-    assert.equal(s.deny_delete, true);
-    assert.equal(s.deny_purge, true);
-    assert.equal(s.discard, "new", "a full store refuses new reports, never drops old ones");
+    assert.ok(!("deny_delete" in s) && !("deny_purge" in s), "not a stream kept for good");
+    assert.equal(s.discard, "new", "a full store refuses new reports, never drops waiting ones");
     assert.equal(s.max_msg_size, REPORT_MAX_BYTES);
     assert.equal(REPORT_CONSUMER_CONFIG.ack_policy, "explicit");
     assert.equal(REPORT_CONSUMER_CONFIG.deliver_policy, "all");

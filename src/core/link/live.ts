@@ -153,7 +153,7 @@ export const LIVE_KEPT_SECONDS = 3600;
 export const LIVE_KEPT_PER_SUBJECT = 1000;
 /**
  * How many bytes the stream keeps in all: 256 MiB, so that long lines from many rigs can never
- * fill the bus's disk, which the reports, kept for good, need. The oldest go first.
+ * fill the bus's disk, which the events, kept for good, need. The oldest go first.
  */
 export const LIVE_KEPT_BYTES = 256 * 1024 * 1024;
 /** How long the bus remembers a message id, in nanoseconds: two minutes. */
