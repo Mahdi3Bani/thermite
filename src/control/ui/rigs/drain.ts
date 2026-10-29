@@ -1,3 +1,4 @@
+import { drainChoices } from "../../clusters/index.ts";
 import { clockUtc, commandProgress } from "../../command-progress.ts";
 import type { CommandRow, ControlStore } from "../../store/index.ts";
 import { type OpenTrial, type RigView, workOf } from "../../views/index.ts";
@@ -23,6 +24,9 @@ export interface RigDrain {
   judgeJobs: number;
   /** The trials it waits for; null from a harness older than goal 136, which doesn't list them. */
   open: OpenTrial[] | null;
+  /** When it stops waiting by itself, and when it did (goal 173); null from an older harness. */
+  deadline: string | null;
+  deadlineReached: string | null;
 }
 
 export function drainOf(u: Pick<RigView, "summary">): RigDrain | null {
@@ -36,6 +40,8 @@ export function drainOf(u: Pick<RigView, "summary">): RigDrain | null {
     trials: w.trials,
     judgeJobs: w.judge_jobs,
     open: w.open ?? null,
+    deadline: d.deadline ?? null,
+    deadlineReached: d.deadline_reached ?? null,
   };
 }
 
@@ -94,6 +100,23 @@ function stopsSent(o: DrainPage): CommandRow[] {
     .filter((c) => Date.parse(c.issued_at) >= Date.parse(o.drain.since));
 }
 
+/**
+ * The drain's deadline (goal 173): when it stops waiting by itself; once passed, the owner's two
+ * choices, each with what it does. "" from a harness older than goal 173.
+ */
+function deadlineHtml(o: DrainPage): string {
+  const d = o.drain;
+  if (!d.deadline) return "";
+  if (!d.deadlineReached)
+    return `<p class="small" style="margin:0 0 6px;color:var(--foreground)">Its deadline is ${esc(clockUtc(d.deadline))}, ${Date.parse(d.deadline) > o.now ? `in ${esc(span(new Date(o.now).toISOString(), Date.parse(d.deadline)))}` : "now"}. Then it stops waiting by itself and asks you: go ahead now, or end the drain.</p>`;
+  const c = drainChoices(o.store, o.rig);
+  const form = (choice: "apply" | "end", label: string, cls: string) =>
+    `<form class="inline" method="post" action="/ui/rigs/${encodeURIComponent(o.rig)}/drain/${choice}"><input type="hidden" name="csrf" value="${esc(o.csrf)}"><button class="${cls}">${esc(label)}</button></form>`;
+  return `<p class="small" style="margin:0 0 6px;color:var(--foreground)"><b class="warn">Its deadline passed at ${esc(clockUtc(d.deadlineReached))}.</b> It still starts nothing new, and waits for your choice: nothing is chosen for you.</p>
+<div class="act" style="margin-bottom:8px">${form("apply", c.apply.label, "primary")}<span class="muted xs">${esc(c.apply.does)}</span></div>
+<div class="act" style="margin-bottom:8px">${form("end", c.end.label, "")}<span class="muted xs">${esc(c.end.does)}</span></div>`;
+}
+
 /** The card at the top of the rig's page while it drains. */
 export function drainBanner(o: DrainPage): string {
   const d = o.drain;
@@ -122,8 +145,13 @@ export function drainBanner(o: DrainPage): string {
     : "The rig goes back to work on its images.";
   return `<div class="card warn" style="margin-bottom:16px" id="drain" data-state="draining"><div class="card-head">${icon.clock}<span class="title">Draining for ${esc(span(d.since, o.now))}, since ${esc(clockUtc(d.since))}.</span></div>
 <p class="small" style="margin:6px 0 6px;color:var(--foreground)">${askedBy(d.by)}: <i>${esc(d.reason)}</i>. The rig starts no new trial, plan or judge job, and the work under way ends as it would. ${waits}${o.cluster ? " Control restarts its pods once nothing runs." : ""}</p>
-${stopped}${listed.length ? `<p class="small muted" style="margin:0 0 10px;color:var(--muted-foreground)">Each trial it waits for is under <b>At work</b>, with a way to stop it.</p>` : ""}
-<div class="act">${end}<span class="muted xs">${endWords} ${infoLabel("", "Sends drain_rig with drain false: the rig starts new work again. Whoever asked for the drain then moves the rig without one, or asks again.")}</span></div></div>`;
+${deadlineHtml(o)}${stopped}${listed.length ? `<p class="small muted" style="margin:0 0 10px;color:var(--muted-foreground)">Each trial it waits for is under <b>At work</b>, with a way to stop it.</p>` : ""}
+${
+  // Past its deadline, the two choices above take the place of End the drain.
+  d.deadlineReached
+    ? ""
+    : `<div class="act">${end}<span class="muted xs">${endWords} ${infoLabel("", "Sends drain_rig with drain false: the rig starts new work again. Whoever asked for the drain then moves the rig without one, or asks again.")}</span></div>`
+}</div>`;
 }
 
 /**

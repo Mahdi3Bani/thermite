@@ -96,6 +96,11 @@ export class Scheduler {
     return this.sched.running.size;
   }
 
+  /** The run whose planner's call is out now, for the health route (goal 173). */
+  get planningFor(): string | undefined {
+    return this.sched.planning?.run;
+  }
+
   /** New limits from the rig's settings; they apply from the next trial or check. */
   configure(p: {
     maxConcurrent?: number;

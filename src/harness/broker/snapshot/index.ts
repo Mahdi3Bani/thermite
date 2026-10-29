@@ -70,5 +70,10 @@ export {
   Snapshotter,
   type SnapshotterOptions,
 } from "./snapshotter.ts";
-export { prepareSnapshots, startSnapshots, writeSnapshotRecord } from "./start.ts";
+export {
+  prepareSnapshots,
+  snapshotWaits,
+  startSnapshots,
+  writeSnapshotRecord,
+} from "./start.ts";
 export { backupLedger, TakeJob, type TakeResult, takeSnapshot } from "./take.ts";

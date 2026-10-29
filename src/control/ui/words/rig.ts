@@ -169,6 +169,10 @@ function settingsText(change: Record<string, unknown>): string {
         return v === null
           ? "a quiet trial asks you nothing"
           : `a trial quiet for ${n} min asks you`;
+      if (k === "program_mode")
+        return v === "terminal"
+          ? "agent programs in their own terminal"
+          : "agent programs headless";
       if (k === "promotion")
         return v === "auto" ? "confirmed wins kept at once" : "confirmed wins wait for you";
       if (k === "judge_gpus")

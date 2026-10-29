@@ -102,6 +102,8 @@ export interface Broker extends BrokerPrograms {
   /** How often a snapshot is taken, and how long a stop waits for its own (prepareSnapshots). */
   snapshotEvery: number;
   snapshotStopMs: number;
+  /** The free space a snapshot leaves on the host's volume, in bytes (goal 173). */
+  snapshotFloor: number;
 }
 
 /**
@@ -142,6 +144,7 @@ export function brokerContext(programs: BrokerPrograms): Broker {
     beforeStart: undefined,
     snapshotEvery: 0,
     snapshotStopMs: 0,
+    snapshotFloor: 0,
   };
   return broker;
 }

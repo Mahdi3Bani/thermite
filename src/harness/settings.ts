@@ -1,4 +1,6 @@
+import { DISK_FLOOR } from "../common/disk.ts";
 import { type NumberSpec, readNumber } from "../common/settings.ts";
+import { DRAIN_MINUTES_MAX } from "../core/commands.ts";
 import { MAX_LANES } from "../core/contract.ts";
 
 /**
@@ -28,6 +30,17 @@ export const HARNESS_NUMBERS = {
     fallback: 1,
   },
   judgeGpus: { name: "THERMITE_JUDGE_GPUS", rule: { integer: true, min: 1 } },
+  /** The free space the rig keeps (common/disk.ts): the broker and the supervisor read it too. */
+  diskFloorGib: DISK_FLOOR,
+  /**
+   * How long a drain waits for the work under way before it asks the owner (goal 173), when its
+   * command gives no deadline of its own. Mechanical: at the deadline nothing stops by itself.
+   */
+  drainMinutes: {
+    name: "THERMITE_DRAIN_MINUTES",
+    rule: { unit: "minutes", integer: true, min: 1, max: DRAIN_MINUTES_MAX },
+    fallback: 60,
+  },
 } satisfies Record<string, NumberSpec>;
 
 /** The harness controller's number settings, in the units its code uses, read at its start. */
@@ -43,5 +56,9 @@ export function harnessNumbers(env: Record<string, string | undefined>) {
     usdPerMTokIn: readNumber(env, n.usdPerMTokIn),
     usdPerMTokOut: readNumber(env, n.usdPerMTokOut),
     exportEveryMs: readNumber(env, n.exportMinutes) * 60_000,
+    /** The disk floor, in GiB; 0: none. */
+    diskFloorGib: readNumber(env, n.diskFloorGib),
+    /** A drain's deadline when its command gives none, in minutes. */
+    drainMinutes: readNumber(env, n.drainMinutes),
   };
 }

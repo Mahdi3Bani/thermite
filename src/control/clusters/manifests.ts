@@ -1,3 +1,5 @@
+import { HEALTH } from "../../core/api/harness/supervisor.ts";
+import { HEALTH_URLS, healthProbe } from "../../core/health.ts";
 import { gpuSplit, type RigBus } from "../machines/index.ts";
 
 /**
@@ -148,6 +150,20 @@ export function clusterRigObjects(p: ClusterRigPlan, s: ClusterRigSecrets): Obj[
   const env = (pairs: Record<string, string>) =>
     Object.entries(pairs).map(([name, value]) => ({ name, value }));
   const gpu = p.gpus > 0;
+  // Each part's health (goal 173): its route answers 503 while one of its loops is late. A part
+  // may take minutes to start (the harness runs its isolation check before it listens), so the
+  // startup probe allows 10; then kubelet looks every 30 s, and restarts a part that fails three
+  // times running. The harness is asked over HTTP; the supervisor's route listens in its container
+  // only, so a program asks it there.
+  const probes = (how: Obj, startMinutes: number) => ({
+    startupProbe: { ...how, periodSeconds: 10, failureThreshold: startMinutes * 6 },
+    readinessProbe: { ...how, periodSeconds: 30, timeoutSeconds: 10, failureThreshold: 3 },
+    livenessProbe: { ...how, periodSeconds: 30, timeoutSeconds: 10, failureThreshold: 3 },
+  });
+  // At a stop the harness ends its trials as interrupted and waits at most 5 s for the judge's
+  // job, whose lease is taken back at its next start; the supervisor ends its calls. 30 s is room
+  // for both, stated here rather than left to the default.
+  const grace = { terminationGracePeriodSeconds: 30 };
   const deployment = (component: "harness" | "supervisor", pod: Obj): Obj => ({
     apiVersion: "apps/v1",
     kind: "Deployment",
@@ -233,6 +249,7 @@ export function clusterRigObjects(p: ClusterRigPlan, s: ClusterRigSecrets): Obj[
     deployment("harness", {
       affinity: together,
       ...placement,
+      ...grace,
       initContainers: [prepare(p.images.harness, res?.prepare)],
       containers: [
         {
@@ -247,6 +264,7 @@ export function clusterRigObjects(p: ClusterRigPlan, s: ClusterRigSecrets): Obj[
             THERMITE_SUPERVISOR_TOKEN_FILE: "/run/secrets/harness-supervisor-token",
           }),
           ports: [{ containerPort: 8700, name: "api" }],
+          ...probes({ httpGet: { path: HEALTH.path, port: 8700 } }, 10),
           securityContext: {
             allowPrivilegeEscalation: false,
             capabilities: {
@@ -284,6 +302,7 @@ export function clusterRigObjects(p: ClusterRigPlan, s: ClusterRigSecrets): Obj[
     deployment("supervisor", {
       affinity: together,
       ...placement,
+      ...grace,
       initContainers: [prepare(p.images.harness, res?.prepare)],
       securityContext: { runAsUser: 10001, runAsGroup: 10001 },
       containers: [
@@ -300,6 +319,7 @@ export function clusterRigObjects(p: ClusterRigPlan, s: ClusterRigSecrets): Obj[
             ...(p.bus ? { THERMITE_NATS_URL: p.bus.url, THERMITE_NATS_CA: p.bus.ca } : {}),
           }),
           securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: ["ALL"] } },
+          ...probes({ exec: { command: ["node", "-e", healthProbe(HEALTH_URLS.supervisor)] } }, 5),
           ...(res ? { resources: res.supervisor } : {}),
           volumeMounts: [
             { name: "data", mountPath: "/var/lib/thermite-supervisor", subPath: "supervisor" },

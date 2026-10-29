@@ -1,3 +1,4 @@
+import { DISK_FLOOR } from "../common/disk.ts";
 import { type NumberSpec, readNumber } from "../common/settings.ts";
 
 /**
@@ -29,6 +30,8 @@ export const SUPERVISOR_NUMBERS = {
   },
   kbSyncSeconds: { name: "THERMITE_KB_SYNC_SECONDS", rule: OFF_AT_ZERO, fallback: 180 },
   tunnelPort: { name: "THERMITE_TUNNEL_PORT", rule: { integer: true, min: 1, max: 65535 } },
+  /** The free space a model download leaves where it lands (common/disk.ts; goal 173). */
+  diskFloorGib: DISK_FLOOR,
 } satisfies Record<string, NumberSpec>;
 
 /** A supervisor setting from its table, in milliseconds when its unit is seconds. */

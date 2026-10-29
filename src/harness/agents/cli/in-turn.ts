@@ -14,14 +14,15 @@ import type { MessageInbox, TurnDelivery } from "../live-session.ts";
  * plugin take inside the turn (TurnMessages), which the trial's routes offer them.
  */
 
-/** The most bytes of the signals file read at once; the rest is read at the next look. */
+/** The most bytes of a trial's file read at once; the rest is read at the next look. */
 const SIGNALS_READ_MAX = 4 * 1024 * 1024;
 
 /**
- * What a growing file gained since `from`, whole lines only, at most SIGNALS_READ_MAX bytes. The
- * file is the lane's, so it is read as a plain file and never through a link.
+ * What a growing file gained since `from`, whole lines only, at most SIGNALS_READ_MAX bytes: the
+ * trial's signals, or the copy of its program's session log (terminal.ts). The file is the
+ * lane's, so it is read as a plain file and never through a link.
  */
-function readNewLines(path: string, from: number): { lines: string[]; next: number } {
+export function readNewLines(path: string, from: number): { lines: string[]; next: number } {
   let fd: number;
   try {
     fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);

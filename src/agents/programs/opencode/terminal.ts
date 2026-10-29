@@ -28,13 +28,20 @@ export const opencodeServerArgs = (port: number): string[] => [
 
 /**
  * Its terminal's command line, after the binary: attached to the server on `port`, in the folder
- * `dir`, with nothing to answer (`--auto`) and the first message, when there is one.
+ * `dir`, with nothing to answer (`--auto`) and the first message, when there is one. After a crash,
+ * `session` continues the session it had (OpenCode 2.1.4's `--session`), with no message.
  */
-export function opencodeTerminalArgs(port: number, dir: string, first?: string): string[] {
+export function opencodeTerminalArgs(
+  port: number,
+  dir: string,
+  first?: string,
+  session?: string,
+): string[] {
   return [
     "--server",
     opencodeServerUrl(port),
     "--auto",
+    ...(session !== undefined ? ["--session", session] : []),
     ...(first !== undefined ? ["--prompt", first] : []),
     dir,
   ];

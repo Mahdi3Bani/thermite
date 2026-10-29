@@ -78,8 +78,13 @@ export function createControlApi(
     }
   });
 
-  // Control is up; and the message bus as control holds it: off, connected or away.
-  app.get("/v1/health", (c) => c.json({ ok: true, bus: busHealth(parts.bus) }));
+  // Control is up; the message bus as control holds it: off, connected or away; and each of
+  // control's loops with its age, 503 when one is late (goal 173). The bus away is no reason for
+  // 503: control waits for it, and says so here.
+  app.get("/v1/health", (c) => {
+    const h = parts.loops.health();
+    return c.json({ ...h, bus: busHealth(parts.bus) }, h.ok ? 200 : 503);
+  });
 
   relayRoutes(app, api);
   modelRoutes(app, api);
@@ -110,7 +115,8 @@ export function createControlApi(
   gpuCloudRoutes(app, api);
   commandStatusRoutes(app, api);
 
-  // A draining cluster rig's pods restart once nothing runs on it (clusters/drain.ts).
+  // A draining cluster rig's pods restart once nothing runs on it, and any rig's drain past its
+  // deadline is noted (clusters/drain.ts).
   watchDrains(parts, opts.drainWatchMs);
   opts.pages?.(app, store, {
     admin: owner,

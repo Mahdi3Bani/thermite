@@ -346,6 +346,13 @@ test("History tells the queue's changes, the hand-outs and the rules in words", 
     }),
     "You changed the rig's settings: the planner off, 3 lanes, no turn limit, confirmed wins kept at once.",
   );
+  assert.equal(
+    say("rig_settings_changed", "control:owner:ui", {
+      change: { program_mode: "terminal" },
+      settings: {},
+    }),
+    "You changed the rig's settings: agent programs in their own terminal.",
+  );
 });
 
 test("History tells a compacted conversation, and how often a trial's was, in words (goal 070)", async () => {

@@ -1,3 +1,4 @@
+import { DISK_FLOOR, GIB } from "../../common/disk.ts";
 import { type NumberSpec, readNumber } from "../../common/settings.ts";
 
 /**
@@ -22,6 +23,8 @@ export const BROKER_NUMBERS = {
     rule: { unit: "seconds", aboveMin: true },
     fallback: 8,
   },
+  /** The free space a snapshot leaves on the host's volume (common/disk.ts; goal 173). */
+  diskFloorGib: DISK_FLOOR,
 } satisfies Record<string, NumberSpec>;
 
 /** The broker's numbers it reads at its start, in the units its code uses. */
@@ -37,6 +40,11 @@ export function brokerNumbers(env: Record<string, string | undefined>) {
 /** How often a snapshot is taken (THERMITE_STATE_SNAPSHOT_MINUTES, 5 by default). */
 export function snapshotEveryMs(env: Record<string, string | undefined>): number {
   return readNumber(env, BROKER_NUMBERS.snapshotMinutes) * 60_000;
+}
+
+/** The free space a snapshot leaves where it is kept, in bytes (THERMITE_DISK_FLOOR_GIB, 5). */
+export function snapshotFloorBytes(env: Record<string, string | undefined>): number {
+  return readNumber(env, BROKER_NUMBERS.diskFloorGib) * GIB;
 }
 
 /** How long a stop waits for its snapshot (THERMITE_STATE_SNAPSHOT_STOP_SECONDS, 8). */

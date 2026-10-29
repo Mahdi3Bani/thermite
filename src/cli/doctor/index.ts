@@ -600,6 +600,15 @@ async function controlFinding(p: Probes, opts: DoctorOptions): Promise<Finding> 
   }
   if (r.status === 200 && /"ok"\s*:\s*true/.test(r.body))
     return { check: "control", title, status: "ok", said: `Control answers at ${opts.control}.` };
+  // Control, not well yet: it starts, or one of its loops is late (goal 173).
+  if (r.status === 503 && /"ok"\s*:\s*false/.test(r.body))
+    return {
+      check: "control",
+      title,
+      status: "fail",
+      said: `Control answers at ${opts.control}, but ${/"starting"\s*:\s*true/.test(r.body) ? "it is still starting" : "one of its loops is late"}: /v1/health answered HTTP 503.`,
+      fix: "Wait for it to start; else read its /v1/health and its log (Troubleshoot: A part that is unhealthy).",
+    };
   return {
     check: "control",
     title,

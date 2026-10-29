@@ -82,7 +82,10 @@ describe("the message bus's state", () => {
     // Control's health says the bus is off, and needs no token.
     const health = await s.control.request("/v1/health");
     assert.equal(health.status, 200);
-    assert.deepEqual(await health.json(), { ok: true, bus: "off" });
+    // Beside control's loops (goal 173).
+    const { loops, ...said } = (await health.json()) as Record<string, unknown>;
+    assert.deepEqual(said, { ok: true, bus: "off" });
+    assert.ok(loops && typeof loops === "object");
     const metrics = await (await s.read("/metrics")).text();
     assert.doesNotMatch(metrics, /thermite_bus_|thermite_live_/);
   });
@@ -300,13 +303,20 @@ describe("the message bus's state", () => {
       throw new Error("connection refused: nats:4222");
     };
     const s = setup(b.view, b.store);
-    const health = async () => (await s.control.request("/v1/health")).json();
+    // Control's health, without its loops' ages (goal 173).
+    const health = async () => {
+      const { loops: _loops, ...said } = (await (
+        await s.control.request("/v1/health")
+      ).json()) as Record<string, unknown>;
+      return said;
+    };
     assert.deepEqual(await health(), { ok: true, bus: "connected" });
     // Control holds no connection to the server: its health says so, and control still serves.
     b.bus.up = false;
     const away = await s.control.request("/v1/health");
     assert.equal(away.status, 200);
-    assert.deepEqual(await away.json(), { ok: true, bus: "away" });
+    const { loops: _loops, ...awaySaid } = (await away.json()) as Record<string, unknown>;
+    assert.deepEqual(awaySaid, { ok: true, bus: "away" });
     const state = (await (await s.read("/v1/bus")).json()) as Record<string, unknown>;
     assert.equal(state.reachable, false);
     assert.equal(state.error, "connection refused: nats:4222");

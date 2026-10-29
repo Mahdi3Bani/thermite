@@ -3,6 +3,12 @@
 # Works with `docker compose`, `podman compose` and podman-compose.
 name: thermite
 
+# Every container's log, bounded (goal 173): with Docker, at most three files of 50 MB each; with
+# Podman, which reads only max-size, one file of at most 50 MB, started again when it is full.
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "50m", max-file: "3" }
+
 services:
   control:
     build: { context: ., dockerfile: containers/control/Containerfile, args: { THERMITE_COMMIT: "${THERMITE_COMMIT:-}" } }
@@ -60,6 +66,14 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
+    logging: *logging
+    # Control's health: 503 while it starts, and while one of its loops is late (/v1/health).
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8800/v1/health',{signal:AbortSignal.timeout(5000)}).then((r)=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5m
 
   # The message bus (goal 168): NATS with JetStream, beside control. The supervisors send their
   # reports and live lines here and take their commands and their rig's config from here; control
@@ -128,6 +142,7 @@ services:
     cap_add: [CHOWN]
     security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
+    logging: *logging
 
   harness:
     build: { context: ., dockerfile: containers/harness/Containerfile, args: { THERMITE_COMMIT: "${THERMITE_COMMIT:-}" } }
@@ -156,6 +171,10 @@ services:
       THERMITE_LLM_USD_PER_MTOK_IN: "${THERMITE_LLM_USD_PER_MTOK_IN:-}"
       THERMITE_LLM_USD_PER_MTOK_OUT: "${THERMITE_LLM_USD_PER_MTOK_OUT:-}"
       THERMITE_EXPORT_MINUTES: "${THERMITE_EXPORT_MINUTES:-60}"
+      # The free space the rig keeps (GiB; empty: 5), and how long a drain waits before it asks
+      # the owner (minutes; empty: 60).
+      THERMITE_DISK_FLOOR_GIB: "${THERMITE_DISK_FLOOR_GIB:-}"
+      THERMITE_DRAIN_MINUTES: "${THERMITE_DRAIN_MINUTES:-}"
     # A model server on this machine (native Linux Docker lacks the name otherwise).
     extra_hosts: ["host.docker.internal:host-gateway"]
     volumes:
@@ -172,6 +191,14 @@ services:
     cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, KILL, SETGID, SETUID]
     security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
+    logging: *logging
+    # The harness's health: 503 while one of its loops is late (judge, scheduler, exports).
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8700/v1/health',{signal:AbortSignal.timeout(5000)}).then((r)=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5m
 
   supervisor:
     build: { context: ., dockerfile: containers/supervisor/Containerfile, args: { THERMITE_COMMIT: "${THERMITE_COMMIT:-}" } }
@@ -186,6 +213,8 @@ services:
       THERMITE_LIVE_INTERVAL_MS: "${THERMITE_LIVE_INTERVAL_MS:-3000}"
       # How often past research comes from control into each running run's knowledge/ (0: off).
       THERMITE_KB_SYNC_SECONDS: "${THERMITE_KB_SYNC_SECONDS:-180}"
+      # The free space a model download leaves where it lands (GiB; empty: 5).
+      THERMITE_DISK_FLOOR_GIB: "${THERMITE_DISK_FLOOR_GIB:-}"
       THERMITE_HARNESS_TOKEN_FILE: /run/secrets/harness-supervisor-token
       THERMITE_CONTROL_TOKEN_FILE: /run/secrets/control-rig-token
       # Locally, both rigs' supervisors push to one results repository on a shared volume.
@@ -210,6 +239,14 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
+    logging: *logging
+    # The supervisor's health, in its container only: 503 while its report, command or live loop is late.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8701/v1/health',{signal:AbortSignal.timeout(5000)}).then((r)=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5m
 
   # A second rig for multi-rig checks: `docker compose --profile two-rigs up`.
   harness-2:
@@ -234,6 +271,10 @@ services:
       THERMITE_TRIAL_MINUTES: "${THERMITE_TRIAL_MINUTES:-}"
       THERMITE_MAX_TURNS: "${THERMITE_MAX_TURNS:-}"
       THERMITE_EXPORT_MINUTES: "${THERMITE_EXPORT_MINUTES:-60}"
+      # The free space the rig keeps (GiB; empty: 5), and how long a drain waits before it asks
+      # the owner (minutes; empty: 60).
+      THERMITE_DISK_FLOOR_GIB: "${THERMITE_DISK_FLOOR_GIB:-}"
+      THERMITE_DRAIN_MINUTES: "${THERMITE_DRAIN_MINUTES:-}"
     extra_hosts: ["host.docker.internal:host-gateway"]
     volumes:
       - harness2-state:/var/lib/thermite
@@ -247,6 +288,14 @@ services:
     cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, KILL, SETGID, SETUID]
     security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
+    logging: *logging
+    # The harness's health: 503 while one of its loops is late (judge, scheduler, exports).
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8700/v1/health',{signal:AbortSignal.timeout(5000)}).then((r)=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5m
 
   supervisor-2:
     profiles: [two-rigs]
@@ -261,6 +310,8 @@ services:
       THERMITE_MODEL_ROUTE_POLL_SECONDS: "${THERMITE_MODEL_ROUTE_POLL_SECONDS:-30}"
       THERMITE_LIVE_INTERVAL_MS: "${THERMITE_LIVE_INTERVAL_MS:-3000}"
       THERMITE_KB_SYNC_SECONDS: "${THERMITE_KB_SYNC_SECONDS:-180}"
+      # The free space a model download leaves where it lands (GiB; empty: 5).
+      THERMITE_DISK_FLOOR_GIB: "${THERMITE_DISK_FLOOR_GIB:-}"
       THERMITE_HARNESS_TOKEN_FILE: /run/secrets/harness2-supervisor-token
       THERMITE_CONTROL_TOKEN_FILE: /run/secrets/control-rig-token-2
       THERMITE_RESULTS_REMOTE: "${THERMITE_RESULTS_REMOTE:-file:///results/results.git}"
@@ -283,6 +334,14 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
+    logging: *logging
+    # The supervisor's health, in its container only: 503 while its report, command or live loop is late.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8701/v1/health',{signal:AbortSignal.timeout(5000)}).then((r)=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5m
 
 networks:
   rig: { internal: true }

@@ -95,7 +95,7 @@ export function editRigRoutes(app: Hono, api: ApiContext): void {
             rig,
             clusterResourcesRequest(body.data),
             "owner:api",
-            { wait: body.data.wait, owner: true },
+            { wait: body.data.wait, owner: true, drainMinutes: body.data.drain_minutes },
           )
         : ({ error: bodyRefusal(body.error), status: 400 } as const);
       if ("error" in out) {

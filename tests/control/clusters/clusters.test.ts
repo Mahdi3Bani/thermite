@@ -104,6 +104,31 @@ describe("rigs on Kubernetes", () => {
     assert.equal(JSON.parse(asList(objs)).kind, "List");
   });
 
+  test("each part has startup, readiness and liveness probes on its health, and a grace period (goal 173)", () => {
+    const objs = clusterRigObjects(plan, secrets) as Obj[];
+    type Container = Record<string, { [k: string]: unknown } | undefined>;
+    const part = (name: string) => {
+      const spec = pod(objs, name);
+      return { spec, c: (spec.containers as Container[])[0] as Container };
+    };
+    const h = part("thermite-k8s-a-1-harness");
+    assert.equal(h.spec.terminationGracePeriodSeconds, 30);
+    assert.deepEqual(h.c.livenessProbe, {
+      httpGet: { path: "/v1/health", port: 8700 },
+      periodSeconds: 30,
+      timeoutSeconds: 10,
+      failureThreshold: 3,
+    });
+    assert.deepEqual(h.c.readinessProbe?.httpGet, { path: "/v1/health", port: 8700 });
+    assert.equal(h.c.startupProbe?.failureThreshold, 60);
+    const s = part("thermite-k8s-a-1-supervisor");
+    assert.equal(s.spec.terminationGracePeriodSeconds, 30);
+    const command = (s.c.livenessProbe?.exec as { command: string[] } | undefined)?.command ?? [];
+    assert.deepEqual(command.slice(0, 2), ["node", "-e"]);
+    assert.match(command[2] ?? "", /fetch\('http:\/\/127\.0\.0\.1:8701\/v1\/health'/);
+    assert.ok(s.c.readinessProbe && s.c.startupProbe);
+  });
+
   test("a slot: no namespace and no network rules of control's; DRA asks for GPUs by claim", () => {
     const objs = clusterRigObjects(
       {

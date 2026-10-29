@@ -1,6 +1,7 @@
 import type { ControlStore, Decision } from "../../store/index.ts";
 import type { RigView } from "../../views/index.ts";
 import { stuckNeeds } from "../stuck.ts";
+import { diskNeeds, drainNeeds } from "./hold.ts";
 import { auditNeeds, promotionNeeds } from "./promotion.ts";
 import { conclusionNeeds, reviewNeeds } from "./review.ts";
 import { agentsNeeds, keyNeeds, resetNeeds, staleNeeds } from "./rig.ts";
@@ -59,7 +60,9 @@ export interface Need {
     | "review"
     | "conclusion"
     | "stale"
-    | "stuck";
+    | "stuck"
+    | "disk"
+    | "drain";
   rig: string;
   run?: string | undefined;
   attempt?: string | undefined;
@@ -117,11 +120,16 @@ export function needs(
       out.push(...conclusionNeeds(c, u, r));
     }
     out.push(...staleNeeds(c, u, key));
+    // Its disk at its floor, or a drain past its deadline (goal 173).
+    out.push(...diskNeeds(c, u));
+    out.push(...drainNeeds(c, store, u));
   }
   out.push(...resetNeeds(c, store, vs));
   const order = [
     "key",
     "reset",
+    "disk",
+    "drain",
     "agents",
     "promotion",
     "audit",

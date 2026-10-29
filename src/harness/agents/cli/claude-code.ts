@@ -1,11 +1,14 @@
+import { randomUUID } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { claudeOwn } from "../../../agents/compaction/index.ts";
 import { claudeMcpConfig } from "../../../agents/mcp/index.ts";
 import type { ModelConfig } from "../../../agents/model/index.ts";
 import {
+  agentPath,
   CLAUDE_DROPS,
   CLAUDE_PROMPT,
+  CLAUDE_TERMINAL_ENV,
   type ClaudeTally,
   claudeArgs,
   claudeBin,
@@ -15,6 +18,11 @@ import {
   claudeExitWords,
   claudeHookSettings,
   claudeShell,
+  claudeTerminalArgs,
+  claudeTerminalLog,
+  claudeTerminalSeeds,
+  claudeTerminalSettings,
+  claudeTranscript,
   claudeTrialSettings,
   closeClaudeRun,
   hookSignals,
@@ -27,16 +35,16 @@ import type { RigCheckReport } from "../model/index.ts";
 import type { TrialResult, TrialSpec } from "../worker/index.ts";
 import { runCliTrial } from "./loop.ts";
 import { type CliOnceDeps, type CliOnceOptions, cliModelCheck, cliOnce } from "./once.ts";
-import type { CliProgram, CliTrialDeps } from "./program.ts";
+import type { CliProgram, CliRun, CliTrialDeps } from "./program.ts";
 
 /**
  * Trials, model checks and planner calls in Claude Code, for a Claude subscription. Anthropic
  * allows a subscription only in its own program, unmodified: the owner's token from `claude
  * setup-token` reaches Claude Code alone, on a file descriptor (claudeShell), and no other program
- * here uses it. Claude Code runs headless (`claude -p`, its permissions bypassed) as the lane's
- * own user, in the lane's workspace, under the lane's memory, disk and time limits and the GPU
- * fence, as OpenCode does: it has the lane's access and none of the judge's. It starts with a home
- * of its own, no setting sources and no MCP servers, so nothing of a project's or a host's Claude
+ * here uses it. Claude Code runs headless (`claude -p`, its permissions bypassed), or in its own
+ * terminal where the rig says so (goal 169; cli/terminal.ts), as the lane's own user, in the
+ * lane's workspace, under the lane's memory, disk and time limits and the GPU fence, as OpenCode
+ * does: it has the lane's access and none of the judge's. It starts with a home of its own, no setting sources and no MCP servers, so nothing of a project's or a host's Claude
  * settings runs. The token is in no environment and no file, so its commands inherit no
  * credentials; they run as the same user, which could still reach the token: the owner accepted
  * that (decision 51). Claude Code's own sandbox stays off (src/agents/programs/claude-code/ says
@@ -71,17 +79,52 @@ async function writeClaudePrompt(
 }
 
 /**
- * Claude Code in the CLI trial loop and the one-prompt call: its token on file descriptor 3 and
- * its prompt from a file the lane (or, for a call, the controller) writes before each run, a run
- * cut short that keeps its usage, and the subscription's usage windows, a full one of which ends
- * the trial.
+ * Claude Code's version, by its executable, read once for each harness start: its terminal's
+ * seeds mark its onboarding done for this version (claudeTerminalSeeds).
  */
+const versions = new Map<string, string>();
+
+/**
+ * Reads Claude Code's version (`claude --version`, as the lane, in its area) unless it was read
+ * already. Undefined when it is known; else why not, in words.
+ */
+async function readClaudeVersion(run: CliRun, runner: Runner): Promise<string | undefined> {
+  const exe = claudeExe() ?? claudeBin();
+  if (versions.has(exe)) return undefined;
+  const r = await runner.run({
+    role: run.role,
+    argv: [exe, "--version"],
+    cwd: run.area,
+    env: { HOME: run.home, PATH: agentPath(), TMPDIR: run.tmp, DISABLE_AUTOUPDATER: "1" },
+    timeoutMs: 30_000,
+    captureBytes: 4096,
+  });
+  const version = /^\s*(\d+\.\d+\.\d+\S*)/.exec(r.stdout)?.[1];
+  if (r.exitCode !== 0 || !version)
+    return `could not read Claude Code's version, which its terminal's settings need: ${(r.stderr || r.stdout).trim().slice(-300) || `exit ${r.exitCode ?? r.signal}`}`;
+  versions.set(exe, version);
+  return undefined;
+}
+
 /**
  * What Claude Code itself uses, as its limits note says: measured in the real Claude Code
  * acceptance (2026-10-28: 343 MiB at its trial's peak, with the commands it ran).
  */
 export const CLAUDE_CODE_MEMORY = "about 350 MiB";
 
+/** Claude Code's settings in a trial: its hooks, and its compaction hooks when the conversation is kept. */
+const trialSettings = (run: CliRun) =>
+  claudeTrialSettings(
+    run.keptAt ? { drops: join(run.area, CLAUDE_DROPS), at: run.keptAt } : undefined,
+  );
+
+/**
+ * Claude Code in the CLI trial loop and the one-prompt call: headless, its token on file
+ * descriptor 3 and its prompt from a file the lane (or, for a call, the controller) writes before
+ * each run, a run cut short that keeps its usage, and the subscription's usage windows, a full one
+ * of which ends the trial; in its own terminal (goal 169), a session of the harness's id, its
+ * token given by the terminal host, and its transcript, which the host copies for the harness.
+ */
 export const claudeProgram: CliProgram<ClaudeTally> = {
   id: "claude-code",
   name: "Claude Code",
@@ -120,9 +163,7 @@ export const claudeProgram: CliProgram<ClaudeTally> = {
     ...claudeArgs(run.model, {
       session,
       mcpConfig: run.mcp ? join(run.home, "mcp.json") : undefined,
-      settings: claudeTrialSettings(
-        run.keptAt ? { drops: join(run.area, CLAUDE_DROPS), at: run.keptAt } : undefined,
-      ),
+      settings: trialSettings(run),
     }),
   ],
   // The token comes on stdin, which the shell moves to file descriptor 3 for Claude Code.
@@ -151,6 +192,33 @@ export const claudeProgram: CliProgram<ClaudeTally> = {
   // A run cut off before its result (a submission, the cap) keeps what its stream showed.
   closeRun: closeClaudeRun,
   windows: (t) => t.usage,
+  // In its own terminal: the session's id the harness gives it, its first message after `--`, its
+  // settings with the warning about bypassed permissions taken as read, its onboarding and the
+  // workspace's trust seeded, and its transcript copied by the host (goal 169).
+  terminal: {
+    prepare: readClaudeVersion,
+    newSession: () => randomUUID(),
+    start: (run, at) => ({
+      args: claudeTerminalArgs(run.model, {
+        session: at.session,
+        resume: at.resume,
+        first: at.first,
+        mcpConfig: run.mcp ? join(run.home, "mcp.json") : undefined,
+        settings: claudeTerminalSettings(trialSettings(run)),
+      }),
+      env: { ...CLAUDE_TERMINAL_ENV },
+      seeds: claudeTerminalSeeds(run.home, at.cwd, versions.get(claudeExe() ?? claudeBin()) ?? ""),
+      token: run.model.apiKey,
+      log: claudeTerminalLog(run.home, at.session),
+    }),
+    log: { adapter: () => claudeTranscript, from: "copy" },
+    // Its compactions (goal 070), and a full usage window, which ends the trial as headless.
+    take: (e, t, at) => {
+      if (e.type === "compaction")
+        t.compactions.push({ at, tokensBefore: e.tokensBefore ?? null, tokensAfter: null });
+      else if (e.type === "limit" && e.resetsAt) t.limitedUntil = e.resetsAt;
+    },
+  },
   // A full usage window: the trial ends, and the lane waits for the reset (never paid credits).
   stopAfterRun: (t) =>
     t.limitedUntil

@@ -6,7 +6,7 @@ import {
   compactAtRefusal,
 } from "../../../core/compaction.ts";
 import { MAX_LANES } from "../../../core/contract.ts";
-import type { RigSettingsChange } from "../../../core/rig-settings.ts";
+import { PROGRAM_MODE_DEFAULT, type RigSettingsChange } from "../../../core/rig-settings.ts";
 import {
   asksNothing,
   type ClusterFacts,
@@ -25,6 +25,8 @@ import {
   giveRigModel,
   neededHarness,
   opencodeOnly,
+  PROGRAM_MODE_TIP,
+  programModeField,
   QUIET_TIP,
   quietField,
   type RigPart,
@@ -291,7 +293,8 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
 <label class="fd">${infoLabel("One trial lasts (minutes)", "How long a worker can work on one idea before it must submit, when the campaign sets no limit. Empty: no limit; a trial lasts until the worker submits or stops.")}<input name="trial_minutes" type="number" min="1" value="${s?.trial_minutes ?? ""}" placeholder="no limit"${s ? "" : " disabled"}></label>
 <label class="fd">${infoLabel("Turns per trial", "How many model turns a worker can take in one trial. Empty: no limit.")}<input name="max_turns" type="number" min="1" value="${s?.max_turns ?? ""}" placeholder="no limit"${s ? "" : " disabled"}></label>
 <label class="fd">${infoLabel("Ask me after a quiet spell of (minutes)", QUIET_TIP)}${quietField(u, s?.quiet_minutes ?? null)}</label>
-</div></div>
+</div>
+<details class="adv"><summary>Advanced</summary><div class="g3"><label class="fd">${infoLabel("Agent programs run", PROGRAM_MODE_TIP)}${programModeField(u, s?.program_mode ?? PROGRAM_MODE_DEFAULT)}</label></div></details></div>
 <div class="sec"><h2>3 · When a change becomes the champion</h2><div class="g2">
 <label class="ch${s?.promotion === "auto" ? " on" : ""}"><input type="radio" name="promotion" value="auto"${s?.promotion === "auto" ? " checked" : ""}${s ? "" : " disabled"} style="margin:2px 8px 0 0"><span><b>Automatically</b><br><span class="muted small">The judge confirms the change on new runs, and it becomes the champion with no step of yours. When the campaign calls for an audit and this rig has an auditor, the auditor's clear comes first; its block stops the change. A run can still ask you about some changes (Ask me first, when you start it).</span></span></label>
 <label class="ch${s?.promotion === "owner_approval" ? " on" : ""}"><input type="radio" name="promotion" value="owner_approval"${s?.promotion === "owner_approval" ? " checked" : ""}${s ? "" : " disabled"} style="margin:2px 8px 0 0"><span><b>Ask me for each change</b><br><span class="muted small">Each confirmed change waits for you in Needs you.</span></span></label>
@@ -499,6 +502,8 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
         trial_minutes: num("trial_minutes"),
         max_turns: num("max_turns"),
         quiet_minutes: num("quiet_minutes"),
+        // Off on a rig that reports none (programModeField): then the form has no value.
+        program_mode: typeof f.program_mode === "string" ? f.program_mode : undefined,
         promotion: String(f.promotion ?? s.promotion),
         // The field shows only on a rig with a GPU set. With a new number of GPUs, it goes with
         // the change to them.

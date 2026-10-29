@@ -5,6 +5,7 @@ import { buildInfo } from "../common/build-info.ts";
 import { busHost, natsBus, reloadBus } from "../common/bus.ts";
 import { log, optionalSecretFromFile, parseListen } from "../common/env.ts";
 import { writeAtomic } from "../common/fs.ts";
+import { every } from "../common/health.ts";
 import { startLogging } from "../common/log.ts";
 import { readNumber } from "../common/settings.ts";
 import { generateSigningKeys } from "../core/commands.ts";
@@ -236,8 +237,10 @@ async function main(): Promise<void> {
   // table of a store from before the stream, moved there in the writer's turn, checked, and
   // dropped with a copy of the store kept; and the stream applied to its end, which builds the
   // views' folds in one pass from its first message (control/events).
+  // Control's loops, each ticked as its round ends, for its health route and /metrics (goal 173).
+  const { loops } = parts;
   void busUsers.sync();
-  const usersSync = setInterval(() => void busUsers.sync(), BUS_USERS_SYNC_MS);
+  const usersSync = every(loops, "control", "bus_users", BUS_USERS_SYNC_MS, () => busUsers.sync());
   const started = performance.now();
   await bus.makeStream(EVENT_STREAM_CONFIG);
   await eventsApply.start();
@@ -273,7 +276,9 @@ async function main(): Promise<void> {
   // control issues, published to its rig's subject as well as kept in the store; and each rig's
   // config, written when it changes.
   void busConfig.start().then(() => busConfig.write());
-  const configWrite = setInterval(() => void busConfig.write(), CONFIG_WRITE_MS);
+  const configWrite = every(loops, "control", "bus_config", CONFIG_WRITE_MS, () =>
+    busConfig.write(),
+  );
   followReports(bus, { store, control: buildInfo(), requireKeyAcceptance }).catch((err) =>
     log("control", "reports from the bus stopped", { error: String(err) }, "error"),
   );
@@ -284,24 +289,24 @@ async function main(): Promise<void> {
     log("control", "commands stream not made", { error: String(err) }, "error"),
   );
   // Full resets advance as their evidence arrives.
-  const resets = setInterval(() => {
+  const resets = every(loops, "control", "resets", 10_000, () =>
     advanceResets({ store, privateKeyPem, driver, staleAfterMs }).catch((err) =>
       log("control", "reset step error", { error: String(err) }, "error"),
-    );
-  }, 10_000);
+    ),
+  );
   // Test pods move on as their pods do; every path ends with the pod removed.
-  const tests = setInterval(() => {
+  const tests = every(loops, "control", "runpod_tests", 15_000, () =>
     runpodTests
       .advance()
-      .catch((err) => log("control", "runpod test error", { error: String(err) }, "error"));
-  }, 15_000);
+      .catch((err) => log("control", "runpod test error", { error: String(err) }, "error")),
+  );
   // Rigs in pull mode: each rig's next exchange starts as soon as its last one ends (an exchange
   // waits up to 20 s at the pod for the rig's calls), each failing rig after its retry time.
-  const pulls = setInterval(() => {
+  const pulls = every(loops, "control", "pull_mode", 250, () =>
     tunnels
       .advance()
-      .catch((err) => log("control", "pull mode error", { error: String(err) }, "error"));
-  }, 250);
+      .catch((err) => log("control", "pull mode error", { error: String(err) }, "error")),
+  );
   // Rigs on RunPod: each pod's status, price and spend; the owner's limits, where set; the stop,
   // start, restart or terminate under way. At start too: a limit a pod passed while control was
   // away stops it at once (goal 165).
@@ -310,14 +315,13 @@ async function main(): Promise<void> {
       .advance()
       .catch((err) => log("control", "runpod rig error", { error: String(err) }, "error"));
   void followPods();
-  const launched = setInterval(followPods, 30_000);
+  const launched = every(loops, "control", "runpod_rigs", 30_000, followPods);
   // Rigs control set up that stopped reporting: their containers checked once when they turn
-  // stale, and once more when they turn offline (rigs/watch.ts).
-  let watching = false;
-  const quiet = setInterval(() => {
-    if (watching) return;
-    watching = true;
-    checkQuietRigs({
+  // stale, and once more when they turn offline (rigs/watch.ts). One check at a time: a round
+  // while one runs waits for it, so a check that hangs makes the loop late.
+  let watching: Promise<unknown> | undefined;
+  const quiet = every(loops, "control", "quiet_rigs", 60_000, () => {
+    watching ??= checkQuietRigs({
       store,
       // Where a quiet rig runs is checked as its page's Check again does.
       check: (rig, by) => checkRigPlace(parts, rig, by),
@@ -326,15 +330,16 @@ async function main(): Promise<void> {
     })
       .catch((err) => log("control", "quiet rig check error", { error: String(err) }, "error"))
       .finally(() => {
-        watching = false;
+        watching = undefined;
       });
-  }, 60_000);
+    return watching;
+  });
   // GPU clouds' prices, pods and spend, read again every 15 minutes.
-  const clouds = setInterval(() => {
+  const clouds = every(loops, "control", "gpu_clouds", 15 * 60_000, () =>
     refreshGpuClouds(store, secrets).catch((err) =>
       log("control", "gpu cloud read error", { error: String(err) }, "error"),
-    );
-  }, 15 * 60_000);
+    ),
+  );
   const stop = () => {
     clearInterval(resets);
     clearInterval(tests);

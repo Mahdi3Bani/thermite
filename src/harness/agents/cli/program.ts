@@ -8,8 +8,11 @@ import type { McpAccess } from "../../../agents/mcp/index.ts";
 import type { ModelConfig } from "../../../agents/model/index.ts";
 import type {
   PlanWindows,
+  SessionEvent,
   SessionLogAdapter,
   SessionTally,
+  TerminalLog,
+  TerminalSeed,
 } from "../../../agents/programs/index.ts";
 import type { Prompt } from "../../../agents/prompt.ts";
 import type { ResearchFolderPaths } from "../../../agents/tools/index.ts";
@@ -190,6 +193,8 @@ export interface CliProgram<T extends CliTally> {
    * messages inside the agent's turn, at each place, in words.
    */
   signals?: { adapter(): SessionLogAdapter<unknown>; how: Record<InTurn, string> } | undefined;
+  /** The program in its own terminal, for a trial in the loop's terminal mode (cli/terminal.ts). */
+  terminal: CliTerminal<T>;
   /** A one-prompt call in it (cli/once.ts). */
   call: CliCallEntry<T>;
   /** Its answer to a one-prompt call (else its last text). */
@@ -205,6 +210,64 @@ export interface CliProgram<T extends CliTally> {
     baseUrl?(m: ModelConfig): string;
     why?(t: T): string | undefined;
   };
+}
+
+/**
+ * One run of a program in its own terminal (goal 169), as the terminal host starts it: a new
+ * session, with its first message on its command line when one is given, or the session it had
+ * before a crash, resumed.
+ */
+export interface TerminalAt {
+  /** Where it works: a code trial's workspace, or a research trial's working area. */
+  cwd: string;
+  /** A new session's id, for a program that takes one (Claude Code), or the one to resume. */
+  session: string;
+  resume: boolean;
+  first?: string | undefined;
+  /** A port on localhost that was free, for a program with a server of its own (OpenCode). */
+  port: number | undefined;
+}
+
+/**
+ * What the terminal host starts for one run (goal 169): the program's command line after its
+ * binary, what its terminal adds to its environment, the files seeded before it starts so that no
+ * screen waits for an answer, Claude Code's sign-in for file descriptor 3, where its session log is
+ * for the host to copy, and the server it attaches to (OpenCode's), as arguments after the binary.
+ */
+export interface TerminalPlan {
+  args: string[];
+  env?: Record<string, string> | undefined;
+  seeds: TerminalSeed[];
+  token?: string | undefined;
+  log?: TerminalLog | undefined;
+  server?: { args: string[]; port: number } | undefined;
+}
+
+/**
+ * A program in its own terminal (goal 169), as the trial loop's terminal mode runs it. Its own
+ * profile (how the host interrupts and ends it) is src/agents/programs/'s; this is what the loop
+ * needs besides: its start, its session log's adapter and where the log is read, and what its own
+ * tally takes from the log's events.
+ */
+export interface CliTerminal<T extends CliTally> {
+  /** Before the first run, as the lane (Claude Code: its version, for its seeds); else why not. */
+  prepare?(run: CliRun, runner: Runner): Promise<string | undefined>;
+  /** A new session's id, where the harness gives it (Claude Code); else the program names it. */
+  newSession?(): string;
+  /** It attaches to a server of its own (OpenCode), on a port the loop finds free. */
+  server?: boolean | undefined;
+  start(run: CliRun, at: TerminalAt): TerminalPlan;
+  /**
+   * Its session log: the adapter that reads it, and where it is read, the host's copy of the
+   * program's own log, or the trial's signals file (OpenCode's events, which Thermite's plugin
+   * writes there).
+   */
+  log: { adapter(): SessionLogAdapter<unknown>; from: "copy" | "signals" };
+  /**
+   * What its own tally takes from one of the log's events (a compaction, a full usage window);
+   * `at`: the live entries the read gave before it.
+   */
+  take?(e: SessionEvent, t: T, at: number): void;
 }
 
 /** What a program's entry gives a one-prompt call in its folder, as the call's user. */
@@ -268,4 +331,9 @@ export interface CliTrialDeps extends ProviderLink {
   compacted?: OnCompacted | undefined;
   /** Keeps the prompt that starts the trial, as it is sent (goal 166). */
   sent?: ((p: Prompt) => void) | undefined;
+  /**
+   * Runs the program in its own terminal (goal 169; the rig's program_mode), held by the terminal
+   * host, instead of headless. Unset: headless.
+   */
+  terminal?: boolean | undefined;
 }

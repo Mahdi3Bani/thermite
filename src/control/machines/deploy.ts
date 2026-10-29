@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { redact } from "../../common/env.ts";
 import { shellQuote } from "../../common/exec.ts";
 import { gpuSplit, MAX_RIG_GPUS } from "../../core/hardware.ts";
+import { HEALTH_URLS, healthProbe } from "../../core/health.ts";
 import { RIG_ID, RIG_ID_WORDS } from "../../core/ids.ts";
 
 /**
@@ -103,6 +104,20 @@ export function rigUnits(p: UnitPlan): Record<string, string> {
       .join("\n");
   const secret = (file: string, mode = "ro") =>
     `Volume=${unitDir}/${file}:/run/secrets/${file.split("/").pop()}:${mode},Z`;
+  // Each container's log goes to the journal (journalctl --user -u <unit>), within the journal's
+  // own size limits and the unit's rate limit below; its health route is checked every 30 s, and
+  // a part unhealthy three times running is killed, so that systemd starts it again (goal 173).
+  const logAndHealth = (url: string) => `LogDriver=journald
+HealthCmd=node -e "${healthProbe(url)}"
+HealthInterval=30s
+HealthTimeout=10s
+HealthRetries=3
+HealthStartPeriod=5m
+HealthOnFailure=kill`;
+  const service = `[Service]
+Restart=always
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=10000`;
   return {
     [`${net}.network`]: `# Thermite rig ${p.rig}: harness and supervisor only.
 [Network]
@@ -139,9 +154,9 @@ DropCapability=ALL
 AddCapability=CHOWN DAC_OVERRIDE FOWNER KILL SETGID SETUID
 NoNewPrivileges=true
 ${p.gpus.map((_, i) => `AddDevice=nvidia.com/gpu=${p.gpus[i]}`).join("\n")}${gpu ? "\nSecurityLabelDisable=true" : ""}
+${logAndHealth(HEALTH_URLS.harness)}
 
-[Service]
-Restart=always
+${service}
 
 [Install]
 WantedBy=default.target
@@ -172,9 +187,9 @@ Network=${net}.network
 Network=${egress}.network
 DropCapability=ALL
 NoNewPrivileges=true
+${logAndHealth(HEALTH_URLS.supervisor)}
 
-[Service]
-Restart=always
+${service}
 
 [Install]
 WantedBy=default.target

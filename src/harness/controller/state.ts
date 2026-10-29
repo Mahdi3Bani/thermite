@@ -10,6 +10,7 @@ import {
 import { join } from "node:path";
 import { log } from "../../common/log.ts";
 import { generateSigningKeys } from "../../core/commands.ts";
+import { PROGRAM_MODE_DEFAULT } from "../../core/rig-settings.ts";
 import type { PromotionPolicy } from "../judge/index.ts";
 import { Ledger } from "../ledger/index.ts";
 import { lanesFromEnv, RigSettingsStore, trialMinutesFromEnv } from "../rig-settings.ts";
@@ -104,6 +105,7 @@ export function rigSettings(ctx: ControllerContext, promotion: PromotionPolicy):
       trial_minutes: trialMinutesFromEnv(env.THERMITE_TRIAL_MINUTES),
       max_turns: numbers.maxTurns,
       quiet_minutes: null,
+      program_mode: PROGRAM_MODE_DEFAULT,
       promotion,
       judge_gpus: null,
     },

@@ -662,6 +662,26 @@ describe("thermite doctor", () => {
     });
     assert.equal(other.status, "fail");
     assert.match(other.said, /not Thermite's control: \/v1\/health answered HTTP 404/);
+    // Control itself, not well: one of its loops is late, or it is still starting (goal 173).
+    const late = await check(
+      answer({
+        status: 503,
+        body: '{"ok":false,"loops":{"resets":{"late":true}},"bus":"connected"}',
+      }),
+      "control",
+      { control: url },
+    );
+    assert.equal(late.status, "fail");
+    assert.match(
+      late.said,
+      /answers at .*, but one of its loops is late: \/v1\/health answered HTTP 503/,
+    );
+    const starting = await check(
+      answer({ status: 503, body: '{"ok":false,"bus":"connected","starting":true}' }),
+      "control",
+      { control: url },
+    );
+    assert.match(starting.said, /but it is still starting/);
     const inside = await check({}, "control", { control: "http://control:8800" });
     assert.match(inside.said, /control's name inside the compose stack/);
     const bad = await check({}, "control", { control: "control.example.com" });

@@ -1,4 +1,5 @@
 import { createPublicKey } from "node:crypto";
+import { Loops } from "../common/health.ts";
 import type { BuildInfo } from "../core/version.ts";
 import type { BusView } from "./bus/index.ts";
 import { type ClusterKubectl, realKubectl } from "./clusters/index.ts";
@@ -57,6 +58,8 @@ export interface ControlParts {
   runpodDriver: RunpodDriver;
   /** The message bus (THERMITE_NATS_URL), for its state; none only in a test's control. */
   bus?: BusView | undefined;
+  /** Control's loops and when each last came around, for its health route (goal 173). */
+  loops: Loops;
   /** Every rig as control sees it now (views.ts), through the folds control keeps. */
   views(): RigView[];
   /**
@@ -87,6 +90,8 @@ export interface PartsOptions {
   runpodRigs?: RunpodRigs | undefined;
   runpodRigImage?: string | undefined;
   bus?: BusView | undefined;
+  /** Control's loops (tests give their own clock). */
+  loops?: Loops | undefined;
 }
 
 /** Control's parts, made from the store, its key and its options. */
@@ -137,6 +142,7 @@ export function controlParts(
     runpodRigs,
     runpodDriver: new RunpodDriver(runpodRigs),
     bus: opts.bus,
+    loops: opts.loops ?? new Loops(),
     views: () => folds.views(viewOpts),
     run: (id) => folds.run(id, viewOpts),
     campaignRuns: (campaign) => folds.campaignRuns(campaign, viewOpts),

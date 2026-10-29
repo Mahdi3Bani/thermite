@@ -15,8 +15,11 @@ import { controlClient } from "../common/api/control.ts";
 import { harnessClient } from "../common/api/harness.ts";
 import { buildInfo } from "../common/build-info.ts";
 import { busTrust, busUrl, natsBus } from "../common/bus.ts";
+import { GIB } from "../common/disk.ts";
 import { log, optionalSecretFromFile, requireEnv, secretFromFile } from "../common/env.ts";
+import { Loops } from "../common/health.ts";
 import { startLogging } from "../common/log.ts";
+import { readNumber } from "../common/settings.ts";
 import {
   FIGURE_EXPORTS_MAX,
   FIGURE_TEXT_MAX,
@@ -45,6 +48,7 @@ import { type ChampionUpload, championsIn, uploadChampions } from "./champions.t
 import { applyConfig, ConfigCounts, followConfig, keepConfig, RigConfig } from "./config/index.ts";
 import { type UploadState, uploadExportsOnce } from "./export-upload.ts";
 import { type ExportState, exportOnce } from "./git-export.ts";
+import { serveHealth } from "./health.ts";
 import { emptyKbSyncState, type KbSyncState, syncKnowledgeOnce } from "./kb-sync.ts";
 import {
   LiveCounts,
@@ -106,6 +110,9 @@ async function main(): Promise<void> {
   const statePath = join(home, "relay-state.json");
   let state: RelayState = load(statePath, { cursor: 0 });
   const rig = requireEnv("THERMITE_RIG_ID");
+  // Its report, command and live loops, and its health route on them (goal 173).
+  const loops = new Loops();
+  serveHealth(env, rig, loops);
   const harnessUrl = requireEnv("HARNESS_URL").replace(/\/$/, "");
   const harnessToken = secretFromFile("THERMITE_HARNESS_TOKEN_FILE");
   const harness = harnessClient({ url: harnessUrl, token: harnessToken });
@@ -155,6 +162,9 @@ async function main(): Promise<void> {
   const sshKeyFile = env.THERMITE_RESULTS_KEY_FILE || undefined;
   const knownHostsFile = env.THERMITE_RESULTS_KNOWN_HOSTS || undefined;
   const inboxDir = env.THERMITE_INBOX_DIR ?? "/inbox";
+  // The free space a model download leaves where it lands (goal 173): read now, so a bad value
+  // stops the supervisor here.
+  const floorBytes = readNumber(env, SUPERVISOR_NUMBERS.diskFloorGib) * GIB;
   // Gated models on Hugging Face: the supervisor's own token, sent to Hugging Face only.
   const hfToken = optionalSecretFromFile("THERMITE_HF_TOKEN_FILE");
   // Model downloads, in the report to control and in the live view.
@@ -188,6 +198,7 @@ async function main(): Promise<void> {
           knownHostsFile,
           models,
           hfToken,
+          floorBytes,
         },
         cmd,
       ),
@@ -360,6 +371,7 @@ async function main(): Promise<void> {
     ...busKeyFigure(key),
     ...(liveCounts ? { live: liveCounts.figures() } : {}),
     ...(configCounts ? { config: configCounts.figures() } : {}),
+    loops: loops.health().loops,
   });
 
   // With the bus, the figures go once now, before the first report: control gives the rig's key
@@ -474,6 +486,7 @@ async function main(): Promise<void> {
     let liveState: LiveRelayState = { cursor: 0, ownCursor: 0 };
     let failing = false;
     const on = { rig, harnessUrl, harnessToken };
+    if ((bus || controlUrl) && liveMs > 0) loops.add("live", liveMs);
     while (!stopping && (bus || controlUrl) && liveMs > 0) {
       try {
         liveState =
@@ -488,6 +501,7 @@ async function main(): Promise<void> {
         if (!failing) log("supervisor", "live relay error", { error: String(err) }, "error");
         failing = true;
       }
+      loops.tick("live");
       const until = Date.now() + liveMs;
       while (!stopping && Date.now() < until) await new Promise((r) => setTimeout(r, 250));
     }
@@ -504,6 +518,7 @@ async function main(): Promise<void> {
   const commandMs = commandPollMs(env, Boolean(bus));
   const commanding = async () => {
     let failing = false;
+    if (controlUrl && commandMs > 0) loops.add("commands", commandMs);
     while (!stopping && controlUrl && commandMs > 0) {
       try {
         await relayCommandsOnce(cfg);
@@ -512,6 +527,7 @@ async function main(): Promise<void> {
         if (!failing) log("supervisor", "command relay error", { error: String(err) }, "error");
         failing = true;
       }
+      loops.tick("commands");
       if (wipeRequested) break;
       const until = Date.now() + commandMs;
       while (!stopping && !wipeRequested && Date.now() < until)
@@ -600,6 +616,7 @@ async function main(): Promise<void> {
   };
   const syncingKbDone = syncingKb();
 
+  loops.add("report", intervalMs);
   while (!stopping) {
     try {
       const next = await relayOnce({ ...cfg, skipCommands: commandMs > 0 }, state);
@@ -710,6 +727,7 @@ async function main(): Promise<void> {
     } catch (err) {
       log("supervisor", "control report error", { error: String(err) }, "error");
     }
+    loops.tick("report");
     const until = Date.now() + intervalMs;
     // A wipe the command loop delivered is acted on at once, not at the next report.
     while (!stopping && !wipeRequested && Date.now() < until)

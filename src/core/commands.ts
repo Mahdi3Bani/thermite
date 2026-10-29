@@ -12,6 +12,7 @@ import { CommitSchema, IdSchema, MAX_LANES, MAX_LANES_REASON, Sha256Schema } fro
 import { DirectionRef, directionName } from "./directions.ts";
 import { ExperimentId, inner, RunId, TRIAL_ID } from "./ids.ts";
 import { McpUses } from "./mcp.ts";
+import { PROGRAM_MODES } from "./rig-settings.ts";
 
 /**
  * Control commands. Control signs every command with its Ed25519 key; the harness verifies
@@ -264,6 +265,9 @@ export const AskOwner = z.strictObject({
 });
 export type AskOwner = z.infer<typeof AskOwner>;
 
+/** The longest a drain may wait before its deadline, in minutes: a week. */
+export const DRAIN_MINUTES_MAX = 10_080;
+
 export const CommandPayloads = {
   assign_campaign: z.object({
     run: RunId,
@@ -414,11 +418,14 @@ export const CommandPayloads = {
    * The rig drains before its images change (goal 079): no new trial, plan or judge job starts,
    * and those running end as they would. The rig's report says what still runs; control restarts
    * it once nothing does, or at once when the owner skips the wait. `drain: false` ends a drain.
-   * A drain lasts until the harness restarts.
+   * A drain lasts until the harness restarts. It waits at most `deadline_minutes` (the update's;
+   * left out: the rig's THERMITE_DRAIN_MINUTES): then it records that its deadline passed, starts
+   * nothing new still, and the owner chooses (goal 173).
    */
   drain_rig: z.strictObject({
     drain: z.boolean(),
     reason: z.string().trim().min(1).max(500).optional(),
+    deadline_minutes: z.number().int().min(1).max(DRAIN_MINUTES_MAX).optional(),
   }),
   /**
    * The owner (or an operator, for the owner) stops one running trial (goal 136), such as one a
@@ -460,6 +467,8 @@ export const CommandPayloads = {
     max_turns: z.number().int().min(1).max(100_000).nullable().optional(),
     /** After how many minutes without a line a trial asks the owner (goal 143); null: never. */
     quiet_minutes: z.number().int().min(1).max(1440).nullable().optional(),
+    /** How a trial's agent program runs: in its own terminal, or headless (goal 169). */
+    program_mode: z.enum(PROGRAM_MODES).optional(),
     promotion: z.enum(["auto", "owner_approval"]).optional(),
     /** How many of the rig's GPUs are the judge's (a rig configured with its GPU set). */
     judge_gpus: z.number().int().min(1).max(8).nullable().optional(),

@@ -189,6 +189,9 @@ export function agentLinks(
       providerAnswer: (since) => service.providerAnswerSince(spec.trialId, since),
       waiting: (w) => service.trialWait(trial, w),
       env: laneCacheEnv(paths.scratchDir, spec.lane),
+      // Claude Code, Codex or OpenCode in its own terminal, or headless: the rig's setting when
+      // the trial starts (goal 169). Pi has no terminal.
+      terminal: service.settings.get().program_mode === "terminal",
       // The prompt that starts the trial, kept whole in the ledger (goal 166).
       sent: (p) =>
         keepPrompt(service.ledger, spec.run, p, { lane: spec.lane, trial: spec.trialId }),
@@ -234,8 +237,8 @@ export function createScheduler(
     maxTurns: settings.get().max_turns ?? undefined,
     workersOn: () => settings.get().workers,
     plannerOn: () => settings.get().planner,
-    // A draining rig starts no trial or plan (goal 079).
-    draining: () => service.draining !== undefined,
+    // A draining rig, or one at its disk floor, starts no trial or plan (goals 079, 173).
+    draining: () => service.draining !== undefined || service.disk?.held !== undefined,
     // Each trial runs in the harness the rig's route names: Pi (a worker process), OpenCode,
     // Claude Code or Codex.
     runTrial: (spec, signal) => {

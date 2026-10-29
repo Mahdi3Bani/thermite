@@ -10,7 +10,7 @@ The message bus carries the rigs' reports and live lines to control, and control
 
 ```sh
 docker compose ps nats                      # or: podman compose ps nats
-curl -fsS http://127.0.0.1:8800/v1/health   # {"ok":true,"bus":"connected"}
+curl -fsS http://127.0.0.1:8800/v1/health   # {"ok":true,"loops":{…},"bus":"connected"}
 ```
 
 ## Before you start

@@ -218,7 +218,17 @@ Each agent runs in one of four programs, its **harness**, chosen under **Runs in
 
 A Claude subscription needs Claude Code in the images: in the harness image for the workers and the planner, and in the supervisor image for the advisors. See [Use a Claude subscription](claude-subscription.md). The published harness and supervisor images carry OpenCode v2 and the Codex CLI.
 
-Where the workers run also sets when they read a message you send them from **Live**. A worker in Pi reads it at its next step. OpenCode v2, Claude Code and Codex take no message while they work: when the program stops before the worker has submitted a change and the trial has time left, the rig starts it again with your message; otherwise the lane's next trial reads it. The planner reads its messages when it plans the next round. See [When each agent reads it](../campaigns/steer-a-run.md#when-each-agent-reads-it).
+Where the workers run also sets when they read a message you send them from **Live**. A worker in Pi reads it at its next step. A worker in Claude Code or Codex reads it inside its turn, through Thermite's hooks, and one in OpenCode after the next tool it starts, through Thermite's plugin. A message that arrives after the turn ended goes in with the worker's next turn, if it has not submitted a change and the trial has time left; otherwise the lane's next trial reads it. The planner reads its messages when it plans the next round. See [When each agent reads it](../campaigns/steer-a-run.md#when-each-agent-reads-it).
+
+### Run the workers' program in its own terminal
+
+A worker in Claude Code, Codex or OpenCode runs headless by default: one run of the program for each turn. A rig can run it in the program's own terminal instead, for the whole trial, as you would run it yourself. Thermite follows the program's own session log and hooks there. The dashboard doesn't show the terminal yet. [Agents in their own terminal](../../explanation/agents-lanes-planner.md#agents-in-their-own-terminal) says how it works.
+
+1. On the rig's **Edit rig** page, in section **2 · The agents**, open **Advanced** under the agents' table.
+2. Set **Agent programs run** to **In their own terminal**, or back to **Headless**. Its ⓘ says what each does.
+3. Press **Save changes**. **What changes when you save** says "You change how agent programs run to In their own terminal."
+
+The rig takes the change in less than one minute. A trial that runs keeps its mode; the next trial starts in the new one. A worker in Pi has no terminal and runs as before. A rig whose harness is older shows the field off, with "update the rig first". Over REST and MCP the field is `program_mode`, `terminal` or `headless` ([A rig's settings](../../reference/rest-api.md#a-rigs-settings)).
 
 The advisors' read-only tools are the campaign's brief and a search of the run's past research, plus a guarded web fetch and a knowledge base where the rig's advisors file sets them up. A knowledge base is a search service of your own, reached over MCP, that the teachers may search but not change: see the `kb` field in the [advisors file reference](../../reference/advisors-file.md#top-level).
 

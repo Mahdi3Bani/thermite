@@ -384,3 +384,38 @@ describe("thermite command on a RunPod rig whose pod is stopped (goal 022)", () 
     }
   });
 });
+
+describe("thermite command with a rig's settings (goal 169)", () => {
+  test("rig_settings sets how the rig's agent programs run, and a mode it lacks is refused in words", async () => {
+    const { store, control: api } = controlOnly({ tokens: TOKENS });
+    await report(store, []);
+    const server = serve({ fetch: api.fetch, hostname: "127.0.0.1", port: 0 });
+    await new Promise((r) => server.once("listening", r));
+    try {
+      const dir = mkdtempSync(join(tmpdir(), "thermite-settings-"));
+      const owner = join(dir, "owner-token");
+      writeFileSync(owner, "owner-token-abcdef\n", { mode: 0o600 });
+      const at = [
+        "--control",
+        `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+        "--token-file",
+        owner,
+        "--rig",
+        "rig-a",
+        "--kind",
+        "rig_settings",
+      ];
+      const r = await cli("command", ...at, "--payload", '{"program_mode":"terminal"}');
+      assert.equal(r.code, 0, r.stderr);
+      const out = JSON.parse(r.stdout) as { id: string; status: string };
+      assert.equal(out.status, "pending");
+      const sent = store.commands.pending("rig-a").find((c) => c.envelope.id === out.id);
+      assert.deepEqual(sent?.envelope.payload, { program_mode: "terminal" });
+      const bad = await cli("command", ...at, "--payload", '{"program_mode":"tui"}');
+      assert.notEqual(bad.code, 0);
+      assert.match(bad.stderr, /program_mode/);
+    } finally {
+      server.close();
+    }
+  });
+});

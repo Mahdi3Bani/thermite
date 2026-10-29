@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { COMMAND_MAX_BYTES, SignedCommand } from "../../commands.ts";
+import { HealthAnswer } from "../../health.ts";
 import { McpConnection, McpUnavailable } from "../../mcp.ts";
 import { ControlRoute } from "../model-route.ts";
 import type { Route } from "../route.ts";
@@ -12,11 +13,14 @@ import type { Route } from "../route.ts";
  * Every route but the health check takes the supervisor's token.
  */
 
-/** Whether the harness is up (`{ok, rig}`): the supervisor waits for any answer, once, at start. */
+/**
+ * Whether the harness is well (`{ok, loops, rig, disk}`, core/health.ts): 503 when a loop is late
+ * (goal 173). The supervisor waits for any answer, once, at start; deployments check it.
+ */
 export const HEALTH = {
   method: "GET",
   path: "/v1/health",
-  answer: z.unknown(),
+  answer: HealthAnswer,
 } as const satisfies Route;
 
 /** The rig's settings (Edit rig): the supervisor reads which advisors are switched on. */

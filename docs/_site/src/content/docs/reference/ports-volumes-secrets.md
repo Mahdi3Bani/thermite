@@ -14,7 +14,7 @@ This page lists where each part of Thermite listens, which networks join them, w
 | --- | --- | --- | --- |
 | 8800/tcp | Control: the dashboard (`/ui`), the REST API (`/v1`), MCP (`/mcp`) and `/metrics` | People, scripts and agents; every rig's supervisor | `THERMITE_CONTROL_LISTEN`, default `0.0.0.0:8800` |
 | 8700/tcp | The harness API | The rig's own supervisor. Inside the harness container, its workers and tools on `127.0.0.1` | `THERMITE_LISTEN`, default `0.0.0.0:8700` |
-| none | The supervisor | Outside pull mode it listens on no port. It connects out to its harness and to control, and to the message bus when it has one | |
+| 8701/tcp, on the supervisor container's own `127.0.0.1` | The supervisor's health route, `GET /v1/health`: its loops' ages ([Health](rest-api.md#health)) | Its health check, inside the container: compose's, the machine's unit's and Kubernetes' probes. Nothing outside the container reaches it. Outside pull mode, it is the only port the supervisor listens on: it connects out to its harness and to control, and to the message bus when it has one | `THERMITE_SUPERVISOR_HEALTH_LISTEN`, default `127.0.0.1:8701` |
 | 4222/tcp | The message bus: the NATS server of the compose stack's `nats` service, over TLS only, with the certificate control's own authority signs | Control, always, and the supervisors, when their `THERMITE_NATS_URL` names it, each signed in with its own key ([Who may use the message bus](../explanation/how-the-parts-talk.md#who-may-use-the-message-bus)): the compose stack's rigs inside the stack, and the rigs control sets up on machines and clusters from outside it. Never the harness | `THERMITE_NATS_URL`, `nats://nats:4222` under compose; published on the host at `THERMITE_NATS_PUBLISH`, `127.0.0.1:4222` by default; `THERMITE_NATS_PUBLIC_URL` for the rigs outside |
 | 8222/tcp, on the `nats` container's own `127.0.0.1` | The NATS server's monitoring | Its health check, inside the container. Nothing outside the container reaches it | Fixed in the compose file |
 | 8790/tcp | The supervisor of a rig in [pull mode](../explanation/trust.md#rigs-in-pull-mode), on every interface | Control alone, through RunPod's proxy, under a random path. Everything else gets an empty 404 | `THERMITE_TUNNEL_PORT`, `8790` in control's launch values and in the one-container rig image |
@@ -42,7 +42,7 @@ Two Unix sockets matter too:
 
 - A rig's supervisor reaches control at `THERMITE_CONTROL_PUBLIC_URL`, control's address for rigs, and the message bus at `THERMITE_NATS_PUBLIC_URL`, by default the same host on port 4222, over TLS. Neither the harness nor the rig takes any connection from outside: the supervisor connects out to both.
 - On a machine, the supervisor reaches its harness at `http://thermite-<rig>-harness:8700`.
-- On a cluster, a Service `thermite-<rig>-harness` serves port 8700 to the supervisor.
+- On a cluster, a Service `thermite-<rig>-harness` serves port 8700 to the supervisor. The kubelet asks the harness's `/v1/health` on port 8700 for its startup, readiness and liveness probes; it asks the supervisor's inside its container, with a program (`node -e …`), so the supervisor still takes no connection.
 
 ## Networks
 

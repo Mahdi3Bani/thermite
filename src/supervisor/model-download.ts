@@ -12,6 +12,7 @@ import {
 import { dirname } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { gib } from "../common/disk.ts";
 import { redact } from "../common/env.ts";
 import { errorText } from "../common/errors.ts";
 import {
@@ -251,6 +252,8 @@ export interface DownloadInput {
   fetchImpl?: typeof fetch | undefined;
   /** Free bytes where the file goes (tests give their own). */
   free?: ((dir: string) => number) | undefined;
+  /** The free space the rig keeps where the file goes, in bytes (goal 173); none: 0. */
+  floor?: number | undefined;
 }
 
 /**
@@ -338,15 +341,23 @@ async function download(input: DownloadInput): Promise<void> {
         const len = Number(res.headers.get("content-length") ?? "");
         total = res.headers.has("content-length") && Number.isSafeInteger(len) ? len : null;
       }
-      if (total !== null) {
-        const need = total - start;
-        const avail = free(dirname(part));
-        if (need > avail) {
-          await res.body.cancel();
-          throw new ModelDownloadError(
-            `not enough free space for model ${input.name}: it needs ${size(need)} more, and ${size(avail)} is free where it goes (${dirname(input.path) === "." ? "the inbox" : `the inbox's ${dirname(input.path)}`})`,
-          );
-        }
+      // The file, and the rig's disk floor after it (goal 173): a download never fills the disk.
+      // Refused in words; the owner frees space and assigns again.
+      const floor = input.floor ?? 0;
+      const need = (total ?? start) - start + floor;
+      const avail = free(dirname(part));
+      if (need > avail) {
+        await res.body.cancel();
+        const where =
+          dirname(input.path) === "." ? "the inbox" : `the inbox's ${dirname(input.path)}`;
+        const keep = floor
+          ? `, and the rig keeps ${gib(floor)} GiB free (THERMITE_DISK_FLOOR_GIB)`
+          : "";
+        throw new ModelDownloadError(
+          total === null
+            ? `not enough free space for model ${input.name}: ${size(avail)} is free where it goes (${where})${keep}`
+            : `not enough free space for model ${input.name}: it needs ${size(total - start)} more, and ${size(avail)} is free where it goes (${where})${keep}`,
+        );
       }
       input.downloads.started(input.path, {
         total,

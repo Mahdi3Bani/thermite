@@ -22,7 +22,7 @@ AUTH="Authorization: Bearer $(cat .dev/secrets/control-admin-token)"
 curl -sS "$CONTROL/v1/health"
 ```
 
-The last line prints `{"ok":true,"bus":"connected"}`: control is up, and holds its connection to the [message bus](../operate/message-bus.md). That route needs no token.
+The last line prints `{"ok":true,"loops":{…},"bus":"connected"}`: control is up, each of its loops comes around ([Health](../../reference/rest-api.md#health)), and it holds its connection to the [message bus](../operate/message-bus.md). That route needs no token.
 
 ## List the rigs
 

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LoopAges } from "../../health.ts";
 import { LIVE_FIGURE_SUBJECTS } from "../../link/live.ts";
 import { SignedReport } from "../../link/report.ts";
 import { LiveBatchWire } from "../../live.ts";
@@ -236,6 +237,8 @@ export const SupervisorFigures = z.object({
   live: LiveFigures.optional().catch(undefined),
   /** Its config updates from the message bus. A malformed one is dropped, not the figures. */
   config: ConfigFigures.optional().catch(undefined),
+  /** Its loops' ages, as its health route gives them (goal 173). A malformed one is dropped. */
+  loops: LoopAges.optional().catch(undefined),
 });
 
 /**

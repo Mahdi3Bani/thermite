@@ -115,13 +115,20 @@ export function registerClusterRigs(tools: ToolContext): void {
             .describe(
               "Wait for the running trials and the judge's job to finish before the restart (default true); false: restart now",
             ),
+          drain_minutes: clusterResourcesFields.drain_minutes,
         },
       },
-      audited("update_rig_images", async (a: { rig: string; wait?: boolean }) => {
-        const r = await updateRigImages(opts.parts, a.rig, actor, { wait: a.wait });
-        if ("error" in r) throw new Error(r.error);
-        return { rig: a.rig, said: r.ok };
-      }),
+      audited(
+        "update_rig_images",
+        async (a: { rig: string; wait?: boolean; drain_minutes?: number }) => {
+          const r = await updateRigImages(opts.parts, a.rig, actor, {
+            wait: a.wait,
+            drainMinutes: a.drain_minutes,
+          });
+          if ("error" in r) throw new Error(r.error);
+          return { rig: a.rig, said: r.ok };
+        },
+      ),
     );
   }
   // A cluster rig's GPUs, CPUs and memory (goal 118): the owner's and an operator's, within what
@@ -142,7 +149,7 @@ export function registerClusterRigs(tools: ToolContext): void {
           rig,
           clusterResourcesRequest(body),
           actor,
-          { wait: body.wait, owner },
+          { wait: body.wait, owner, drainMinutes: body.drain_minutes },
         );
         if ("error" in r) throw new Error(r.error);
         return { rig, said: r.ok };

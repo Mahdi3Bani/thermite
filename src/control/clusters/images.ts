@@ -27,7 +27,11 @@ export async function updateRigImages(
   parts: ControlParts,
   rig: string,
   by: string,
-  o: { wait?: boolean | undefined } = {},
+  o: {
+    wait?: boolean | undefined;
+    /** How long its drain waits before it asks the owner (goal 173); none: the rig's own. */
+    drainMinutes?: number | undefined;
+  } = {},
 ): Promise<{ ok: string } | { error: string }> {
   const { store } = parts;
   const r = store.clusters.rig(rig);
@@ -96,7 +100,11 @@ export async function updateRigImages(
     issueCommand(store, parts.privateKeyPem, {
       rig,
       kind: "drain_rig",
-      payload: { drain: true, reason: IMAGES_REASON },
+      payload: {
+        drain: true,
+        reason: IMAGES_REASON,
+        ...(o.drainMinutes ? { deadline_minutes: o.drainMinutes } : {}),
+      },
       issuedBy: by,
     });
     store.clusters.setRigStatus(rig, "draining");

@@ -79,4 +79,4 @@ export type {
   SetupView,
   StoredEvent,
 } from "./types.ts";
-export { type OpenTrial, workOf } from "./work.ts";
+export { diskOf, type OpenTrial, type RigDiskView, workOf } from "./work.ts";

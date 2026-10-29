@@ -86,6 +86,9 @@ export function snapshot(
       // What still runs, and whether the rig drains (goal 079): control restarts a draining
       // rig once nothing runs.
       work: svc.work(),
+      // The rig's free disk against its floor, as last read, and its loops' ages (goal 173).
+      ...(svc.disk ? { disk: svc.disk.summary() } : {}),
+      loops: svc.loops.health().loops,
       ...(svc.gpuSplit ? { gpu_split: svc.gpuSplit } : {}),
       ...(svc.subscriptionUsage && svc.models?.info().source !== "none"
         ? {
@@ -125,12 +128,17 @@ export function removeExports(svc: HarnessService, names: string[]): number {
   return removed;
 }
 
-/** An export for the supervisor: normal, full or one run's (outbox.ts says what each holds). */
+/**
+ * An export for the supervisor: normal, full or one run's (outbox.ts says what each holds). At the
+ * disk floor it is refused with the reason (goal 173): an export copies the whole ledger.
+ */
 export async function exportForSupervisor(
   svc: HarnessService,
   actor: string,
   o: { full?: boolean; run?: string | undefined },
 ) {
+  svc.disk?.check();
+  svc.disk?.refuseAtFloor(o.full ? "a full export" : o.run ? `an export of ${o.run}` : "an export");
   return writeExport({
     ledger: svc.ledger,
     mirrorFor: (repo) => svc.mirrorFor(repo),

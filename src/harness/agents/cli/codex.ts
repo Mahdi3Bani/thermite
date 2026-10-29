@@ -13,6 +13,9 @@ import {
   codexHooks,
   codexNotify,
   codexRollout,
+  codexTerminalArgs,
+  codexTerminalConfig,
+  codexTerminalLog,
   hookSignals,
   newCodexTally,
   readCodexEvents,
@@ -27,9 +30,10 @@ import type { CliProgram, CliRun, CliTrialDeps } from "./program.ts";
 /**
  * Trials, model checks and planner calls in the Codex CLI, OpenAI's open-source agent program,
  * for a ChatGPT sign-in or an OpenAI-compatible route. Codex runs headless (`codex exec --json`,
- * its approvals and its own sandbox off) as the lane's own user, in the lane's workspace, under
- * the lane's memory, disk and time limits, as OpenCode and Claude Code do: it has the lane's
- * access and none of the judge's. Its own sandbox would cut its commands off the harness API;
+ * its approvals and its own sandbox off), or in its own terminal where the rig says so (goal 169;
+ * cli/terminal.ts), as the lane's own user, in the lane's workspace, under the lane's memory, disk
+ * and time limits, as OpenCode and Claude Code do: it has the lane's access and none of the
+ * judge's. Its own sandbox would cut its commands off the harness API;
  * the boundary is the user it runs as, not its permission rules.
  *
  * It starts with a home of its own (CODEX_HOME) whose configuration names one provider: the
@@ -65,9 +69,14 @@ function rolloutTally(run: CliRun, thread: string | undefined) {
   return text === undefined ? undefined : tallyLog(codexRollout, text);
 }
 
+/** A trial's configuration for Codex: its route through the proxy, its MCP servers, its notify. */
+const trialConfig = (run: CliRun) =>
+  codexConfig(run.model, `${run.apiUrl}/v1/model-proxy`, run.mcp, run.keptAt, codexNotify());
+
 /**
  * Codex in the CLI trial loop and the one-prompt call: `codex exec` resumes its thread with each
- * continuation.
+ * continuation; in its own terminal (goal 169), the workspace trusted, and its rollout copied by
+ * the terminal host.
  */
 export const codexProgram: CliProgram<CodexTally> = {
   id: "codex",
@@ -83,13 +92,7 @@ export const codexProgram: CliProgram<CodexTally> = {
     script:
       'mkdir -p codex-home/.codex codex-tmp && cat > codex-home/.codex/config.toml && printf %s "$1" > codex-home/.codex/hooks.json && : > codex-events.jsonl && chmod 0644 codex-events.jsonl && : > codex-signals.jsonl && chmod 0644 codex-signals.jsonl',
     args: ["sh", codexHooks()],
-    stdin: codexConfig(
-      run.model,
-      `${run.apiUrl}/v1/model-proxy`,
-      run.mcp,
-      run.keptAt,
-      codexNotify(),
-    ),
+    stdin: trialConfig(run),
   }),
   // The proxy takes the trial's credential, and so does the gateway of its MCP servers (goal 068).
   env: (run) =>
@@ -120,6 +123,31 @@ export const codexProgram: CliProgram<CodexTally> = {
   signals: {
     adapter: () => hookSignals("codex"),
     how: { "after-tool": "Codex's PostToolUse hook", "turn-end": "Codex's Stop hook" },
+  },
+  // In its own terminal: its configuration with the workspace trusted (else it asks), its first
+  // message as its last argument, its thread resumed after a crash, its rollout copied (goal 169).
+  terminal: {
+    start: (run, at) => ({
+      args: codexTerminalArgs(run.model, {
+        cwd: at.cwd,
+        first: at.first,
+        resume: at.resume ? at.session : undefined,
+      }),
+      seeds: [
+        {
+          path: join(run.area, ...CODEX_HOME, "config.toml"),
+          content: codexTerminalConfig(trialConfig(run), at.cwd),
+          mode: 0o600,
+        },
+      ],
+      log: codexTerminalLog(join(run.area, ...CODEX_HOME)),
+    }),
+    log: { adapter: () => codexRollout, from: "copy" },
+    // Its compactions (goal 070), as its output reports them headless.
+    take: (e, t, at) => {
+      if (e.type === "compaction")
+        t.compactions.push({ at, tokensBefore: null, tokensAfter: null });
+    },
   },
   call: {
     setup: (c) => ({

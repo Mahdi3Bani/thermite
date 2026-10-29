@@ -24,6 +24,7 @@ import {
 } from "./common.ts";
 import { TrialSignals, TurnMessages } from "./in-turn.ts";
 import type { CliProgram, CliRun, CliSetup, CliTally, CliTrial, CliTrialDeps } from "./program.ts";
+import { type RunEnd, TerminalTrial } from "./terminal.ts";
 
 /**
  * Sets a program up in its run's area (or its call's folder), as the run's user: relative to that
@@ -102,6 +103,12 @@ function startRun<T extends CliTally>(
  * turn, after a tool or at the turn's end (goal 169; in-turn.ts); a message still waiting when a
  * run ends goes into the continuation's prompt. A run cut short by a provider's failure waits and
  * goes on in its session. A turn cap, when the rig sets one, is kept by counting its turns.
+ *
+ * Headless, each run is one run of the program, which reads its prompt and exits at its turn's
+ * end. In the terminal mode (`deps.terminal`, goal 169; terminal.ts) each run is one turn of the
+ * program in its own terminal, which goes on running between turns: its session log, not its
+ * output, fills the tally, and a later turn is typed into it. The decisions after each run are the
+ * same in both.
  */
 export async function runCliTrial<T extends CliTally>(
   p: CliProgram<T>,
@@ -168,6 +175,12 @@ export async function runCliTrial<T extends CliTally>(
   });
   const setupError = await setUp(p.name, p.setup(run), deps.runner, { role: run.role, cwd: area });
   if (setupError) return { ...result, stopped: "error", error: setupError };
+  const cwd = code ? trial.spec.workspace : trial.folder.work;
+  const term = deps.terminal
+    ? new TerminalTrial(p, run, { runner: deps.runner, cwd, env, limits, signalsFile, tally })
+    : undefined;
+  const unprepared = await term?.prepare();
+  if (unprepared) return { ...result, stopped: "error", error: unprepared };
   const started = Date.now();
   // A trial's length only when the campaign or the rig sets one (goal 079).
   const deadline = spec.wallMs !== undefined ? started + spec.wallMs : Number.POSITIVE_INFINITY;
@@ -238,16 +251,27 @@ export async function runCliTrial<T extends CliTally>(
       failed !== undefined ? { ...at, kind: "failed", words: failed } : { ...at, kind: "go-on" },
     );
   };
-  const pump = () => {
+  /** The program's output headless, or its session log in its terminal: into the tally. */
+  const readOutput = () => {
+    if (term) return term.read();
     const r = readNew(events, offset);
     offset = r.next;
+    return { live: p.read(r.lines, tally), lines: r.lines.length };
+  };
+  /** Ends the program: its own way in its terminal, else by ending the lane's processes. */
+  const halt = async () => {
+    if (term) await term.stop();
+    else await deps.runner.killRole(spec.lane).catch(() => 0);
+  };
+  const pump = () => {
+    const r = readOutput();
     signals?.read();
-    const live = p.read(r.lines, tally);
+    const live = r.live;
     if (live.length) deps.live(live);
     compactions.take(live, p.found(tally, { area, count: compactions.count, at: live.length }));
     takeUsage(tally, deps.modelUsage);
     carried.check(tally);
-    if (r.lines.length) {
+    if (r.lines) {
       deps.progress({
         turns: tally.turns,
         tool_calls: tally.toolCalls,
@@ -268,7 +292,8 @@ export async function runCliTrial<T extends CliTally>(
     const progressBefore = tally.turns + tally.toolCalls;
     const callsBefore = tally.toolCalls;
     const runStarted = Date.now();
-    const unready = await p.beforeRun?.(messageText(message), run, deps.runner);
+    // Claude Code's prompt file, headless only: in its terminal the message is its argument or typed.
+    const unready = term ? undefined : await p.beforeRun?.(messageText(message), run, deps.runner);
     if (unready) {
       result.stopped = "error";
       result.error = unready;
@@ -277,14 +302,16 @@ export async function runCliTrial<T extends CliTally>(
     // Kept whole as it is sent, the first message and each later turn (goal 166).
     deps.sent?.(message);
     inTurn?.open();
-    const running = startRun(p, deps.runner, run, {
-      cwd: code ? trial.spec.workspace : trial.folder.work,
-      env,
-      prompt: message,
-      session: tally.session,
-      remaining,
-      limits,
-    });
+    const running: Promise<RunEnd> = term
+      ? term.turn(messageText(message), remaining)
+      : startRun(p, deps.runner, run, {
+          cwd,
+          env,
+          prompt: message,
+          session: tally.session,
+          remaining,
+          limits,
+        });
     let done = false;
     void running.finally(() => {
       done = true;
@@ -294,24 +321,28 @@ export async function runCliTrial<T extends CliTally>(
       await new Promise((r) => setTimeout(r, deps.pollMs ?? 1000));
       pump();
       if (deps.signal?.aborted) {
-        await deps.runner.killRole(spec.lane).catch(() => 0);
+        await halt();
         break;
       }
       // A submission ends the trial: its command finishes, and the agent's next reply is not waited for.
       // Without one, the trial's turns used up end it (goal 163: code trials keep the cap too).
       if (submitted()) {
         submittedAt ??= Date.now();
-        if (Date.now() - submittedAt >= (deps.afterSubmitMs ?? AFTER_SUBMIT_MS))
-          await deps.runner.killRole(spec.lane).catch(() => 0);
+        if (Date.now() - submittedAt >= (deps.afterSubmitMs ?? AFTER_SUBMIT_MS)) await halt();
       } else if (turnsUp(spec, tally)) {
-        await deps.runner.killRole(spec.lane).catch(() => 0);
+        await halt();
+        break;
+      } else if (term && Date.now() >= deadline) {
+        // Headless, the broker ends the run at the trial's end; in its terminal, the loop does.
+        await halt();
         break;
       }
     }
     const outcome = await running;
     inTurn?.close();
     pump();
-    if (p.closeRun) {
+    // Headless only: in its terminal, its session log gave each call's usage as it came.
+    if (p.closeRun && !term) {
       p.closeRun(tally);
       takeUsage(tally, deps.modelUsage);
     }
@@ -320,6 +351,13 @@ export async function runCliTrial<T extends CliTally>(
     if (tally.turns + tally.toolCalls > progressBefore) count.failing = undefined;
     if (deps.signal?.aborted) {
       result.stopped = "interrupted";
+      break;
+    }
+    // Its terminal could not run (the host did not start): nothing more can.
+    const failed = term?.takeFailure();
+    if (failed) {
+      result.stopped = "error";
+      result.error = failed;
       break;
     }
     // After a submission the trial is over: messages still waiting go to the lane's next trial,
@@ -390,6 +428,8 @@ export async function runCliTrial<T extends CliTally>(
     if (ends) break;
     message = goOn();
   }
+  // In its terminal, the program is ended now, its screen kept (terminal.ts).
+  await term?.close();
   const sub = submitted();
   if (sub) {
     result.submitted = sub;
@@ -406,7 +446,8 @@ export async function runCliTrial<T extends CliTally>(
   result.tokensIn = tally.tokensIn;
   result.tokensOut = tally.tokensOut;
   if (compactions.count) result.compactions = compactions.count;
-  compareSessionLog(p, run, tally);
+  // Headless: its session log against its output. In its terminal, the log is the tally's source.
+  if (!term) compareSessionLog(p, run, tally);
   signals?.report({ trial: run.trialId, program: p.id });
   if (inTurn) deps.inTurn?.(undefined);
   return result;

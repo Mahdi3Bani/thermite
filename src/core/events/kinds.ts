@@ -112,6 +112,7 @@ export const EVENT_KINDS = [
   "review_try_failed",
   "rig_check_finished",
   "rig_check_started",
+  "rig_disk",
   "rig_drain",
   "rig_settings_changed",
   "run_created",

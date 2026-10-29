@@ -72,10 +72,14 @@ describe("numeric settings stop the part at start with words (goal 164)", () => 
       SUPERVISOR_NUMBERS,
       CLI_NUMBERS,
     ];
-    const names = new Set<string>();
+    // A setting is defined once: two tables may share it (the disk floor, common/disk.ts), but
+    // never as two specs of the same name.
+    const names = new Map<string, NumberSpec>();
     for (const spec of tables.flatMap((t) => Object.values(t))) {
-      assert.ok(!names.has(spec.name), `${spec.name} is in two tables`);
-      names.add(spec.name);
+      const seen = names.get(spec.name);
+      assert.ok(seen === undefined || seen === spec, `${spec.name} is defined in two tables`);
+      if (seen) continue;
+      names.set(spec.name, spec);
       if (spec.fallback === undefined) continue;
       assert.equal(readNumber({ [spec.name]: String(spec.fallback) }, spec), spec.fallback);
     }

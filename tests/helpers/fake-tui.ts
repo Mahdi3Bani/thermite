@@ -4,9 +4,10 @@
 // in raw mode, writes a session log as Claude Code writes its transcript (0600, in a 0700 folder
 // of its home), and runs the hook its settings name, as Claude Code does. Each thing it saw is one
 // JSON line of its log:
-//   start      its terminal (both ends a terminal, the size, a controlling terminal or not, TERM),
-//              its session and whether it was resumed, and the sign-in on file descriptor 3, when
-//              CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR names it (its length and a hash, never it)
+//   start      its process, its terminal (both ends a terminal, the size, a controlling terminal
+//              or not, TERM), its session and whether it was resumed, and the sign-in on file
+//              descriptor 3, when CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR names it (its length
+//              and a hash, never it)
 //   query      whether its device-attributes query (ESC [ c) was answered
 //   user       a message: the first one (after `--`), or one typed or pasted, then Enter
 //   key        a named key: tab, up, down, left, right, page-up, page-down
@@ -16,16 +17,35 @@
 //              the lane's user without the host's secret
 //   sigterm    SIGTERM, on which it exits 143 (unless --ignore-term)
 //   exit       `/exit` typed, on which it exits 0 (unless --ignore-exit)
+//   crash      a scripted exit, below
+//
+// With FAKE_TUI_SCRIPT naming a JSON file (the trial loop's tests, tests/harness/agents/cli/), it
+// acts as an agent program: each message (the first, or one typed) runs the script's next turn,
+// whose steps write lines to its session log (`log`, under its home, `{session}` replaced by its
+// session's id, in strings too), run a hook its settings name with the given fields, wait, touch a
+// file under its home, or exit with a code, as a crash would. A turn past the script's runs its
+// `rest`. Which turn is next is kept in its home, so a session resumed after a crash goes on.
 //
 // Usage: node fake-tui.ts [--session-id ID | --resume ID] [--settings JSON] [--ignore-exit]
 //                         [--ignore-term] [-- first message]
+//        node fake-tui.ts --version         a version, as Claude Code prints its own
 //        node fake-tui.ts --serve PORT      a server for it to attach to, until SIGTERM
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFileSync, chmodSync, closeSync, mkdirSync, openSync, readSync } from "node:fs";
+import {
+  appendFileSync,
+  chmodSync,
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:http";
 import { connect } from "node:net";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 const args = process.argv.slice(2);
 const dash = args.indexOf("--");
@@ -37,7 +57,9 @@ const folder = join(home, ".fake-tui");
 mkdirSync(folder, { recursive: true, mode: 0o700 });
 
 const serve = value("--serve");
-if (serve) {
+if (args[0] === "--version") {
+  process.stdout.write("2.1.308 (fake)\n");
+} else if (serve) {
   const server = createServer((_req, res) => res.end("fake server\n"));
   server.listen(Number(serve), "127.0.0.1", () =>
     appendFileSync(
@@ -125,6 +147,7 @@ function runTui(): void {
   }
   record({
     type: "start",
+    pid: process.pid,
     session,
     resumed: resumed !== undefined,
     tty: { stdin: process.stdin.isTTY === true, stdout: process.stdout.isTTY === true },
@@ -133,9 +156,52 @@ function runTui(): void {
     term: process.env.TERM,
     ...(token ? { token } : {}),
   });
+  /** One step of a scripted turn. */
+  type Step =
+    | { lines: unknown[] }
+    | { hook: string; fields?: Record<string, unknown> }
+    | { waitMs: number }
+    | { touch: string }
+    | { exit: number };
+  const script = (() => {
+    const file = process.env.FAKE_TUI_SCRIPT;
+    if (!file) return undefined;
+    return JSON.parse(readFileSync(file, "utf8")) as {
+      log: string;
+      turns: Step[][];
+      rest?: Step[];
+    };
+  })();
+  const turnFile = join(folder, "script-turn");
+  /** Its session's id in what it writes, as the real programs write theirs. */
+  const own = (v: unknown) => JSON.stringify(v).replaceAll("{session}", session);
+  let turns: Promise<void> = Promise.resolve();
+  /** The script's next turn, after the turns before it. */
+  const scripted = () => {
+    if (!script) return;
+    turns = turns.then(async () => {
+      const n = existsSync(turnFile) ? Number(readFileSync(turnFile, "utf8")) : 0;
+      writeFileSync(turnFile, String(n + 1));
+      const at = join(home, script.log.replaceAll("{session}", session));
+      mkdirSync(dirname(at), { recursive: true, mode: 0o700 });
+      for (const step of script.turns[n] ?? script.rest ?? []) {
+        if ("lines" in step)
+          appendFileSync(at, step.lines.map((l) => `${own(l)}\n`).join(""), { mode: 0o600 });
+        else if ("hook" in step) hook(step.hook, JSON.parse(own(step.fields ?? {})));
+        else if ("waitMs" in step) await new Promise((r) => setTimeout(r, step.waitMs));
+        else if ("touch" in step) writeFileSync(join(home, step.touch), "");
+        else {
+          record({ type: "crash", code: step.exit });
+          process.exit(step.exit);
+        }
+      }
+    });
+  };
+
   if (first !== undefined) {
     record({ type: "user", text: first, how: "first" });
     hook("UserPromptSubmit", { prompt: first });
+    scripted();
   }
 
   // Bracketed paste on, as the real programs turn it on; then a device-attributes query.
@@ -185,6 +251,7 @@ function runTui(): void {
     if (text.startsWith("/probe ")) return probe(text.slice("/probe ".length));
     record({ type: "user", text, how: "typed" });
     hook("UserPromptSubmit", { prompt: text });
+    scripted();
   };
 
   const KEYS: Record<string, string> = {

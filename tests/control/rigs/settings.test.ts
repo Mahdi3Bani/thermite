@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { quietField, rigSettingsChange } from "../../../src/control/rigs/settings.ts";
+import {
+  programModeField,
+  quietField,
+  rigSettingsChange,
+} from "../../../src/control/rigs/settings.ts";
 import {
   ADMIN,
   controlOnly,
@@ -44,6 +48,7 @@ const DEFAULTS = {
   trial_minutes: 20,
   max_turns: null,
   quiet_minutes: null,
+  program_mode: "headless",
   promotion: "owner_approval",
   judge_gpus: null,
 } as const;
@@ -111,6 +116,7 @@ const FIELDS: [string, unknown][] = [
   ["trial_minutes", 45],
   ["max_turns", 120],
   ["quiet_minutes", 30],
+  ["program_mode", "terminal"],
   ["promotion", "auto"],
   ["judge_gpus", 3],
 ];
@@ -282,7 +288,13 @@ describe("Edit rig's settings over REST and MCP", () => {
       assert.match(String(r.body.error), new RegExp(`^Not saved: ${field}: `), field);
     }
     // A body that is not the payload's fields: another field, a wrong type, a wrong rule.
-    for (const body of [{ gpus: 4 }, { judge: "yes" }, { promotion: "sometimes" }, "lanes"]) {
+    for (const body of [
+      { gpus: 4 },
+      { judge: "yes" },
+      { promotion: "sometimes" },
+      { program_mode: "tui" },
+      "lanes",
+    ]) {
       const r = await s.set(body);
       assert.equal(r.status, 400);
       assert.match(String(r.body.error), /^bad request: /);
@@ -484,14 +496,16 @@ describe("Edit rig's settings over REST and MCP", () => {
     const r = text(
       await operator.callTool({
         name: "set_rig_settings",
-        arguments: { rig: "rig-a", lanes: 3, review: false },
+        arguments: { rig: "rig-a", lanes: 3, review: false, program_mode: "terminal" },
       }),
     );
-    assert.deepEqual(r.sent, { lanes: 3, review: false });
+    assert.deepEqual(r.sent, { lanes: 3, review: false, program_mode: "terminal" });
     await relay();
     // The harness's owner-only gate passes the operator, who acts for the owner.
     assert.equal(env.service.settings.get().lanes, 3);
     assert.equal(env.service.settings.get().review, false);
+    // Its next trials run their program in its own terminal (goal 169).
+    assert.equal(env.service.settings.get().program_mode, "terminal");
     assert.equal(
       store.commands.list(10).find((c) => c.id === r.id)?.status,
       "delivered",
@@ -532,4 +546,22 @@ test("Edit rig's quiet field is off on a rig whose harness can't take it (goal 1
   assert.match(newer, /value="" placeholder="never"/);
   assert.doesNotMatch(newer, /disabled/);
   assert.match(quietField({ summary: { settings: { quiet_minutes: 20 } } }, 20), /value="20"/);
+});
+
+test("Edit rig's choice of how agent programs run is off on a rig whose harness can't take it (goal 169)", () => {
+  const older = programModeField({ summary: { settings: { lanes: 1 } } }, "headless");
+  assert.match(
+    older,
+    /<select name="program_mode" disabled><option>update the rig first<\/option>/,
+  );
+  const newer = programModeField(
+    { summary: { settings: { lanes: 1, program_mode: "headless" } } },
+    "headless",
+  );
+  assert.doesNotMatch(newer, /disabled/);
+  assert.match(newer, /<option value="headless" selected>Headless<\/option>/);
+  assert.match(
+    programModeField({ summary: { settings: { program_mode: "terminal" } } }, "terminal"),
+    /<option value="terminal" selected>In their own terminal<\/option>/,
+  );
 });

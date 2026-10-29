@@ -20,6 +20,7 @@ const defaults: RigSettings = {
   trial_minutes: 20,
   max_turns: null,
   quiet_minutes: null,
+  program_mode: "headless",
   promotion: "owner_approval",
   judge_gpus: null,
 };
@@ -96,6 +97,18 @@ describe("the rig's own settings (Edit rig)", () => {
     assert.equal((r as { accepted: boolean }).accepted, true);
     assert.equal(env.service.settings.get().workers, false);
     assert.equal(env.service.promotion, "auto");
+    // Headless until someone sets the terminal (goal 169); then the next trial runs in it.
+    assert.equal(env.service.settings.get().program_mode, "headless");
+    const terminal = await env.service.applyCommand(
+      env.sign("rig_settings", { program_mode: "terminal" }),
+    );
+    assert.equal((terminal as { accepted: boolean }).accepted, true);
+    assert.equal(env.service.settings.get().program_mode, "terminal");
+    const bad = (await env.service.applyCommand(
+      env.sign("rig_settings", { program_mode: "tui" }),
+    )) as { status: string; accepted?: boolean };
+    assert.ok(bad.status === "rejected" || bad.accepted === false, JSON.stringify(bad));
+    assert.equal(env.service.settings.get().program_mode, "terminal");
     const report = env.service.snapshot(0, 10) as { summary: { settings: RigSettings } };
     assert.equal(report.summary.settings.workers, false);
     assert.ok(

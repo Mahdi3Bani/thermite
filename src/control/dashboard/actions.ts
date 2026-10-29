@@ -1,5 +1,6 @@
 import type { Hono } from "hono";
 import { errorText } from "../../common/errors.ts";
+import { chooseAtDeadline } from "../clusters/index.ts";
 import { checkProgress, checkRows, commandProgress, modelProgress } from "../command-progress.ts";
 import { propagateChampion } from "../issue/index.ts";
 import { advanceResets, cancelReset, confirmReset } from "../lifecycle.ts";
@@ -10,7 +11,7 @@ import { backTo, type Dashboard } from "./context.ts";
 /**
  * Following an action to its outcome (goal 080): a command's, a check's and a model's progress,
  * and the actions that answer it directly (full reset, leave a trial, propagate a champion,
- * restart or reset a rig).
+ * restart or reset a rig, the owner's choice at a drain's deadline).
  */
 export function actionRoutes(app: Hono, dash: Dashboard): void {
   const { opts, parts, runOf, store } = dash;
@@ -52,6 +53,23 @@ export function actionRoutes(app: Hono, dash: Dashboard): void {
       return c.text(`refused: ${errorText(err)}`, 400);
     }
     return c.redirect("/ui/reports", 303);
+  });
+
+  // The owner's choice at a drain's deadline, on any rig (goal 173): the change now, stopping what
+  // still runs, or the end of the drain. Back where the choice was made, with what it did.
+  app.post("/ui/rigs/:rig/drain/:choice", async (c) => {
+    const rig = c.req.param("rig");
+    const choice = c.req.param("choice");
+    const back = backTo(await c.req.parseBody(), `/ui/rigs/${encodeURIComponent(rig)}`);
+    const done =
+      choice === "apply" || choice === "end"
+        ? await chooseAtDeadline(parts, rig, choice, "owner:ui")
+        : { error: "No such choice." };
+    const [k, words] = "error" in done ? ["error", done.error] : ["ok", done.ok];
+    return c.redirect(
+      `${back}${back.includes("?") ? "&" : "?"}${k}=${encodeURIComponent(words)}`,
+      303,
+    );
   });
 
   app.post("/ui/resets/:id/cancel", (c) => {

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { errorText } from "../../common/errors.ts";
+import { DRAIN_MINUTES_MAX } from "../../core/commands.ts";
 import { judgeGpusByDefault } from "../../core/hardware.ts";
 import { MAX_RIG_GPUS } from "../machines/index.ts";
 import type { ClusterRig, ClusterRigSize } from "../store/index.ts";
@@ -261,6 +262,15 @@ export const clusterResourcesFields = {
     .optional()
     .describe(
       "Wait for the running trials and the judge's job to finish before the restart (default true); false: restart now",
+    ),
+  drain_minutes: z
+    .number()
+    .int()
+    .min(1)
+    .max(DRAIN_MINUTES_MAX)
+    .optional()
+    .describe(
+      `How long its drain waits for them, in whole minutes, 1 to ${DRAIN_MINUTES_MAX}, before it asks the owner under Needs you; left out: the rig's THERMITE_DRAIN_MINUTES (60 by default)`,
     ),
 };
 

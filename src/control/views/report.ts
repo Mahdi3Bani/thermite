@@ -25,6 +25,8 @@ export function readSettings(v: unknown): RigSettings | null {
     trial_minutes: typeof o.trial_minutes === "number" ? o.trial_minutes : null,
     max_turns: typeof o.max_turns === "number" ? o.max_turns : null,
     quiet_minutes: typeof o.quiet_minutes === "number" ? o.quiet_minutes : null,
+    // A harness that reports none is older than the terminal mode, and runs headless.
+    program_mode: o.program_mode === "terminal" ? "terminal" : "headless",
     promotion: o.promotion === "auto" ? "auto" : "owner_approval",
     judge_gpus: typeof o.judge_gpus === "number" ? o.judge_gpus : null,
   };

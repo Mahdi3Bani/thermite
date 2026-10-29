@@ -14,23 +14,28 @@ import {
   opencodeExitWords,
   opencodeFound,
   opencodeKeepEnv,
+  opencodeModelId,
+  opencodeServerArgs,
   opencodeSession,
+  opencodeTerminalArgs,
   readOpencodeEvents,
   runEnv,
 } from "../../../agents/programs/index.ts";
 import type { ResearchFolderPaths } from "../../../agents/tools/index.ts";
+import { newToken } from "../../../common/secrets.ts";
 import type { RigCheckReport } from "../model/index.ts";
 import type { ResearchTrialSpec } from "../research/index.ts";
 import type { TrialResult, TrialSpec } from "../worker/index.ts";
 import { runCliTrial } from "./loop.ts";
 import { type CliOnceDeps, type CliOnceOptions, cliModelCheck, cliOnce } from "./once.ts";
-import type { CliProgram, CliTrialDeps } from "./program.ts";
+import type { CliProgram, CliRun, CliTrialDeps } from "./program.ts";
 
 /**
  * Trials (hill-climb, goal and research), model checks and planner calls in OpenCode v2 instead
- * of Pi. OpenCode runs headless with its permissions approved (`--auto`) as the lane's own user,
- * in the lane's workspace, under the same memory, disk and time limits as the lane's commands: it
- * has exactly the lane's access, and none of the judge's. Its permission rules are not a boundary
+ * of Pi. OpenCode runs headless with its permissions approved (`--auto`), or in its own terminal
+ * where the rig says so (goal 169; cli/terminal.ts), as the lane's own user, in the lane's
+ * workspace, under the same memory, disk and time limits as the lane's commands: it has exactly
+ * the lane's access, and none of the judge's. Its permission rules are not a boundary
  * (its Code Mode reaches the network whatever they say); the user it runs as is.
  *
  * Thermite's own tools are the `thermite-trial` command (submit, dev-run, status, and a research
@@ -42,9 +47,14 @@ import type { CliProgram, CliTrialDeps } from "./program.ts";
 /** What OpenCode itself uses, as its limits note says. */
 export const OPENCODE_MEMORY = "about 500 MiB";
 
+/** A trial's configuration for OpenCode: its route through the proxy, and its MCP servers. */
+const trialConfig = (run: CliRun) =>
+  opencodeConfig(run.model, `${run.apiUrl}/v1/model-proxy`, run.mcp);
+
 /**
  * OpenCode in the CLI trial loop and the one-prompt call: `opencode run` continues its session
- * with each continuation. It runs research trials too.
+ * with each continuation; in its own terminal (goal 169), its server and its terminal attached to
+ * it. It runs research trials too.
  */
 export const opencodeProgram: CliProgram<OpencodeTally> = {
   id: "opencode",
@@ -65,7 +75,7 @@ export const opencodeProgram: CliProgram<OpencodeTally> = {
     return {
       script: `mkdir -p opencode-home/.config/opencode/plugins opencode-tmp && ln -sf "$1" opencode-home/${OPENCODE_PLUGIN_LINK} && : > opencode-signals.jsonl && chmod 0644 opencode-signals.jsonl${keep ? ` && mkdir -p ${OPENCODE_DROPS} && chmod 0755 ${OPENCODE_DROPS}` : ""} && umask 077 && cat > opencode-home/.config/opencode/opencode.jsonc && : > opencode-events.jsonl && chmod 0644 opencode-events.jsonl`,
       args: ["sh", OPENCODE_PLUGIN],
-      stdin: JSON.stringify(opencodeConfig(run.model, `${run.apiUrl}/v1/model-proxy`, run.mcp)),
+      stdin: JSON.stringify(trialConfig(run)),
     };
   },
   env: (run) => ({
@@ -92,6 +102,30 @@ export const opencodeProgram: CliProgram<OpencodeTally> = {
       "after-tool": "Thermite's OpenCode plugin",
       "turn-end": "Thermite's OpenCode plugin",
     },
+  },
+  // In its own terminal: its server first, on a free port of localhost with a password of the
+  // run's own, then its terminal attached to it, the model in its configuration (`opencode run`
+  // takes it as a flag). It writes no session log the host can copy: Thermite's plugin writes its
+  // events to the trial's signals file, which is its record (goal 169).
+  terminal: {
+    server: true,
+    start: (run, at) => {
+      const port = at.port;
+      if (port === undefined) throw new Error("OpenCode's terminal needs a port for its server");
+      return {
+        args: opencodeTerminalArgs(port, at.cwd, at.first, at.resume ? at.session : undefined),
+        env: { OPENCODE_SERVER_PASSWORD: newToken().token, OPENCODE_DISABLE_AUTOUPDATE: "1" },
+        seeds: [
+          {
+            path: join(run.home, ".config", "opencode", "opencode.jsonc"),
+            content: JSON.stringify({ ...trialConfig(run), model: opencodeModelId(run.model) }),
+            mode: 0o600,
+          },
+        ],
+        server: { args: opencodeServerArgs(port), port },
+      };
+    },
+    log: { adapter: () => opencodeSession, from: "signals" },
   },
   call: {
     // Thermite's compaction plugin, when the call's conversation is kept (goal 070).

@@ -287,6 +287,34 @@ describe("model files by URL", () => {
     assert.equal(downloads.list()[0]?.state, "failed");
   });
 
+  test("a download that would go below the rig's disk floor is refused in words (goal 173)", async () => {
+    const { inbox, downloads } = setup();
+    const fetchImpl: typeof fetch = async () =>
+      new Response(new Uint8Array(10), { headers: { "content-length": "2000000000" } });
+    const input = {
+      url: "https://models.example.com/mid.bin",
+      sha256: "3".repeat(64),
+      target: join(inbox, "models", "mid.bin"),
+      path: "models/mid.bin",
+      name: "mid",
+      downloads,
+      fetchImpl,
+      // 6 GiB free: room for the file, not for the file and a 5 GiB floor.
+      free: () => 6 * 2 ** 30,
+      floor: 5 * 2 ** 30,
+    };
+    await assert.rejects(
+      downloadModel(input),
+      /not enough free space for model mid: it needs 2\.0 GB more, and 6\.4 GB is free where it goes \(the inbox's models\), and the rig keeps 5 GiB free \(THERMITE_DISK_FLOOR_GIB\)/,
+    );
+    // Without a size from the server, the floor alone is checked.
+    const unsized: typeof fetch = async () => new Response(new Uint8Array(10));
+    await assert.rejects(
+      downloadModel({ ...input, fetchImpl: unsized, free: () => 4 * 2 ** 30 }),
+      /not enough free space for model mid: 4\.3 GB is free where it goes/,
+    );
+  });
+
   test("a redirect from HTTPS to plain HTTP is refused, and never followed", async () => {
     const { inbox, downloads } = setup();
     const asked: string[] = [];

@@ -15,7 +15,9 @@
 //     and its server ended with it;
 //   - the real Claude Code, when the image has it (built with CLAUDE_CODE_VERSION), against
 //     containers/test-anthropic's stand-in, with a made-up sign-in on file descriptor 3: its
-//     transcript, which only lane-1 may read, copied; its hooks' signals; `/exit`.
+//     transcript, which only lane-1 may read, copied; its hooks' signals; `/exit`;
+//   - one short trial through the trial loop's terminal mode for the fake TUI in Claude Code's
+//     place, the real Codex and the real OpenCode (trials.mjs).
 // THERMITE_SRC names the code it imports: the image's build (/opt/thermite/dist), or a mounted
 // source tree (TypeScript, run as it is).
 import { execFileSync } from "node:child_process";
@@ -24,6 +26,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { startModel } from "./model.mjs";
+import { loopTrials } from "./trials.mjs";
 
 const SRC = process.env.THERMITE_SRC ?? "/opt/thermite/dist";
 const ext = SRC.endsWith("/dist") ? "js" : "ts";
@@ -53,8 +56,11 @@ async function until(what, fn, ms = 20_000) {
   }
 }
 
-/** A run's area as a trial's: a git workspace in it, handed to the lane, which the harness reads. */
-async function area(name) {
+/**
+ * A run's area as a trial's: a git workspace in it, handed to the lane, which the harness reads.
+ * `files` writes more in it first, and what it returns is the area's `env`.
+ */
+async function area(name, files) {
   const dir = join("/scratch/thermite/lanes", LANE, `${name}-${randomUUID().slice(0, 8)}`);
   const repo = join(dir, "repo");
   mkdirSync(repo, { recursive: true });
@@ -70,8 +76,9 @@ async function area(name) {
   git("init", "--quiet", "-b", "work");
   git("add", "-A");
   git("commit", "--quiet", "-m", "parent");
+  const env = files?.(dir);
   await runner.handOver(dir, LANE, { harnessReads: true });
-  return { dir, repo, home: join(dir, "home"), tmp: join(dir, "tmp") };
+  return { dir, repo, home: join(dir, "home"), tmp: join(dir, "tmp"), env };
 }
 
 /** The lines of a copy the host made, as JSON. */
@@ -543,6 +550,10 @@ for (const [name, part] of [
   ["Codex", codex],
   ["OpenCode", opencode],
   ["Claude Code", claude],
+  [
+    "the loop's terminal mode",
+    () => loopTrials({ load, runner, check, area, laneProcesses, sleep, LANE, TOKEN }),
+  ],
 ]) {
   try {
     await part();

@@ -111,7 +111,25 @@ A rig drains before its images change, or before control gives it a new number o
 - **Who asked, and why**, from what the rig recorded: `The owner asked for it over REST: its images are about to change.` The dashboard's buttons say `on the dashboard`, an operator's token `An operator asked for it over MCP`, and control's own ask after the rig's harness started again `Control asked for it again, after the rig's harness started again`. A harness older than goal 136 records no one: `It was asked for`.
 - **What it waits for:** `It waits for 2 trials and the judge's job.` (`the judge's 2 jobs` while it builds two changes at once), or, once nothing runs, `Nothing runs any more: it is ready for what the drain is for.` A rig control set up on a cluster adds `Control restarts its pods once nothing runs.` A harness older than goal 136 says how many trials run but not which: `Its harness is too old to say which trials, or to stop one: update it.`
 - **Trials stopped during the drain**, once they ended: `stopped lane-1's trial, stopped at 09:40 UTC: it ended as interrupted, with its counters, and its task went back to the top of the run's queue.` A stop the rig did not take says why.
+- **Its deadline**, from a harness with goal 173: `Its deadline is 05:10 UTC, in 46 min. Then it stops waiting by itself and asks you: go ahead now, or end the drain.` A drain waits at most the minutes its command gives (`deadline_minutes`, such as an update's `drain_minutes`), else the rig's [`THERMITE_DRAIN_MINUTES`](settings.md#places-exports-and-the-broker), 60 by default.
 - **End the drain** sends `drain_rig` with `drain: false` and the reason `the owner ended the drain`: the rig goes back to work on its images. On a rig control set up on a cluster, it is **Call the update off** (or **Call the change off**): the change the rig drains for does not happen. Whoever asked for the drain then moves the rig without one, or asks again.
+
+### At its deadline
+
+At its deadline the drain stops waiting by itself. The rig records the step (the event `rig_drain` with `deadline_reached`), and control adds `drain_deadline` to the rig's history: `its deadline passed after 60 min, with 1 trial and the judge's job still at work: it starts nothing new until you choose, under Needs you or on its page`. The rig still starts nothing new: nothing is chosen for you. The card says `Its deadline passed at 05:10 UTC. It still starts nothing new, and waits for your choice: nothing is chosen for you.`, and its two buttons take the place of **End the drain**. The same choice is a card under **Needs you**, `rig-1's drain passed its deadline`:
+
+| Button | What it does |
+| --- | --- |
+| **Update it now** (a cluster rig that drains for new images) | Its pods restart now on control's images. A trial in progress stops and its task goes back to its run's queue; the judge's job under way is taken back at the next start |
+| **Change its size now** (a cluster rig that drains for new GPUs, CPUs or memory) | Its pods restart now with the new size, stopping what still runs in the same way |
+| **Stop what still runs** (any other rig) | Sends [`stop_trial`](signed-commands.md#stop_trial) for each trial the drain waits for: each ends as interrupted, and its task goes back to its run's queue. The judge's job under way ends as it would. The rig still drains, for the change you drained it for |
+| **End the drain** | The rig goes back to work as it is. On a cluster rig the change is called off: ask for it again later |
+
+Each choice is a step in the rig's history. Under **Needs you**, **Leave it** keeps the rig draining, and the trials go on. A drain whose work ends by itself, before or after its deadline, goes ahead as it would have.
+
+## The disk card
+
+A rig keeps free space on each place it writes to: its state, its scratch and its outbox ([`THERMITE_DISK_FLOOR_GIB`](settings.md#places-exports-and-the-broker), 5 GiB by default). When one has less, its next report says so, and a card comes after the banners: `Its disk is at its floor for 12 min, since 08:00 UTC.` It says which place, such as `its outbox has 3.1 GiB free`, and what it holds: no new trial, judge's job or export starts until there is room again, and the work under way ends as it would, so the judge's job in flight still writes its verdict. Then how to make room: exports wait in the outbox until they leave the rig, and the scratch holds the lanes' build caches. The rig goes back to work by itself once each place has 1 GiB more than its floor. The same card is under **Needs you**: `rig-1 holds new work: its disk is at its floor`.
 
 ### The trials it waits for
 
@@ -134,7 +152,7 @@ A key that waits for you has a card under the banners, with its fingerprint and 
 
 **At work** lists the runs at work now; a stuck trial's lane has a chip, `quiet for 4 h 24 min` or `repeats the same calls`, that leads to its card under **Needs you** ([Stuck trials](../how-to/campaigns/decide-what-waits.md#stuck-trials)); while the rig drains, each trial it waits for has its facts and **Stop this trial…** under its lane ([The trials it waits for](#the-trials-it-waits-for)). **Checks** lists the rig's three [checks](rig-checks.md), each with **Run it**, and its state: **not run yet**, **sent**, **running** with the time so far, **passed** or **failed**, or why the rig did not run it ([Where results show](rig-checks.md#where-results-show)); for a refused rig it says `Control sends no command to a refused rig, so its checks can't run. Update it first.` **Runs on this rig** lists every run; for a rig that does not report, or that control refuses, its heading says `as of its last report`. **The judge's last jobs** lists its last 8 jobs. A rig on RunPod has **Pod log** under it ([Pod log](#pod-log)).
 
-**What it runs on** shows the rig's hardware, from its signed report.
+**What it runs on** shows the rig's hardware, from its signed report. Its **Disk free** is each report's reading of the places the rig writes to, with its floor: `state 40.2 of 100 GiB · scratch 61.0 of 100 GiB · outbox 3.1 of 100 GiB · floor 5 GiB`. A harness older than goal 173 reports it only once, at its start.
 
 **The rig** shows its facts:
 

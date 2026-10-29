@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { type SnapshotJob, Snapshotter } from "../../../../src/harness/broker/snapshot/index.ts";
+import {
+  type SnapshotJob,
+  Snapshotter,
+  snapshotWaits,
+} from "../../../../src/harness/broker/snapshot/index.ts";
 
 /**
  * When the broker takes a snapshot (Snapshotter): one at a time, again after a failure, every few
@@ -120,5 +124,23 @@ describe("when snapshots are taken (Snapshotter)", () => {
     const s2 = new Snapshotter({ take: slow.take, everyMs: 3_600_000 });
     assert.equal(await s2.stop(30), "out of time");
     assert.equal(slow.aborted(), 1);
+  });
+});
+
+describe("a snapshot at the rig's disk floor (goal 173)", () => {
+  const GIB = 2 ** 30;
+  test("it waits while its folder has less free space than the floor, and says why", () => {
+    const free = (gib: number) => () => ({ free: gib * GIB, total: 100 * GIB });
+    assert.equal(snapshotWaits("/snap", 5 * GIB, free(20)), undefined);
+    assert.equal(
+      snapshotWaits("/snap", 5 * GIB, free(3)),
+      "the snapshot's folder has 3 GiB free, below the rig's disk floor of 5 GiB (THERMITE_DISK_FLOOR_GIB)",
+    );
+    // No floor; a folder it can't read (the snapshot itself then says what failed).
+    assert.equal(snapshotWaits("/snap", 0, free(0)), undefined);
+    const unreadable = () => {
+      throw new Error("ENOENT");
+    };
+    assert.equal(snapshotWaits("/snap", 5 * GIB, unreadable), undefined);
   });
 });

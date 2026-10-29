@@ -21,6 +21,7 @@ import {
   startLoops,
   targetDrivers,
 } from "./controller/index.ts";
+import { DiskWatch } from "./disk.ts";
 import { HarnessService } from "./service/index.ts";
 
 /**
@@ -59,6 +60,18 @@ async function main(): Promise<void> {
     settings,
   });
   if (gpuSet >= 2) service.gpuSplit = { set: gpuSet, judge: judgeNow };
+  // A drain's deadline when its command gives none, and the disk's floor on each place the
+  // harness writes to (goal 173).
+  service.drainMinutes = ctx.numbers.drainMinutes;
+  service.disk = new DiskWatch({
+    ledger,
+    floorGib: ctx.numbers.diskFloorGib,
+    places: [
+      { name: "state", path: paths.stateDir },
+      { name: "scratch", path: paths.scratchDir },
+      { name: "outbox", path: paths.outboxDir },
+    ],
+  });
   service.onWipe = () => {
     log("harness", "wipe requested: exiting so the next start wipes the state");
     process.exit(0);

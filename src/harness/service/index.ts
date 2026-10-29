@@ -7,6 +7,7 @@ import {
 } from "../../agents/model/index.ts";
 import type { Prompt } from "../../agents/prompt.ts";
 import { buildInfo } from "../../common/build-info.ts";
+import { Loops } from "../../common/health.ts";
 import type { McpConnect } from "../../common/mcp-client.ts";
 import type { InTurn } from "../../core/agents.ts";
 import type { AdvisorQueueRequest } from "../../core/api/harness/advisors.ts";
@@ -17,9 +18,11 @@ import type { Contract } from "../../core/contract.ts";
 import type { Hardware } from "../../core/hardware.ts";
 import { LiveLog } from "../../core/live.ts";
 import { type McpUse, McpUses } from "../../core/mcp.ts";
+import { PROGRAM_MODE_DEFAULT } from "../../core/rig-settings.ts";
 import type { BuildInfo } from "../../core/version.ts";
 import type { ControlRoute, ModelSource, TurnDelivery } from "../agents/index.ts";
 import type { Compactions } from "../compactions.ts";
+import type { DiskWatch } from "../disk.ts";
 import { Journal } from "../journal.ts";
 import { Knowledge } from "../knowledge.ts";
 import { type Ledger, LedgerError } from "../ledger/index.ts";
@@ -30,6 +33,7 @@ import { Cards, folderRootOf, Papers, SAVED_LANES_DIR } from "../research/index.
 import type { ReviewKind } from "../reviews.ts";
 import { RigSettingsStore } from "../rig-settings.ts";
 import { RunResearch } from "../run-research.ts";
+import { HARNESS_NUMBERS } from "../settings.ts";
 import { ModelUsage } from "../usage.ts";
 import * as assignment from "./assignment.ts";
 import * as attempts from "./attempts.ts";
@@ -37,7 +41,7 @@ import * as champion from "./champion.ts";
 import * as checks from "./checks.ts";
 import { type CommandOutcome, Commands } from "./commands.ts";
 import * as decisions from "./decisions.ts";
-import { type Draining, endDrainAtStart, type Work, workNow } from "./drain.ts";
+import { type Draining, drainDeadline, endDrainAtStart, type Work, workNow } from "./drain.ts";
 import { noteModelStall, ProviderAnswers, ProxyCredentials } from "./proxy.ts";
 import * as reports from "./reports.ts";
 import * as research from "./research.ts";
@@ -182,6 +186,20 @@ export class HarnessService {
    * they would. Kept in memory only: the restart it prepares for ends it (`service/drain.ts`).
    */
   draining: Draining | undefined;
+  /**
+   * The rig's disk against its floor (goal 173; main.ts sets it): at the floor no trial, plan,
+   * judge's job or export starts. None: no floor (tests).
+   */
+  disk: DiskWatch | undefined;
+  /** How long a drain waits before its deadline when its command gives none (main.ts sets it). */
+  drainMinutes: number = HARNESS_NUMBERS.drainMinutes.fallback;
+
+  /** A drain past its deadline records the step once (service/drain.ts). */
+  drainDeadline(): boolean {
+    return drainDeadline(this, this.clock());
+  }
+  /** The controller's loops and when each last came around, for the health route (goal 173). */
+  loops = new Loops();
 
   /** What still runs, for the rig's report, with each open trial and what it is doing (workNow). */
   work(): Work {
@@ -227,6 +245,7 @@ export class HarnessService {
         trial_minutes: null,
         max_turns: null,
         quiet_minutes: null,
+        program_mode: PROGRAM_MODE_DEFAULT,
         // Hands-off by default (goal 079).
         promotion: input.promotion ?? "auto",
         judge_gpus: null,

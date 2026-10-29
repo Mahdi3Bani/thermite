@@ -1,3 +1,4 @@
+import { ApiError } from "../common/api/call.ts";
 import { harnessClient } from "../common/api/harness.ts";
 import { log } from "../common/env.ts";
 import { HEALTH } from "../core/api/harness/supervisor.ts";
@@ -26,7 +27,12 @@ export async function waitForHarness(
       await harness.call(HEALTH);
       if (said) log("supervisor", "the harness answers");
       return true;
-    } catch {
+    } catch (err) {
+      // Up, with a loop late (503): the supervisor starts, so that its reports say so.
+      if (err instanceof ApiError && err.status !== undefined) {
+        if (said) log("supervisor", "the harness answers", { status: err.status });
+        return true;
+      }
       // not up yet
     }
     if (!said) {

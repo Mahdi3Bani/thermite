@@ -1,6 +1,8 @@
+import type { Loops } from "../common/health.ts";
+import { LoopAges } from "../core/health.ts";
 import { type BusView, busState } from "./bus/index.ts";
 import type { ControlStore } from "./store/index.ts";
-import { currentChampion, rigView } from "./views/index.ts";
+import { currentChampion, diskOf, type RigView, rigView, workOf } from "./views/index.ts";
 
 /** A label's value as Prometheus's text format takes it. */
 const label = (v: string) => v.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, " ");
@@ -68,6 +70,79 @@ export function metricsText(store: ControlStore, staleAfterMs: number, now = Dat
           lines.push(`thermite_research_${k}{${l}} ${Number(i.research[k] ?? 0)}`);
         }
       }
+    }
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+/**
+ * The series of health (goal 173), on which an operator alerts: each of control's loops, and each
+ * rig's harness and supervisor loops as their last report and figures gave them, with the seconds
+ * since each came around, its limit and whether it is late; each rig's free disk on each place
+ * against its floor, and whether it holds new work for it; and how long a rig has drained, and
+ * whether its drain passed its deadline. Bounded: by part, loop, rig and place.
+ */
+export function healthMetricsText(
+  store: ControlStore,
+  loops: Loops,
+  staleAfterMs: number,
+  now = Date.now(),
+): string {
+  const lines: string[] = [];
+  const help = (name: string, type: string, text: string) =>
+    lines.push(`# HELP ${name} ${text}`, `# TYPE ${name} ${type}`);
+  const views = store.reportedRigs
+    .list()
+    .map((u) => rigView(store, u.id, { staleAfterMs, now }))
+    .filter((v): v is RigView => v !== undefined);
+  const ages: { labels: string; ages: LoopAges }[] = [
+    { labels: `part="control"`, ages: loops.health().loops },
+  ];
+  for (const u of views) {
+    const rig = `rig="${label(u.id)}"`;
+    const harness = LoopAges.safeParse((u.summary as { loops?: unknown } | null)?.loops);
+    if (harness.success) ages.push({ labels: `part="harness",${rig}`, ages: harness.data });
+    const sup = LoopAges.safeParse((u.supervisor as { loops?: unknown } | null)?.loops);
+    if (sup.success) ages.push({ labels: `part="supervisor",${rig}`, ages: sup.data });
+  }
+  help(
+    "thermite_loop_age_seconds",
+    "gauge",
+    "Seconds since the loop last came around, as its part last said",
+  );
+  help("thermite_loop_limit_seconds", "gauge", "The loop is late past this many seconds");
+  help("thermite_loop_late", "gauge", "1 when the loop is past its limit");
+  for (const a of ages)
+    for (const [loop, l] of Object.entries(a.ages)) {
+      const ls = `${a.labels},loop="${label(loop)}"`;
+      lines.push(`thermite_loop_age_seconds{${ls}} ${l.age_seconds}`);
+      lines.push(`thermite_loop_limit_seconds{${ls}} ${l.limit_seconds}`);
+      lines.push(`thermite_loop_late{${ls}} ${l.late ? 1 : 0}`);
+    }
+  help("thermite_rig_disk_free_bytes", "gauge", "Free space on a place the rig writes to");
+  help("thermite_rig_disk_floor_bytes", "gauge", "The free space the rig keeps on each place");
+  help("thermite_rig_disk_low", "gauge", "1 when the rig holds new work for its disk floor");
+  help("thermite_rig_drain_age_seconds", "gauge", "Seconds since the rig began to drain");
+  help("thermite_rig_drain_overdue", "gauge", "1 when the rig's drain passed its deadline");
+  const bytes = (gib: number) => Math.round(gib * 2 ** 30);
+  for (const u of views) {
+    const rig = `rig="${label(u.id)}"`;
+    const disk = diskOf(u.summary);
+    if (disk) {
+      for (const p of disk.places)
+        lines.push(
+          `thermite_rig_disk_free_bytes{${rig},place="${label(p.name)}"} ${bytes(p.free_gib)}`,
+        );
+      lines.push(`thermite_rig_disk_floor_bytes{${rig}} ${bytes(disk.floor_gib)}`);
+      lines.push(`thermite_rig_disk_low{${rig}} ${disk.low ? 1 : 0}`);
+    }
+    const d = workOf(u.summary)?.draining;
+    if (d) {
+      const age = Math.max(0, (now - Date.parse(d.since)) / 1000);
+      lines.push(
+        `thermite_rig_drain_age_seconds{${rig}} ${Number.isFinite(age) ? age.toFixed(0) : 0}`,
+      );
+      lines.push(`thermite_rig_drain_overdue{${rig}} ${d.deadline_reached ? 1 : 0}`);
     }
   }
   return `${lines.join("\n")}\n`;

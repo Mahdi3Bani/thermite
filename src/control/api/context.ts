@@ -1,5 +1,6 @@
 import type { Hono, MiddlewareHandler } from "hono";
 import { buildInfo } from "../../common/build-info.ts";
+import type { Loops } from "../../common/health.ts";
 import { sameSecret } from "../../common/secrets.ts";
 import { type BuildInfo, buildFromHeaders } from "../../core/version.ts";
 import type { BusUsers, BusView, ConfigWriter } from "../bus/index.ts";
@@ -129,6 +130,8 @@ export interface ControlOptions {
   busConfig?: ConfigWriter | undefined;
   /** The message bus, for its state (REST, MCP, /metrics): a test's control gives its own. */
   bus?: BusView | undefined;
+  /** Control's loops, for its health route (goal 173): a test's control gives its own clock. */
+  loops?: Loops | undefined;
   /**
    * Control's parts, made once by its main (parts.ts), whose loops use the same ones. Without
    * them (a test's control), the API makes its own from the options above.

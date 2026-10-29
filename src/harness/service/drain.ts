@@ -15,22 +15,62 @@ export interface Draining {
   since: string;
   reason: string;
   by: string;
+  /**
+   * When it stops waiting by itself (goal 173): its command's `deadline_minutes` after `since`,
+   * else the rig's THERMITE_DRAIN_MINUTES.
+   */
+  deadline: string;
+  /** When its deadline passed; absent before. The rig then waits for the owner's choice. */
+  deadline_reached?: string | undefined;
 }
 
 /** The reason recorded for the end of a drain that a restart ended. */
 export const RESTARTED = "the harness started again";
 
-/** The drain after a `drain_rig` command: a drain under way stays as it began. */
+/**
+ * The drain after a `drain_rig` command: a drain under way stays as it began, its deadline too. A
+ * new one waits `deadline_minutes`, or the rig's `minutes`, before its deadline.
+ */
 export function drainAfter(
   now: Draining | undefined,
-  p: { drain: boolean; reason?: string | undefined },
+  p: { drain: boolean; reason?: string | undefined; deadline_minutes?: number | undefined },
   by: string,
   at: Date,
+  minutes: number,
 ): Draining | undefined {
   if (!p.drain) return undefined;
-  return (
-    now ?? { since: at.toISOString(), reason: p.reason ?? "its images are about to change", by }
-  );
+  if (now) return now;
+  const wait = (p.deadline_minutes ?? minutes) * 60_000;
+  return {
+    since: at.toISOString(),
+    reason: p.reason ?? "its images are about to change",
+    by,
+    deadline: new Date(at.getTime() + wait).toISOString(),
+  };
+}
+
+/**
+ * A drain at its deadline (goal 173) stops waiting by itself: the ledger records the step once
+ * (`rig_drain` with `deadline_reached`), with what still runs. The rig goes on starting nothing new
+ * until the owner chooses, on its page or under Needs you: the change now, which stops what still
+ * runs, or the end of the drain. Nothing is chosen for the owner. True when it recorded the step.
+ */
+export function drainDeadline(
+  svc: { ledger: Ledger; draining: Draining | undefined },
+  at: Date,
+): boolean {
+  const d = svc.draining;
+  if (!d || d.deadline_reached || at.getTime() < Date.parse(d.deadline)) return false;
+  d.deadline_reached = at.toISOString();
+  const { open: _open, ...w } = workNow(svc.ledger, at, d);
+  svc.ledger.appendEvent("harness", "rig_drain", null, {
+    drain: true,
+    reason: d.reason,
+    deadline: d.deadline,
+    deadline_reached: true,
+    ...w,
+  });
+  return true;
 }
 
 /** At start: a drain the ledger leaves open was ended by the restart. Records its end. */
@@ -168,18 +208,22 @@ function refusedAgain(
   };
 }
 
-/** drain_rig (goal 079): the drain begins, goes on or ends, and the ledger records it. */
+/**
+ * drain_rig (goal 079): the drain begins, goes on or ends, and the ledger records it, with its
+ * deadline (goal 173). `drainMinutes`: the rig's wait when the command gives none.
+ */
 export function drainCommand(
-  svc: { ledger: Ledger; draining: Draining | undefined },
-  p: { drain: boolean; reason?: string | undefined },
+  svc: { ledger: Ledger; draining: Draining | undefined; drainMinutes: number },
+  p: { drain: boolean; reason?: string | undefined; deadline_minutes?: number | undefined },
   by: string,
   at: Date,
 ): Omit<Work, "open"> {
-  svc.draining = drainAfter(svc.draining, p, by, at);
+  svc.draining = drainAfter(svc.draining, p, by, at, svc.drainMinutes);
   const { open: _open, ...w } = workNow(svc.ledger, at, svc.draining);
   svc.ledger.appendEvent(by, "rig_drain", null, {
     drain: p.drain,
     ...(p.reason ? { reason: p.reason } : {}),
+    ...(svc.draining ? { deadline: svc.draining.deadline } : {}),
     ...w,
   });
   return w;

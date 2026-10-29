@@ -29,6 +29,7 @@ import {
   waitingOn,
 } from "../../ui/operator/index.ts";
 import { checkRowHtml } from "../../ui/rigs/checks.ts";
+import { diskBanner, diskFree } from "../../ui/rigs/disk.ts";
 import { drainView } from "../../ui/rigs/drain.ts";
 import {
   HISTORY_FILTERS,
@@ -343,10 +344,8 @@ export function rigPageRoutes(app: Hono, dash: Dashboard): void {
           ],
           ["CPU", esc(`${h.cpu.quota ?? h.cpu.usable} of the host's ${h.cpu.host}`)],
           ["Memory", esc(gib(h.memory.limit_mib ?? h.memory.host_mib))],
-          [
-            "Disk free",
-            esc(h.disks.map((d) => `${d.name} ${d.free_gib} of ${d.total_gib} GiB`).join(" · ")),
-          ],
+          // Each report's reading against the rig's floor (goal 173), else the start's.
+          ["Disk free", diskFree(u)],
         ]
           .map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`)
           .join("")
@@ -439,7 +438,7 @@ ${retireForm}</div></details>`;
         active: "rigs",
       },
       `<p class="run-said" data-part="said">${said}</p>
-${flash}<div data-part="banners"${stateIn.updating ? ` data-follow="${esc(updateFollowUrl(u.id))}" data-follow-state="${esc(updateProgress(u.id).state)}"` : ""}>${stateBanners(stateIn)}${drain?.banner ?? ""}</div>${keyCard}
+${flash}<div data-part="banners"${stateIn.updating ? ` data-follow="${esc(updateFollowUrl(u.id))}" data-follow-state="${esc(updateProgress(u.id).state)}"` : ""}>${stateBanners(stateIn)}${diskBanner(u, now)}${drain?.banner ?? ""}</div>${keyCard}
 ${rp ? podSection(c, u.id, now) : ""}
 <div data-part="at-work">${runsNow ? `<div class="block"><div class="head"><h2>At work</h2><span class="n">${live.length}</span></div>${runsNow}</div>` : ""}</div>
 <div class="cols run-cols"><div>

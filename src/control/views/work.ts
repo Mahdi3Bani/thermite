@@ -57,6 +57,9 @@ export const Work = z.object({
       since: z.string().max(40),
       reason: z.string().max(1000),
       by: z.string().max(200).optional(),
+      // From a harness with goal 173: when it stops waiting by itself, and when it did.
+      deadline: z.string().max(40).optional(),
+      deadline_reached: z.string().max(40).optional(),
     })
     .nullable(),
   open: z.array(OpenTrial).max(64).optional(),
@@ -95,4 +98,24 @@ export function doingsOf(summary: unknown): Map<string, TrialDoing> {
     out.set(t.trial, d);
   }
   return out;
+}
+
+const Disk = z.object({
+  floor_gib: z.number(),
+  low: z.boolean(),
+  since: z.string().max(40).nullable(),
+  checked_at: z.string().max(40),
+  places: z
+    .array(z.object({ name: z.string().max(32), free_gib: z.number(), total_gib: z.number() }))
+    .max(16),
+});
+export type RigDiskView = z.infer<typeof Disk>;
+
+/**
+ * The report's `disk` (goal 173): the rig's free space on each place it writes to, against its
+ * floor; undefined from a harness too old to send it.
+ */
+export function diskOf(summary: unknown): RigDiskView | undefined {
+  const d = Disk.safeParse((summary as { disk?: unknown } | null | undefined)?.disk);
+  return d.success ? d.data : undefined;
 }

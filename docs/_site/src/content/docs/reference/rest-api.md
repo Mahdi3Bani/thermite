@@ -14,7 +14,7 @@ curl -fsS -H "Authorization: Bearer $(cat .dev/secrets/control-admin-token)" \
   'http://127.0.0.1:8800/v1/commands?limit=5'
 ```
 
-The first request needs no token and answers `{"ok":true}`. The second uses the owner's token from a local install and answers `{"commands":[...]}`, the five newest [signed commands](signed-commands.md).
+The first request needs no token and answers `{"ok":true,…}`. The second uses the owner's token from a local install and answers `{"commands":[...]}`, the five newest [signed commands](signed-commands.md).
 
 ## Addresses
 
@@ -70,7 +70,20 @@ All of these take the owner's token, except where the table says otherwise. `<ri
 
 | Route | Token | What it does | Request | Answer |
 | --- | --- | --- | --- | --- |
-| `GET /v1/health` | None | Says control is up, and how it holds the [message bus](../how-to/operate/message-bus.md#check-it), which it needs: `connected` (it holds a connection to the bus's server now) or `away` (it holds none, and tries again). Once control serves, it answers 200 whatever the bus does; while it starts, building its views from the bus's events, it answers 503 with `"ok":false` and `"starting":true`, and every other route 503 with `retry-after: 5` | None | `{"ok":true,"bus":"connected"}` |
+| `GET /v1/health` | None | Says control is up, how it holds the [message bus](../how-to/operate/message-bus.md#check-it), which it needs: `connected` (it holds a connection to the bus's server now) or `away` (it holds none, and tries again), and each of its loops (below). Once control serves, it answers 200 whatever the bus does, and 503 with `"ok":false` while one of its loops is late; while it starts, building its views from the bus's events, it answers 503 with `"ok":false` and `"starting":true`, and every other route 503 with `retry-after: 5` | None | `{"ok":true,"loops":{"resets":{"age_seconds":4,"limit_seconds":1800,"late":false},…},"bus":"connected"}` |
+
+Each part of Thermite answers a health route like this one: control here, the harness on its own port ([The harness's API](#the-harnesss-api-for-proposers)), and the supervisor on `THERMITE_SUPERVISOR_HEALTH_LISTEN`, `127.0.0.1:8701` in its container by default. Each gives its long-running loops by name, each with `age_seconds`, the seconds since it last came around, `limit_seconds`, and `late`; the route answers 503 while one is late. A loop is late after ten of its periods, and never before 30 minutes, so that a round that pushes or uploads an export, or copies the ledger, has time to end. Work whose length is research's is never counted: a loop that waits on it says so in `busy` and is never late meanwhile. The limits are mechanical, never a limit on research.
+
+| Part | Loop | Comes around every | Late after |
+| --- | --- | --- | --- |
+| Control | `resets` (full resets), `drains` (drains and their deadlines), `runpod_tests`, `runpod_rigs`, `pull_mode`, `quiet_rigs`, `bus_users`, `bus_config`, `gpu_clouds` | 10 s, 10 s, 15 s, 30 s, 0.25 s, 60 s, 5 s, 5 s, 15 min | 30 min; `gpu_clouds` 150 min |
+| Harness | `judge:<card>`, one for each judge card | 1 s between jobs | 30 min; never while it has a job (`busy`: `job 12`) |
+| Harness | `scheduler` | 2 s | 30 min; never during the planner's call (`busy`) |
+| Harness | `exports` (and the disk's floor, and drains' deadlines) | 5 s | 30 min |
+| Supervisor | `report` | `THERMITE_POLL_SECONDS` (60 s) | 30 min |
+| Supervisor | `commands`, `live` | `THERMITE_COMMAND_POLL_SECONDS` (5 s), `THERMITE_LIVE_INTERVAL_MS` (3 s) | 30 min |
+
+The harness's answer also gives the rig's name and its free disk against its floor (`disk`, as the rig's report carries it: [The disk card](rig-page.md#the-disk-card)); a rig at its floor holds new work but is well, and answers 200. Compose, the release bundle, the machines' units and Kubernetes each check these routes ([Troubleshoot](../how-to/operate/troubleshoot.md#a-part-that-is-unhealthy)).
 
 ### Rigs and their history
 
@@ -238,12 +251,12 @@ Each refusal is in the [audit log](#audit-log-actions) as `refused`, with the ro
 
 ### A rig's settings
 
-The rest of **Edit rig**: the rig's parts, workers at a time, its limits, its promotion rule and its GPU split.
+The rest of **Edit rig**: the rig's parts, workers at a time, its limits, how its agent programs run, its promotion rule and its GPU split.
 
 | Route | Token | What it does | Request | Answer |
 | --- | --- | --- | --- | --- |
 | `GET /v1/rigs/<rig>/settings` | Owner | The settings the rig reports, and its GPU split, as its **Edit rig** page shows them | None | `{rig, settings, gpu_split}`, as MCP's [`rig_settings`](mcp-tools.md#rig_settings) returns it. `settings` is `null` for a rig whose harness is older and reports none; `gpu_split` is `{set, judge}`, or `null` for a rig with no GPU set to split. 404 `{"error":"no rig <rig>"}` |
-| `POST /v1/rigs/<rig>/settings` | Owner | Changes the rig's settings as **Save changes** on **Edit rig** does, through the same checks: only the fields that differ from what the rig reports go to the rig, as one [`rig_settings`](signed-commands.md#rig_settings) command issued by `owner:api` | Any of `{judge, workers, planner, teachers, auditor, review, exports, lanes, trial_minutes, max_turns, quiet_minutes, promotion, judge_gpus}`, below | `{rig, id, sent, restarts, said}`, below. 400, 404 or 409 `{"error":"<why>"}`, below |
+| `POST /v1/rigs/<rig>/settings` | Owner | Changes the rig's settings as **Save changes** on **Edit rig** does, through the same checks: only the fields that differ from what the rig reports go to the rig, as one [`rig_settings`](signed-commands.md#rig_settings) command issued by `owner:api` | Any of `{judge, workers, planner, teachers, auditor, review, exports, lanes, trial_minutes, max_turns, quiet_minutes, program_mode, promotion, judge_gpus}`, below | `{rig, id, sent, restarts, said}`, below. 400, 404 or 409 `{"error":"<why>"}`, below |
 
 | Field | Type | Meaning |
 | --- | --- | --- |
@@ -252,6 +265,7 @@ The rest of **Edit rig**: the rig's parts, workers at a time, its limits, its pr
 | `trial_minutes` | whole number, 1 to 1440, or `null` | **One trial lasts (minutes)**, for a campaign whose contract sets no `trial_minutes`. `null`: no limit; a trial lasts until its worker submits or stops |
 | `max_turns` | whole number, 1 to 100000, or `null` | **Turns per trial**. `null`: no limit |
 | `quiet_minutes` | whole number, 1 to 1440, or `null` | **Ask me after a quiet spell of (minutes)**: a trial with no line for this long asks the owner under **Needs you**. `null`: never |
+| `program_mode` | `terminal` or `headless` | **Agent programs run**, under **Advanced** in **2 · The agents**: `terminal` (**In their own terminal**) or `headless` (**Headless**, the default). The next trial takes it |
 | `promotion` | `auto` or `owner_approval` | **3 · When a change becomes the champion**: **Automatically** or **Ask me for each change**. A campaign's own rule comes first for its runs |
 | `judge_gpus` | whole number, or `null` | **GPUs for the judge**, on a rig set up with its set of GPUs: from 1 to the lower of 8 and one less than the set, with at most 8 left for the agents. `null`: the rig's default split. A new split restarts the rig's harness to regroup the GPUs: running trials and judge jobs start again |
 
@@ -287,9 +301,9 @@ Each refusal is in the [audit log](#audit-log-actions) as `refused`, with the ro
 
 | Route | Token | What it does | Request | Answer |
 | --- | --- | --- | --- | --- |
-| `POST /v1/rigs/<rig>/cluster/resources` | Owner | Changes how many GPUs the rig's harness pod asks for, and its CPUs and memory, with the checks of **Add a rig** and the slot's quota read again, then applies its two deployments again with the new size, draining a rig at work first | Any of `{gpus, judge_gpus, cpus, memory_gib, wait}`, as MCP's [`set_cluster_rig_resources`](mcp-tools.md#set_cluster_rig_resources) takes them | `{rig, said}`. 400, 404 or 409 `{"error":"<why>"}` |
+| `POST /v1/rigs/<rig>/cluster/resources` | Owner | Changes how many GPUs the rig's harness pod asks for, and its CPUs and memory, with the checks of **Add a rig** and the slot's quota read again, then applies its two deployments again with the new size, draining a rig at work first | Any of `{gpus, judge_gpus, cpus, memory_gib, wait, drain_minutes}`, as MCP's [`set_cluster_rig_resources`](mcp-tools.md#set_cluster_rig_resources) takes them | `{rig, said}`. 400, 404 or 409 `{"error":"<why>"}` |
 
-Give only what changes: a field left out stays. `gpus` is 1 to 16 for a rig on GPUs, and a rig on the CPU stays at none. `judge_gpus` goes only with a new number of GPUs; without it, the judge gets half of them, rounded up. `cpus` (at least 1.5) and `memory_gib` (at least 6) are numbers, or `null` for both for the namespace's defaults. `wait` is `true` by default: a rig at work drains first; `false` restarts its pods now. MCP's tool gives the answers and the errors word for word. For example, to move a rig from 3 GPUs and the namespace's defaults to 4 GPUs, 16 CPUs and 52 GiB:
+Give only what changes: a field left out stays. `gpus` is 1 to 16 for a rig on GPUs, and a rig on the CPU stays at none. `judge_gpus` goes only with a new number of GPUs; without it, the judge gets half of them, rounded up. `cpus` (at least 1.5) and `memory_gib` (at least 6) are numbers, or `null` for both for the namespace's defaults. `wait` is `true` by default: a rig at work drains first; `false` restarts its pods now. `drain_minutes`, 1 to 10,080, is how long that drain waits before it asks you under **Needs you** ([At its deadline](rig-page.md#at-its-deadline)); left out, the rig's `THERMITE_DRAIN_MINUTES`. MCP's tool gives the answers and the errors word for word. For example, to move a rig from 3 GPUs and the namespace's defaults to 4 GPUs, 16 CPUs and 52 GiB:
 
 ```sh
 curl -sS -X POST -H "Authorization: Bearer $(cat ~/thermite-owner-token)" \
@@ -957,7 +971,7 @@ Each rig's harness has an API of its own on `THERMITE_LISTEN`, by default `0.0.0
 
 | Route | Token | What it does | Request | Answer |
 | --- | --- | --- | --- | --- |
-| `GET /v1/health` | None | Says the harness is up | None | `{"ok":true,"rig":"<rig>"}` |
+| `GET /v1/health` | None | Says the harness is well: each of its loops with its age, and 503 while one is late ([Health](#health)), its rig, and its free disk | None | `{"ok":true,"loops":{"judge:0":{"age_seconds":0,"limit_seconds":1800,"late":false,"busy":"job 12"},"scheduler":{…},"exports":{…}},"rig":"<rig>","disk":{"floor_gib":5,"low":false,"since":null,"checked_at":"…","places":[{"name":"state","free_gib":40.2,"total_gib":100},…]}}` |
 | `POST /v1/attempts` | Proposer | Submits a change as an attempt for the judge | `{run, lane, patch_base64, parent, hypothesis, claim, known_flaws}`. `patch_base64` is the base64 of `git add -A && git diff --cached --binary` against the parent. `parent` is 7 to 64 hexadecimal characters, default the champion. `hypothesis` is 1 to 4,000 characters, `claim` up to 4,000, `known_flaws` up to 50 lines of up to 1,000. Up to 32 MiB | 201 `{attempt, lifecycle, commit, violations, duplicate_of}`, `lifecycle` being `queued`, `rejected_v0` or `duplicate`; `duplicate_of` is there only for a `duplicate` |
 | `GET /v1/attempts/<id>` | Proposer or supervisor | An attempt's state and verdict | None | `{attempt, run, lane, lifecycle, commit, v0, violations, verdict, held_out}`. `violations` lists every violation of a change the static checks refused (`[]` otherwise), as `v0` holds them. `held_out` is `null`, or, when its newest confirmation failed on held-out cells, the kinds in words, such as `a held-out check timed out` ([Held-out failures](verdicts.md#held-out-failures)). `verdict` is `null` or `{"verdict":"<verdict>"}`. 404 `no attempt <id>`. A worker's trial reads any attempt of its own campaign on the rig this way, its lane's or not; another campaign's is 404 `no attempt <id> in this campaign` |
 
@@ -992,6 +1006,18 @@ The supervisor's token also reads the prompts a run's agents were sent, whole, o
 | `thermite_research_sources`, `thermite_research_domains`, `thermite_research_verified`, `thermite_research_drafts`, `thermite_research_hypotheses` | none given | `rig`, `run`, `campaign` | Research runs only: sources, domains, verified claims, drafts and hypotheses |
 
 The series marked "none given" have no `# HELP` or `# TYPE` line, so Prometheus treats them as untyped.
+
+Health's series follow, the ones an operator alerts on with **Needs you** (goal 173). Their labels are only the part, its loop's name, the rig and the place on its disk:
+
+| Series | Type | Labels | Meaning |
+| --- | --- | --- | --- |
+| `thermite_loop_age_seconds`, `thermite_loop_limit_seconds` | gauge | `part`, `rig`, `loop` | Seconds since the loop last came around, and its limit ([Health](#health)): control's own loops (`part="control"`, no `rig`), and each rig's harness and supervisor loops as its last report and figures gave them |
+| `thermite_loop_late` | gauge | `part`, `rig`, `loop` | 1 when the loop is past its limit |
+| `thermite_rig_disk_free_bytes` | gauge | `rig`, `place` | Free space on each place the rig writes to (`state`, `scratch`, `outbox`), from its last report |
+| `thermite_rig_disk_floor_bytes` | gauge | `rig` | The free space the rig keeps on each place (`THERMITE_DISK_FLOOR_GIB`) |
+| `thermite_rig_disk_low` | gauge | `rig` | 1 while the rig holds new work for its disk floor |
+| `thermite_rig_drain_age_seconds` | gauge | `rig` | Seconds since the rig began to drain; only while it drains |
+| `thermite_rig_drain_overdue` | gauge | `rig` | 1 when its drain passed its deadline and waits for the owner's choice; only while it drains |
 
 The [message bus](#the-message-bus)'s series follow. Their labels are only the bus's streams and consumers (two consumers for each rig at most), rigs, config keys, and the fixed reasons for a refusal, so their number stays small too:
 

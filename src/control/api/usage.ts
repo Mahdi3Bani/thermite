@@ -1,7 +1,7 @@
 import type { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { jsonBody } from "../../common/errors.ts";
-import { busMetricsText, metricsText } from "../metrics.ts";
+import { busMetricsText, healthMetricsText, metricsText } from "../metrics.ts";
 import { modelPrices, modelUsage, setModelPrice, usageQueryRefusal } from "../usage.ts";
 import type { ApiContext } from "./context.ts";
 
@@ -12,11 +12,15 @@ import type { ApiContext } from "./context.ts";
 export function usageRoutes(app: Hono, api: ApiContext): void {
   const { store, opts, parts, admin, reader } = api;
 
-  // With the message bus, its series follow control's own.
+  // Health's series follow control's own (goal 173), then, with the message bus, the bus's.
   app.get("/metrics", reader, async (c) =>
-    c.text(metricsText(store, opts.staleAfterMs) + (await busMetricsText(store, parts.bus)), 200, {
-      "content-type": "text/plain; version=0.0.4",
-    }),
+    c.text(
+      metricsText(store, opts.staleAfterMs) +
+        healthMetricsText(store, parts.loops, opts.staleAfterMs) +
+        (await busMetricsText(store, parts.bus)),
+      200,
+      { "content-type": "text/plain; version=0.0.4" },
+    ),
   );
 
   // The agents' model usage (goal 075): a run's, a campaign's or the whole system's, for a period.

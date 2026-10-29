@@ -70,6 +70,30 @@ describe("a rig deployed on a machine", () => {
     );
   });
 
+  test("each unit names its log driver and limits, and checks its part's health (goal 173)", () => {
+    const u = rigUnits(plan);
+    for (const [name, port] of [
+      ["thermite-gpu-box-1-a-harness.container", 8700],
+      ["thermite-gpu-box-1-a-supervisor.container", 8701],
+    ] as const) {
+      const unit = u[name] ?? "";
+      assert.match(unit, /^LogDriver=journald$/m, name);
+      assert.match(unit, /^LogRateLimitIntervalSec=30s\nLogRateLimitBurst=10000$/m, name);
+      assert.match(
+        unit,
+        new RegExp(`^HealthCmd=node -e "fetch\\('http://127\\.0\\.0\\.1:${port}/v1/health'`, "m"),
+        name,
+      );
+      assert.match(unit, /^HealthOnFailure=kill$/m, name);
+      assert.match(unit, /^HealthStartPeriod=5m$/m, name);
+      // The keys sit in their sections: the container's in [Container], the journal's in [Service].
+      const container = unit.split("[Service]")[0] ?? "";
+      assert.match(container, /HealthCmd=/);
+      assert.ok(!container.includes("LogRateLimit"));
+      assert.ok(!unit.includes("$"), "nothing for systemd to expand");
+    }
+  });
+
   test("the deploy script writes the tokens verbatim through stdin, refuses an existing rig, and starts the services", () => {
     const home = mkdtempSync(join(tmpdir(), "thermite-deploy-"));
     const bin = join(home, "bin");

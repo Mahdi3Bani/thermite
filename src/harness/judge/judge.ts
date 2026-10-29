@@ -53,8 +53,21 @@ export class Judge {
     return this.judge.ledger.jobs.expireLeases(this.judge.o.owner);
   }
 
+  /** The job this judge works on now, for the health route (goal 173); undefined between jobs. */
+  get job(): number | undefined {
+    return this.judge.holding?.id;
+  }
+
   /** One scheduling step. Returns true when a job was processed. */
   async tick(): Promise<boolean> {
+    try {
+      return await this.step();
+    } finally {
+      this.judge.holding = undefined;
+    }
+  }
+
+  private async step(): Promise<boolean> {
     if (this.judge.o.deviceGate?.active) return false;
     this.expireLeases();
     const waiting = this.maybeScheduleBaseline();

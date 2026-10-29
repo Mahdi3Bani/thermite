@@ -41,7 +41,7 @@ docker compose ps                         # or: podman compose ps
 curl http://127.0.0.1:8800/v1/health
 ```
 
-`ps` lists `control`, `nats`, `harness` and `supervisor` as up, and the health check answers `{"ok":true,"bus":"connected"}`: control is up, and holds its connection to the message bus. In the first seconds it may say `"bus":"away"`, until the bus's server has started. The dashboard is at <http://127.0.0.1:8800/ui>. To sign in, paste the owner's token: `cat .dev/secrets/control-admin-token` prints it.
+`ps` lists `control`, `nats`, `harness` and `supervisor` as up, and the health check answers `{"ok":true,"loops":{…},"bus":"connected"}`: control is up, each of its loops comes around, and it holds its connection to the message bus. In the first seconds it may say `"bus":"away"`, until the bus's server has started. The dashboard is at <http://127.0.0.1:8800/ui>. To sign in, paste the owner's token: `cat .dev/secrets/control-admin-token` prints it.
 
 On a computer without a screen, reach the dashboard from your own computer through SSH, then open the same address there:
 
@@ -75,6 +75,10 @@ Run `npx thermite` in your `thermite-source` folder; from another folder, `npx` 
 | `init` | Makes `.dev/` and your tokens, then stops. `up` runs it too; it finds the files there and keeps them |
 
 `docker compose --profile two-rigs up -d` adds a second rig, `local-2`, which always runs on the CPU.
+
+`docker compose ps` gives each container's health: control, the harness and the supervisor each answer a health route that says whether each of their loops still comes around, and the `nats` container's server is checked too. A container says `(health: starting)` for up to 5 minutes, then `(healthy)`, or `(unhealthy)` once its check failed three times running, 30 seconds apart. Compose only reports it: see [A part that is unhealthy](../operate/troubleshoot.md#a-part-that-is-unhealthy). Each container's log is bounded too: at most three files of 50 MB with Docker, one with Podman ([Where the logs are](../operate/troubleshoot.md#where-the-logs-are)).
+
+The rig keeps 5 GiB free on each place it writes to: below that, it starts no new trial, judge's job or export until there is room again, and says so on its page and under **Needs you**. Set [`THERMITE_DISK_FLOOR_GIB`](../../reference/settings.md#places-exports-and-the-broker) in `.env` to change it, or `0` for none.
 
 ## What the rig gets
 
@@ -340,7 +344,7 @@ Run `docker compose up -d`, with your `-f` options, to restart control with them
 
 To tell that it worked:
 
-- From another machine, `curl https://control.example.com/v1/health` answers `{"ok":true,"bus":"connected"}`, and `nc -zv control.example.com 4222` connects to the bus's port.
+- From another machine, `curl https://control.example.com/v1/health` answers `{"ok":true,"loops":{…},"bus":"connected"}`, and `nc -zv control.example.com 4222` connects to the bus's port.
 - **Rigs › Add a rig** no longer says "Control has no rig images configured" or "Control's address for rigs is not set", its **Images** field lists the images, and its **Message bus** field gives the bus's address the rigs will reach, such as `nats://control.example.com:4222`.
 
 Next: [Add a rig on a machine over SSH](rig-on-a-machine.md), [on a Kubernetes cluster](rig-on-a-cluster.md), or [join one yourself](join-a-rig.md).

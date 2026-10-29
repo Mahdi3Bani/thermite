@@ -3,8 +3,8 @@ import type { CommandPayloads } from "./commands.ts";
 
 /**
  * The rig's own settings, changed from its Edit page through a signed owner command
- * (rig_settings): which parts run, how many workers at once, a trial's length and turns, and the
- * promotion policy. The harness keeps them in its private state, applies them to its loops at
+ * (rig_settings): which parts run, how many workers at once, a trial's length and turns, how its
+ * agent programs run, and the promotion policy. The harness keeps them in its private state, applies them to its loops at
  * once, and reports them; the supervisor applies its own parts (auditor, teachers, review
  * panel) from that report, and control shows them. A part turned off keeps all its data. The GPU
  * split is applied by the broker when the harness starts, so changing it restarts the harness.
@@ -33,6 +33,12 @@ export interface RigSettings {
    * (goal 143); null: never. It only shows: nothing ends a trial for it.
    */
   quiet_minutes: number | null;
+  /**
+   * How a trial's agent program runs, where it can run a terminal UI (Claude Code, Codex,
+   * OpenCode; goal 169): in its own terminal, held by the terminal host, or headless. Pi, which
+   * runs in the harness, has no such choice.
+   */
+  program_mode: ProgramMode;
   promotion: "auto" | "owner_approval";
   /**
    * On a rig configured with its GPU set (THERMITE_GPUS): how many cards are the judge's; the
@@ -40,6 +46,17 @@ export interface RigSettings {
    */
   judge_gpus: number | null;
 }
+
+/** How a trial's agent program may run: in its own terminal UI, or headless. */
+export const PROGRAM_MODES = ["terminal", "headless"] as const;
+export type ProgramMode = (typeof PROGRAM_MODES)[number];
+
+/**
+ * A rig's mode until someone sets one: headless, for now. The owner chose the terminal as the
+ * default where a program can run one (2026-10-26); it becomes the default once the stand-in
+ * programs and the acceptance checks run trials in a terminal.
+ */
+export const PROGRAM_MODE_DEFAULT: ProgramMode = "headless";
 
 /** The rig_settings payload: only the fields that change. */
 export type RigSettingsChange = z.infer<(typeof CommandPayloads)["rig_settings"]>;

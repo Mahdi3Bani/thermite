@@ -40,7 +40,7 @@ podman --version                                  # 4.4 or later
 systemctl --version | head -n 1                   # systemd is there
 loginctl show-user "$(id -un)" -p Linger          # Linger=yes (not needed as root)
 nvidia-ctk cdi list                               # GPUs only: nvidia.com/gpu=0, and one line for each GPU
-curl -fsS https://control.example.com/v1/health   # {"ok":true,"bus":"connected"}
+curl -fsS https://control.example.com/v1/health   # {"ok":true,"loops":{…},"bus":"connected"}
 nc -zv control.example.com 4222                   # the message bus's port answers
 ```
 

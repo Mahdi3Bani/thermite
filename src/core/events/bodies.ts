@@ -451,12 +451,25 @@ export interface EventBodies {
     note?: string | undefined;
     detail?: string | Record<string, unknown> | undefined;
   };
+  /** The rig's disk reached its floor, or has room again (goal 173). */
+  rig_disk: {
+    low: boolean;
+    floor_gib: number;
+    places: { name: string; free_gib: number; total_gib: number }[];
+    reason?: string | undefined;
+  };
+  /**
+   * A drain began, went on or ended; `deadline` is when it stops waiting by itself, and
+   * `deadline_reached` marks the step at that time, which leaves the choice to the owner (goal 173).
+   */
   rig_drain: {
     drain: boolean;
     reason?: string | undefined;
     trials?: number | undefined;
     judge_jobs?: number | undefined;
     draining?: unknown;
+    deadline?: string | undefined;
+    deadline_reached?: boolean | undefined;
   };
   rig_settings_changed: { change: Record<string, unknown>; settings: RigSettings };
 

@@ -57,7 +57,7 @@ export async function prepareResize(
   rig: string,
   want: ClusterResourcesRequest,
   by: string,
-  o: { wait?: boolean | undefined; owner: boolean },
+  o: { wait?: boolean | undefined; owner: boolean; drainMinutes?: number | undefined },
 ): Promise<Resize | { go: () => Promise<Resize> }> {
   const { store } = parts;
   const r = store.clusters.rig(rig);
@@ -124,7 +124,11 @@ export async function prepareResize(
       issueCommand(store, parts.privateKeyPem, {
         rig,
         kind: "drain_rig",
-        payload: { drain: true, reason: RESIZE_REASON },
+        payload: {
+          drain: true,
+          reason: RESIZE_REASON,
+          ...(o.drainMinutes ? { deadline_minutes: o.drainMinutes } : {}),
+        },
         issuedBy: by,
       });
       store.clusters.setRigStatus(rig, "draining");
@@ -268,7 +272,7 @@ export async function setClusterRigResources(
   rig: string,
   want: ClusterResourcesRequest,
   by: string,
-  o: { wait?: boolean | undefined; owner: boolean },
+  o: { wait?: boolean | undefined; owner: boolean; drainMinutes?: number | undefined },
 ): Promise<Resize> {
   const p = await prepareResize(parts, rig, want, by, o);
   return "go" in p ? p.go() : p;

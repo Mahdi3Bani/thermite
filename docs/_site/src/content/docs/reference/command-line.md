@@ -286,7 +286,7 @@ The checks, in the order it runs them:
 | GPU driver (`gpu-driver`) | On Linux, with an NVIDIA GPU (`/dev/nvidia0`, `/proc/driver/nvidia/gpus`, or an NVIDIA display controller in `lspci`): `nvidia-smi` | `nvidia-smi` is missing or fails | | No NVIDIA GPU, or macOS. The line names AMD GPUs and a Mac's Apple GPU, which the rig does not use |
 | GPU container toolkit (`gpu-toolkit`) | `nvidia-ctk --version`, and what the engine the rig runs on needs from it: with Docker, NVIDIA's runtime in `docker info`; with Podman, a CDI spec at `/etc/cdi/nvidia.yaml` or `/var/run/cdi/nvidia.yaml`, or one that `nvidia-ctk cdi list` shows as `nvidia.com/gpu=all`. With no engine that answers, or GPUs that `nvidia-smi` doesn't list: the toolkit and a CDI spec | The toolkit, the runtime or the CDI spec is missing. The fix says how to install or make it | | No NVIDIA GPU, or macOS |
 | Local rig (`rig`) | What the local rig gets: the CPUs and memory of `docker info` or `podman info` (on a Mac, the virtual machine's, with how to give it more; when both engines answer, the other one's too), the NVIDIA GPUs `nvidia-smi` lists and whether the engine can give them to containers, AMD GPUs (`/sys/class/drm` cards with AMD's vendor id, or `/dev/kfd`), and a Mac's Apple GPU. With GPUs the rig can have, it says how `thermite local init` puts the rig on them | | The machine has NVIDIA GPUs that the rig can't have: the driver doesn't list them, or the engine can't give them to containers | No engine answers |
-| Control (`control`) | `GET /v1/health` at `--control` | No answer, or an answer that is not control's | | No `--control` |
+| Control (`control`) | `GET /v1/health` at `--control` | No answer, an answer that is not control's, or control's 503 while it starts or one of its loops is late (`Control answers at <address>, but one of its loops is late: /v1/health answered HTTP 503.`) | | No `--control` |
 | Model server (`model`) | `GET` at `--model-url`. Any HTTP answer counts, even `401` or `404`: the rig's [Model route check](rig-checks.md) tests the model itself | No answer | | No `--model-url` |
 
 A request waits at most 10 seconds. A failed request says why: nothing listens at the address, the name does not resolve, no answer in time, or a TLS certificate this machine does not trust.
@@ -783,6 +783,15 @@ A run you no longer want is closed for good with `close_run`, as **Close run** o
 npx thermite command --control https://control.example.com --token-file ~/thermite-owner-token \
   --kind close_run --payload '{"run":"run-1","reason":"another run finished the work"}'
 ```
+
+A rig's own settings, as **Edit rig** has them, go with `rig_settings` and only the fields to change ([`rig_settings`](signed-commands.md#rig_settings) lists them). This runs the next trials' Claude Code, Codex or OpenCode in its own terminal on `rig-1`:
+
+```sh
+npx thermite command --control https://control.example.com --token-file ~/thermite-owner-token \
+  --rig rig-1 --kind rig_settings --payload '{"program_mode":"terminal"}'
+```
+
+Unlike [`POST /v1/rigs/<rig>/settings`](rest-api.md#a-rigs-settings), it sends the fields as given, without comparing them with what the rig reports.
 
 Control refuses `wipe_state` with `400 {"error":"wipe_state is issued only by a full reset"}`, and a payload that does not fit its kind with `400 {"error":"bad <kind> payload: …"}` (an unknown rig: `404`). `GET /v1/commands/<id>` and the dashboard's **Commands** page show the command's status. A command the rig refuses, such as a `queue_move` for an experiment that is no longer queued, shows there as `failed`, with the reason.
 

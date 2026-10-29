@@ -1,13 +1,14 @@
 import { spawn, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { type FreeSpace, freeSpace, gib } from "../../../common/disk.ts";
 import { errorText } from "../../../common/errors.ts";
 import { log, logError, logWarn } from "../../../common/log.ts";
 import { type Broker, fatalExit } from "../context.ts";
 import { IDS, roleIds } from "../runner.ts";
 import { deriveKeys, SnapshotRefused } from "../seal.ts";
 import { timedRunsAtWork } from "../server.ts";
-import { snapshotEveryMs, stopBudgetMs } from "../settings.ts";
+import { snapshotEveryMs, snapshotFloorBytes, stopBudgetMs } from "../settings.ts";
 import {
   CLOSED_PROBE_JS,
   closedTo,
@@ -49,6 +50,7 @@ export function prepareSnapshots(broker: Broker): SnapshotRecord | undefined {
   try {
     broker.snapshotEvery = snapshotEveryMs(broker.env);
     broker.snapshotStopMs = stopBudgetMs(broker.env);
+    broker.snapshotFloor = snapshotFloorBytes(broker.env);
   } catch (err) {
     logError("broker", "fatal: a snapshot setting is not valid", { error: String(err) });
     fatalExit(broker);
@@ -199,10 +201,42 @@ export function writeSnapshotRecord(broker: Broker, record: SnapshotRecord): voi
   chmodSync(path, 0o644);
 }
 
+/**
+ * Why a snapshot waits for room (goal 173): its folder's free space below the rig's disk floor, in
+ * words; undefined when there is room, or no floor. A folder it can't read is no reason to wait:
+ * the snapshot then says what failed.
+ */
+export function snapshotWaits(
+  dir: string,
+  floor: number,
+  free: FreeSpace = freeSpace,
+): string | undefined {
+  if (floor <= 0) return undefined;
+  let left: number;
+  try {
+    left = free(dir).free;
+  } catch {
+    return undefined;
+  }
+  return left < floor
+    ? `the snapshot's folder has ${gib(left)} GiB free, below the rig's disk floor of ${gib(floor)} GiB (THERMITE_DISK_FLOOR_GIB)`
+    : undefined;
+}
+
+/** Whether the last snapshot waited for room: said once when it starts and once when it ends. */
+let waited = false;
+
 /** A snapshot taken by the broker's helper, at a low priority but at a stop. */
 const NICE = existsSync("/usr/bin/nice") ? ["/usr/bin/nice", "-n", "19"] : [];
 const IONICE = existsSync("/usr/bin/ionice") ? ["/usr/bin/ionice", "-t", "-c", "2", "-n", "7"] : [];
 function snapshotJob(broker: Broker, reason: string): SnapshotJob {
+  // At the disk floor a snapshot waits, the last complete one stays, and the snapshotter asks
+  // again later (after a minute): nothing is spawned, and it is said once.
+  const why = snapshotWaits(broker.snapDir as string, broker.snapshotFloor);
+  if (why && !waited) logWarn("broker", "a snapshot waits for room: the last one stays", { why });
+  if (!why && waited) log("broker", "the snapshot's folder has room again");
+  waited = why !== undefined;
+  if (why) return { done: Promise.resolve(false), abort: () => undefined };
   const job: TakeJob = {
     dir: broker.snapDir as string,
     reason,

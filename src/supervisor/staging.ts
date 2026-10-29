@@ -53,6 +53,8 @@ export interface StagingConfig {
   hfToken?: string | undefined;
   /** How model files are fetched (tests give their own). */
   fetchImpl?: typeof fetch | undefined;
+  /** The free space a model download leaves where it lands, in bytes (goal 173); none: 0. */
+  floorBytes?: number | undefined;
 }
 
 /** What staging says about a command: relay it, wait, or report that its content failed. */
@@ -175,6 +177,7 @@ async function stageSources(cfg: StagingConfig, cmd: SignedCommand): Promise<Sta
             hfToken: cfg.hfToken,
             downloads: cfg.models ?? new ModelDownloads(),
             fetchImpl: cfg.fetchImpl,
+            floor: cfg.floorBytes,
           });
         else await bundleFromGit(cfg, imp, target);
       }

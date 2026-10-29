@@ -2,7 +2,12 @@ import { z } from "zod";
 import { errorText } from "../../common/errors.ts";
 import { CommandPayloads } from "../../core/commands.ts";
 import { MAX_LANES } from "../../core/contract.ts";
-import type { RigSettings, RigSettingsChange } from "../../core/rig-settings.ts";
+import {
+  PROGRAM_MODES,
+  type ProgramMode,
+  type RigSettings,
+  type RigSettingsChange,
+} from "../../core/rig-settings.ts";
 import { issueCommand } from "../issue/index.ts";
 import type { ControlStore } from "../store/index.ts";
 import { rigSettingsOf } from "../views/index.ts";
@@ -10,7 +15,8 @@ import { rigSettingsOf } from "../views/index.ts";
 /**
  * A rig's own settings from outside the dashboard (goal 029): REST's `POST /v1/rigs/<rig>/settings`
  * and MCP's `set_rig_settings` change them as Save changes on Edit rig does (its parts on or off,
- * workers at a time, a trial's length and turns, the promotion rule, the GPU split);
+ * workers at a time, a trial's length and turns, how its agent programs run, the promotion rule,
+ * the GPU split);
  * `GET /v1/rigs/<rig>/settings` and MCP's `rig_settings` read what the rig reports. Edit rig and
  * its twins build the change here (rigSettingsChange): only what differs from what the rig
  * reports, checked against the rig's GPU split and the rig_settings payload, refused in the same
@@ -48,6 +54,8 @@ export type RigSettingsWanted = { [P in RigPart]?: boolean | undefined } & {
   max_turns?: number | null | undefined;
   /** null: a quiet trial never asks the owner (goal 143). */
   quiet_minutes?: number | null | undefined;
+  /** In its own terminal, or headless (goal 169). */
+  program_mode?: string | undefined;
   promotion?: string | undefined;
   /** null: the rig's default split. */
   judge_gpus?: number | null | undefined;
@@ -65,6 +73,34 @@ export function quietField(u: { summary: unknown }, value: number | null): strin
   const reported = (u.summary as { settings?: Record<string, unknown> } | null)?.settings;
   const takes = !!reported && Object.hasOwn(reported, "quiet_minutes");
   return `<input name="quiet_minutes" type="number" min="1" max="1440" value="${value ?? ""}" placeholder="${takes ? "never" : "update the rig first"}" data-empty="never" data-unit=" minutes"${takes ? "" : " disabled"}>`;
+}
+
+/** Edit rig's description of how the agent programs run (goal 169), beside its field. */
+export const PROGRAM_MODE_TIP =
+  "How Claude Code, Codex and OpenCode run a worker's trial. In their own terminal: the program's own screen, as you would run it, and Thermite follows its session log and its hooks. Headless: one command for each turn, and Thermite reads its output. Headless is the default for now. Pi runs inside the harness and has no terminal. A trial that runs keeps its mode; the next trial takes the new one.";
+
+/** Edit rig's choices of how the agent programs run, in its list's order. */
+const PROGRAM_MODE_WORDS: Record<ProgramMode, string> = {
+  headless: "Headless",
+  terminal: "In their own terminal",
+};
+
+/**
+ * Edit rig's field for how the agent programs run (goal 169). A rig whose harness is older reports
+ * no program_mode and would refuse the whole change, so there the field is off and says why.
+ */
+export function programModeField(u: { summary: unknown }, value: ProgramMode): string {
+  const reported = (u.summary as { settings?: Record<string, unknown> } | null)?.settings;
+  const takes = !!reported && Object.hasOwn(reported, "program_mode");
+  if (!takes)
+    return `<select name="program_mode" disabled><option>update the rig first</option></select>`;
+  const options = (["headless", "terminal"] as const)
+    .map(
+      (m) =>
+        `<option value="${m}"${m === value ? " selected" : ""}>${PROGRAM_MODE_WORDS[m]}</option>`,
+    )
+    .join("");
+  return `<select name="program_mode" data-label="how agent programs run">${options}</select>`;
 }
 
 /** Edit rig's words when a new GPU split is sent, as its page says them under the field. */
@@ -95,6 +131,8 @@ export function rigSettingsChange(
     change.max_turns = want.max_turns;
   if (want.quiet_minutes !== undefined && want.quiet_minutes !== now.quiet_minutes)
     change.quiet_minutes = want.quiet_minutes;
+  if (want.program_mode !== undefined && want.program_mode !== now.program_mode)
+    change.program_mode = want.program_mode;
   if (want.promotion !== undefined && want.promotion !== now.promotion)
     change.promotion = want.promotion;
   const judge = want.judge_gpus;
@@ -270,6 +308,12 @@ export const rigSettingsFields = {
     .optional()
     .describe(
       "After how many minutes without a line a trial asks the owner under Needs you (1 to 1440); null: never. It only shows: nothing ends the trial",
+    ),
+  program_mode: z
+    .enum(PROGRAM_MODES)
+    .optional()
+    .describe(
+      "How a trial's agent program runs, where it can run a terminal UI (Claude Code, Codex, OpenCode): terminal (in its own terminal, as a person runs it) or headless (one command for each turn, the default for now). Pi has no such choice. The next trial takes it",
     ),
   promotion: z
     .enum(["auto", "owner_approval"])

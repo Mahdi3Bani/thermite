@@ -123,6 +123,15 @@ describe("each program in its own terminal", () => {
       "the brief",
       "/area/repo",
     ]);
+    // After a crash: the session it had, and no message.
+    assert.deepEqual(opencodeTerminalArgs(4100, "/area/repo", undefined, "ses_1"), [
+      "--server",
+      "http://127.0.0.1:4100",
+      "--auto",
+      "--session",
+      "ses_1",
+      "/area/repo",
+    ]);
   });
 
   test("each program is interrupted and ended by named keys and text only, never Ctrl+C", () => {

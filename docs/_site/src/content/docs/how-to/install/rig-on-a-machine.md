@@ -121,6 +121,8 @@ If the setup step says "rig rig-1 exists on this machine already", an earlier ri
 
 With the message bus, the supervisor's unit names the bus (`THERMITE_NATS_URL`, from control's `THERMITE_NATS_PUBLIC_URL`) and the certificate it trusts the bus's server through (`THERMITE_NATS_CA_FILE`), and mounts the `bus` folder: it reports, takes its commands and gets its config over the bus, over TLS. The harness never reaches the bus.
 
+Each container unit sends its part's log to the journal (`LogDriver=journald`), within the unit's rate limit (`LogRateLimitIntervalSec=30s`, `LogRateLimitBurst=10000`) and the journal's own size limits. Read it on the machine with `journalctl --user -u thermite-rig-1-supervisor.service` ([Where the logs are](../operate/troubleshoot.md#where-the-logs-are)). Each unit also checks its part's health route every 30 seconds (`HealthCmd=`, after 5 minutes to start): a part that fails three times running is killed (`HealthOnFailure=kill`), and systemd starts it again (`Restart=always`). See [A part that is unhealthy](../operate/troubleshoot.md#a-part-that-is-unhealthy).
+
 ## Afterwards
 
 The rig's page keeps the **Set up by control** block: the machine, the GPUs (for example "GPU 0 (judge), GPU 1 (agents)"), the images and the setup history. Its buttons:
