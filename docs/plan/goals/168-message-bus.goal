@@ -76,8 +76,8 @@ The owner chose this design on 2026-10-26, from a drawing of it: JetStream as th
 
 | Subject | Stream or bucket | Truth | Kept |
 | --- | --- | --- | --- |
-| `thermite.run.<run>.ev.<kind>`, `thermite.run.<run>.attempt.<attempt>.<kind>`, `thermite.run.<run>.trial.<trial>.<kind>` | `EVENTS`, a record | the rig's ledger | for good; deletes and purges refused |
-| `thermite.rig.<rig>.ev.<kind>` | `RIG_EVENTS`, a record | the rig's ledger | for good |
+| `thermite.run.<run>.ev.<kind>`, with the attempt's and trial's ids in the event | `EVENTS`, a record | the rig's ledger | for good; deletes and purges refused |
+| `thermite.rig.<rig>.ev.<kind>`, a rig's events with no run | `EVENTS`, a record | the rig's ledger | for good |
 | `thermite.run.<run>.queue.<op>` | `EVENTS`, and a key-value bucket of each experiment's state | the rig's ledger | for good; the bucket holds the latest, changed by compare-and-set |
 | `thermite.rig.<rig>.cmd` | `COMMANDS`, a work queue | control signs and keeps each; the rig's ledger keeps its outcome | until the rig acks |
 | `thermite.run.<run>.live.<source>` | `LIVE`, a view | none | by count and age |
@@ -122,7 +122,8 @@ Control's own SQLite copies of the rigs' events and of its commands go: JetStrea
   - **Commands:** control's `command` table stays, as control's own signed record: the `COMMANDS` work queue keeps nothing once a rig acks, so the table is no copy. Only the harness's outcome is derived from the events.
   - **Backup:** JetStream snapshots back the streams up, as designed; a restore is checked against what the backup recorded (each stream's count and last sequence), since a server killed in a restore leaves a stream that looks whole.
   - **Control needs its bus** once its events table goes: rigs may still report over HTTP (control publishes their events), but the switch that turns the bus off goes for control. The queue's subjects are built now; its key-value bucket waits until something reads it.
-  - **Subjects:** not changed yet. The owner: "sounds like NATS isn't configured correctly to offload events to storage or something for later querying and is holding everything in ram instead... look at how NATS is setup and configured before redesigning streams." The server's set-up and its memory with subjects per attempt and per trial are looked at first.
+  - **Subjects:** the owner first asked for the server's set-up to be looked at: "sounds like NATS isn't configured correctly to offload events to storage or something for later querying and is holding everything in ram instead... look at how NATS is setup and configured before redesigning streams." It was, on the pinned server (2.15.1) and its source: every stream is on disk, and a million events took 584 MiB of disk and none of JetStream's memory. What stays in memory is the stream's index of its subjects, about 100 bytes a subject for as long as the stream lives; the server keeps it in memory by design, and no setting moves it. The reads that got the server killed came from 8 MiB blocks Go frees only when it collects, with no `GOMEMLIMIT`, whatever the subjects. With `GOMEMLIMIT` at about 78% of the server's limit, subjects per attempt and per trial need 192 MiB at a million events and grow with history; subjects by run and kind need 64 MiB.
+  - **Subjects, 2026-10-29 02:55 UTC, owner:** by run and kind (`thermite.run.<run>.ev.<kind>`), with the attempt's and trial's ids in each event; control's own tables answer a read by attempt or trial. A rig's own events go in the same stream (`thermite.rig.<rig>.ev.<kind>`), not a `RIG_EVENTS` stream of their own: one order across a rig's ledger, one position for control's views, one stream to back up. Either way, the NATS service gets a memory limit with `GOMEMLIMIT`, `max_file_store` the volume's size, and `EVENTS` is compressed (s2): six times smaller on disk.
 
 ## Open questions
 

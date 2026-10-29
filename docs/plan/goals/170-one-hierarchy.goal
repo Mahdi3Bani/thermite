@@ -57,7 +57,7 @@ The audit's lane 13 (`.internal/reviews/v0.1.1-audit/13-hierarchy.md`) reviewed 
 - **A run registry on control,** written when control signs an assignment, and **views built by run,** across old ledgers and retired rigs.
 - **Every run-scoped event names its run.**
 - **A move is a new run that continues the old one** (goal [085](085-move-a-campaign-to-another-rig.goal)), shown on both pages.
-- **The bus's subjects follow it** (goal [168](168-message-bus.goal)): `thermite.run.<run>.attempt.<attempt>.<kind>`, with the rig and the ledger in headers.
+- **The bus's subjects follow it** (goal [168](168-message-bus.goal)): `thermite.run.<run>.ev.<kind>`, with the rig and the ledger in headers and the attempt's and trial's ids in the event (the owner, 2026-10-29: a subject for each attempt costs NATS memory for good).
 - **The steps,** in goal 125's order: the rule of shape; run IDs unique per control and the right champion patch; a run's export with its verdicts; `core/ids.ts`; the run on every event; the registry; views by run; run-scoped addresses; the knowledge base keyed by run; the subjects; the move (goal 085).
 
 ## Decisions
